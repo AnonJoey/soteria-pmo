@@ -198,7 +198,19 @@ def test_o_log_nunca_usa_a_palavra_abandonada():
 
 
 def test_tarefa_concluida_sai_do_radar():
-    assert C.avaliar([tarefa(tocado_ha=30, status="complete")], {}, HOJE) == []
+    assert C.avaliar([tarefa(tocado_ha=30, status="publicado/finalizado")], {}, HOJE) == []
+
+
+def test_tarefa_bloqueada_sai_do_radar_porque_parada_e_o_esperado():
+    """Bloqueado nao e negligencia. Cobrar quem tem o card poe o alerta na
+    pessoa errada: quem bloqueia nao e quem e dono."""
+    assert C.avaliar([tarefa(tocado_ha=30, status="bloqueado")], {}, HOJE) == []
+
+
+@pytest.mark.parametrize("status", ["ideia", "desenvolvimento", "homologação",
+                                    "aguardando deploy", "backlog"])
+def test_estados_intermediarios_do_workflow_real_continuam_no_radar(status):
+    assert C.avaliar([tarefa(tocado_ha=30, status=status)], {}, HOJE) != []
 
 
 def test_sem_estimativa_o_alerta_diz_que_nao_da_para_julgar_o_tamanho():

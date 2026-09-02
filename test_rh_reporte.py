@@ -159,14 +159,34 @@ def test_tarefa_sem_horas_e_reportada_como_sem_horas_e_nunca_como_parada():
     assert "parada" not in texto.lower().split("---")[0]
 
 
-@pytest.mark.parametrize("status", ["complete", "Concluido", "DONE", "fechado"])
-def test_status_de_conclusao_e_reconhecido_sem_ligar_para_caixa(status):
+@pytest.mark.parametrize("status", [
+    "publicado/finalizado", "Publicado/Finalizado", "PUBLICADO/FINALIZADO",
+])
+def test_o_estado_terminal_real_e_reconhecido_sem_ligar_para_caixa(status):
+    """O workflow da pasta AI - Claude termina em publicado/finalizado.
+
+    Uma versao anterior deste teste afirmava complete, done, concluido e
+    fechado, nenhum dos quais existe neste workspace. Passava verde contra um
+    vocabulario inventado, que e pior que falhar.
+    """
     r = R.montar([tarefa("t1", "A", status=status)], [], "Soteria", INI, FIM)
     assert r.concluidas and not r.paradas
 
 
-def test_status_desconhecido_nao_conta_como_concluido():
-    r = R.montar([tarefa("t1", "A", status="ideia")], [], "Soteria", INI, FIM)
+@pytest.mark.parametrize("status", [
+    "ideia", "desenvolvimento", "homologação", "aguardando deploy", "bloqueado",
+    "complete", "done",
+])
+def test_nenhum_estado_anterior_conta_como_concluido(status):
+    """Inclusive os que a versao errada tratava como fim: eles nao existem aqui,
+    entao uma tarefa com esse status e dado estranho e nao entrega feita."""
+    r = R.montar([tarefa("t1", "A", status=status)], [], "Soteria", INI, FIM)
+    assert not r.concluidas
+
+
+def test_aguardando_deploy_ainda_nao_esta_entregue():
+    """Release construida e nao publicada nao e entrega para o cliente."""
+    r = R.montar([tarefa("t1", "A", status="aguardando deploy")], [], "Soteria", INI, FIM)
     assert not r.concluidas
 
 
