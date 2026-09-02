@@ -369,3 +369,28 @@ def test_falha_ao_listar_a_equipe_e_reportada_e_nao_impede_a_leitura():
 
     v = B.vigiar(SemMembros(), [BOLSAO], date(2026, 9, 1), date(2026, 9, 7))
     assert any("membros" in f for f in v.falhas)
+
+
+def test_git_e_consultado_com_hora_explicita(tmp_path, monkeypatch):
+    """Git le uma data sem hora como aquele dia NA HORA ATUAL, entao as 16:11
+    um --since de hoje descarta tudo que foi commitado antes das 16:11 de hoje.
+    Medido: 0 commits com a data nua contra 18 com T00:00:00, no mesmo repo."""
+    import subprocess
+    from delegation_core.pmo import coletor as C
+
+    (tmp_path / ".git").mkdir()
+    visto = {}
+
+    class R:
+        stdout = ""
+
+    def fake_run(cmd, **kw):
+        visto["cmd"] = cmd
+        return R()
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    C.commits([tmp_path], date(2026, 9, 2), date(2026, 9, 2))
+
+    cmd = " ".join(visto["cmd"])
+    assert "--since=2026-09-02T00:00:00" in cmd
+    assert "--until=2026-09-02T23:59:59" in cmd
