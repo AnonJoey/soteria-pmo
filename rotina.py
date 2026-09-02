@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 import traceback
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 logger = logging.getLogger("pmo.rotina")
 
@@ -102,37 +102,49 @@ class Digest:
         return "\n".join(partes).rstrip() + "\n"
 
 
-def devido(item: str, hoje: date, ultimo_mensal: date | None = None) -> bool:
+def _util(d: date, feriados: frozenset[date]) -> bool:
+    return d.weekday() < 5 and d not in feriados
+
+
+def devido(item: str, hoje: date, ultimo_mensal: date | None = None,
+           feriados: frozenset[date] = frozenset()) -> bool:
     """Whether an item runs today, by its own cadence.
 
-    Monthly fires on the first business day of the month rather than on day 1,
-    because closing happens on a working day and a Saturday run reports into
-    nobody's inbox. `ultimo_mensal` makes it idempotent: running the routine
-    twice on the same day does not audit the month twice.
+    A holiday is not a working day, here as everywhere else in the package.
+    Leaving them out was an inconsistency: the monthly item already refused to
+    fire on a weekend because closing happens on a working day and a Saturday
+    run reports into nobody's inbox, and 07/09 is exactly the same situation
+    with a different name. Running the weekly report on Independence Day just
+    produces a document nobody opens, and, worse, moves the following week's
+    window.
+
+    Monthly fires on the first working day of the month rather than on day 1.
+    `ultimo_mensal` makes it idempotent: running the routine twice on the same
+    day does not audit the month twice.
     """
     cadencia = CADENCIAS.get(item)
     if cadencia is None:
         return False
+    if not _util(hoje, feriados):
+        return False
     if cadencia in (DIARIA, CONTINUA):
-        return hoje.weekday() < 5
+        return True
     if cadencia == SEMANAL:
         return hoje.weekday() == DIA_DO_SEMANAL
     # MENSAL
-    if hoje.weekday() >= 5:
-        return False
     if ultimo_mensal is not None and (ultimo_mensal.year, ultimo_mensal.month) == \
             (hoje.year, hoje.month):
         return False
-    # First business day of the month: no earlier weekday exists this month.
     primeiro_util = date(hoje.year, hoje.month, 1)
-    while primeiro_util.weekday() >= 5:
-        primeiro_util = primeiro_util.replace(day=primeiro_util.day + 1)
+    while not _util(primeiro_util, feriados):
+        primeiro_util += timedelta(days=1)
     return hoje == primeiro_util
 
 
 def rodar(hoje: date, tarefas: dict[str, callable], *,
           ultimo_mensal: date | None = None,
-          forcar: frozenset[str] = frozenset()) -> Digest:
+          forcar: frozenset[str] = frozenset(),
+          feriados: frozenset[date] = frozenset()) -> Digest:
     """Run whichever items are due, plus anything in `forcar`.
 
     `tarefas` maps an item name to a zero-argument callable returning its text.
@@ -145,7 +157,7 @@ def rodar(hoje: date, tarefas: dict[str, callable], *,
     digest = Digest(dia=hoje)
     for item, fn in tarefas.items():
         cadencia = CADENCIAS.get(item, "?")
-        if item not in forcar and not devido(item, hoje, ultimo_mensal):
+        if item not in forcar and not devido(item, hoje, ultimo_mensal, feriados):
             digest.saidas.append(Saida(item, cadencia, rodou=False))
             continue
         try:
