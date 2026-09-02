@@ -459,3 +459,45 @@ def test_com_fala_a_atividade_vem_dela():
                               "t1", "Soteria", ("desenvolvimento",))
     assert "Desenvolvimento do coletor" in p[0].descricao
     assert not any("falta o que" in l.motivo for l in lacunas)
+
+
+def test_expressao_de_periodo_vira_horas():
+    """Medido nos transcritos: 21 das 280 falas do Jordan trazem uma dessas."""
+    from delegation_core.pmo.daily import duracao_no_texto as d
+    assert d("passei a manha preparando o ambiente") == 3.5
+    assert d("passei a tarde inteira com o Luan") == 3.5
+    assert d("passei grande parte do dia alinhando") == 3.0
+    assert d("fiquei o dia todo nisso") == 6.0
+
+
+def test_plano_no_futuro_nao_vira_hora():
+    """"hoje de tarde eu vou ver isso" e plano, e plano nao e hora trabalhada."""
+    from delegation_core.pmo.daily import duracao_no_texto as d
+    assert d("eu vou ter que ver isso hoje de tarde") is None
+    assert d("Hoje de tarde.") is None
+    assert d("hoje de tarde a gente vai comecar a produzir") is None
+
+
+def test_numero_explicito_vence_a_expressao():
+    from delegation_core.pmo.daily import InterpreteLocal
+    r = "ATIVIDADE: Coletor\nQUANDO: hoje\nHORAS: 2\n"
+    i = InterpreteLocal("Jordan", chamar=lambda *a: r)
+    f = i.falas_de_trabalho("passei a manha inteira no coletor", QUA)
+    assert f[0].horas_declaradas == 2.0, "o que a pessoa contou vence a convencao"
+
+
+def test_falha_do_interprete_e_reportada_e_nao_confundida_com_dia_sem_trabalho():
+    """Uma rodada inteira de medicao deste modulo foi corrompida por isso:
+    o llama caiu, todo dia voltou vazio, e o resultado parecia completo."""
+    from delegation_core.pmo.daily import InterpreteLocal
+
+    def explode(*a):
+        raise RuntimeError("connection refused")
+
+    i = InterpreteLocal("Jordan", chamar=explode)
+    i.falas_de_trabalho("falou bastante", QUA)
+    assert i.ultima_falhou is True
+
+    j = InterpreteLocal("Jordan", chamar=lambda *a: "SEM TRABALHO")
+    j.falas_de_trabalho("bom dia", QUA)
+    assert j.ultima_falhou is False, "sem trabalho e resposta, nao falha"
