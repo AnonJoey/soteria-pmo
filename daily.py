@@ -245,6 +245,42 @@ def resolver_quando(marcador: str, dia_da_reuniao: date) -> date:
     return dia_da_reuniao
 
 
+# What a period of the day is worth, when someone says they spent it on
+# something. Measured against the transcripts: 21 of Jordan's 280 lines carry
+# one of these, so this is real but small signal, and it is never a total.
+PERIODOS = {
+    "dia": 6.0,       # "passei o dia", ja descontando reunioes e intervalos
+    "manha": 3.5,
+    "tarde": 3.5,
+    "parte": 3.0,     # "grande parte do dia"
+}
+
+_PERIODO = (
+    (re.compile(r"\b(?:o dia (?:todo|inteiro)|dia inteiro|passei o dia)\b", re.I), "dia"),
+    (re.compile(r"\b(?:manh[aã] (?:toda|inteira)|passei a manh[aã]|a manh[aã] (?:toda|inteira))\b", re.I), "manha"),
+    (re.compile(r"\b(?:tarde (?:toda|inteira)|passei a tarde|a tarde (?:toda|inteira))\b", re.I), "tarde"),
+    (re.compile(r"\b(?:grande|boa|maior) parte do dia\b", re.I), "parte"),
+)
+
+
+def duracao_no_texto(texto: str) -> float | None:
+    """Hours implied by a phrase like "passei a manha nisso".
+
+    Only matches phrases that assert a period was *spent*: "passei a tarde"
+    counts, "hoje de tarde eu vou ver isso" does not, because the second is a
+    plan and a plan is not an hour. That distinction is why the patterns
+    require the verb or an explicit "toda/inteira" rather than just the noun.
+
+    The values are conventions, not measurements, and they are deliberately
+    short: a morning is 3,5h and not 4h because the day has a standup and
+    interruptions in it, and overstating here bills time nobody worked.
+    """
+    for rx, chave in _PERIODO:
+        if rx.search(texto):
+            return PERIODOS[chave]
+    return None
+
+
 def _horas(bruto: str) -> float | None:
     bruto = bruto.strip().replace(",", ".")
     if bruto in ("?", "", "-"):
@@ -269,6 +305,9 @@ class InterpreteLocal:
         self.pessoa = pessoa
         self.max_tokens = max_tokens
         self._chamar = chamar or self._chamar_llama
+        # Whether the last call failed to reach the model, as opposed to the
+        # model answering that there was no work.
+        self.ultima_falhou = False
 
     @staticmethod
     def _chamar_llama(sistema: str, usuario: str, max_tokens: int) -> str:
@@ -293,7 +332,9 @@ class InterpreteLocal:
         """The Interprete protocol. `texto` is already this person's lines."""
         if not texto.strip():
             return []
+        texto_bruto = texto
         usuario = TAREFA.format(pessoa=self.pessoa, dia=f"{dia:%d/%m/%Y}", falas=texto)
+        self.ultima_falhou = False
         try:
             resposta = self._chamar(SISTEMA, usuario, self.max_tokens)
         except Exception as e:
@@ -301,6 +342,7 @@ class InterpreteLocal:
             # said nothing: the day then has no transcript evidence and the gap
             # protocol asks about it, which is the correct outcome.
             logger.warning("interprete nao respondeu para %s: %s", dia, e)
+            self.ultima_falhou = True
             return []
 
         if "SEM TRABALHO" in resposta.upper():
@@ -317,11 +359,17 @@ class InterpreteLocal:
             # moves on an explicit marker. `resolver_quando` also handles the
             # weekday names that the real transcripts turned out to use.
             quando = resolver_quando(m.group("quando"), dia)
+            # The model reports an explicit number when the person gave one.
+            # When it did not, the raw lines may still say "passei a manha",
+            # which the manual process read as hours and this used to drop.
+            declarada = _horas(m.group("horas"))
+            if declarada is None:
+                declarada = duracao_no_texto(texto_bruto)
             nova = Fala(
                 texto=f"[daily {dia:%d/%m}] {atividade}",
                 atividade=atividade,
                 dia=quando,
-                horas_declaradas=_horas(m.group("horas")),
+                horas_declaradas=declarada,
             )
             # One activity, one entry. Observed on the real 25/08 standup: the
             # model emitted the same activity twice, dated to both the previous
@@ -342,7 +390,8 @@ class InterpreteLocal:
 
 
 def falas_da_pessoa(pasta: str | Path, pessoa: str, inicio: date, fim: date,
-                    interprete: InterpreteLocal | None = None) -> list[Fala]:
+                    interprete: InterpreteLocal | None = None,
+                    falhas: list[str] | None = None) -> list[Fala]:
     """Read the window's transcripts and interpret one person's lines.
 
     Deterministic all the way to the model: the transcripts are parsed, the
@@ -358,5 +407,14 @@ def falas_da_pessoa(pasta: str | Path, pessoa: str, inicio: date, fim: date,
             continue
         texto = "\n".join(f"[{int(l.offset.total_seconds() // 60)}min] {l.texto}"
                           for l in minhas)
-        todas.extend(interprete.falas_de_trabalho(texto, t.dia))
+        extraidas = interprete.falas_de_trabalho(texto, t.dia)
+        # A day where the person spoke and nothing came back is either a day
+        # of small talk or a model that did not answer, and those are opposite
+        # things. Returning the count lets a caller tell them apart: a silent
+        # degradation corrupted a whole measurement run of this module before
+        # this line existed, giving the machine-evidence baseline while looking
+        # like a complete result.
+        if not extraidas and falhas is not None and interprete.ultima_falhou:
+            falhas.append(f"{t.dia:%d/%m}: interprete nao respondeu")
+        todas.extend(extraidas)
     return todas
