@@ -34,21 +34,31 @@ from .periodo import BRT, Intervalo, data_da_fala, fundir, horas as somar_horas,
 
 logger = logging.getLogger("pmo.horas")
 
+# What the description says when nothing named the activity. Deliberately not
+# a guess: it is the row label in the billable hours report.
+ATIVIDADE_DESCONHECIDA = "ATIVIDADE NAO IDENTIFICADA"
+
 # Below this, a proposal is never written without a person looking at it first.
 # Above it, it still is not written without approval: the threshold decides how
 # loudly the proposal argues for itself, not whether a human is in the loop.
 CONFIANCA_MINIMA = 0.5
 
-# Evidence kinds, ordered by how directly they witness the work. A commit
-# proves work happened; a browser tab proves a page was open.
+# Evidence kinds, ranked by how well each supports a DURATION, which is what
+# the confidence score is about and what ends up billed.
+#
+# These were first ranked by how directly each witnesses the *work*, which put
+# a commit near the top. That is right for attribution and wrong here: a commit
+# is an instant, and its window only exists because `coletor` clustered it with
+# its neighbours. The sources that carry a measured span outrank the ones whose
+# span had to be inferred, whatever they prove about the activity.
 PESO_FONTE = {
-    "transcricao": 1.0,   # someone said what they did, out loud
-    "commit": 0.95,
-    "sessao_ia": 0.85,
-    "nota_vault": 0.8,
-    "reuniao": 0.9,       # attendance recorded by the meeting system
-    "arquivo": 0.6,
-    "navegador": 0.4,
+    "reuniao": 0.90,     # duracao lida da propria transcricao, medida
+    "sessao_ia": 0.75,   # muitos carimbos de tempo, agrupados com folga
+    "commit": 0.60,      # instante: a janela e inferida dos vizinhos
+    "nota_vault": 0.50,  # mtime, um instante por nota
+    "arquivo": 0.45,
+    "navegador": 0.30,   # prova que uma pagina estava aberta
+    "transcricao": 0.55,  # a pessoa disse o que fez, e nao por quanto tempo
 }
 
 
@@ -76,13 +86,21 @@ class Fala:
 
 @dataclass(frozen=True)
 class Evidencia:
-    """One thing the machine or a person witnessed."""
+    """One thing the machine or a person witnessed.
+
+    `inferida` separates a window that was observed from one that was derived.
+    A meeting's length is read off its transcript; a lone commit at 14:32 has
+    no length at all and only gets one because `coletor` applied a floor. Both
+    are useful and only one is a measurement, so the difference travels with
+    the evidence instead of being lost in a description string.
+    """
 
     tipo: str
     inicio: datetime
     fim: datetime
     descricao: str
     tarefa_sugerida: str = ""
+    inferida: bool = False
 
     @property
     def intervalo(self) -> Intervalo:
@@ -261,21 +279,51 @@ def classificar_faturavel(tags: tuple[str, ...], atividade: str = "") -> bool:
 # ── o motor ──────────────────────────────────────────────────────────────────
 
 
-def _confianca(evidencias: list[Evidencia], tem_fala: bool) -> float:
-    """How much to trust a proposal, from what witnessed it.
+def _confianca(evidencias: list[Evidencia], tem_fala: bool,
+               horas_declaradas: bool = False) -> float:
+    """How much to trust the proposed HOURS, which is what gets billed.
 
-    A transcript statement alone outranks a pile of browser tabs, because one
-    is a person saying what they did and the other is a page that was open.
+    The first version scored the activity instead, and on real data it returned
+    1.00 for every single proposal of a week: a standup statement exists on
+    almost every day, transcription is the heaviest source, and the score
+    pinned at the ceiling and stopped discriminating. A number that never
+    varies is not a number.
+
+    So the question here is narrower: how well is the *duration* supported?
+    Someone saying "I worked on the collector" pins the activity and says
+    nothing about how long, and the hours in that case come from clustered
+    points, which is the weak part. A statement that does name the hours is a
+    different thing, and only then does the transcript carry the full weight.
     """
     if not evidencias and not tem_fala:
         return 0.0
+    if tem_fala and horas_declaradas:
+        # The person said what they did and for how long. Nothing beats it.
+        return 1.0
+
     melhor = max((e.peso for e in evidencias), default=0.0)
     if tem_fala:
+        # The statement corroborates that the day was worked, so it lifts a
+        # weak duration, but it cannot certify a duration it never mentioned.
         melhor = max(melhor, PESO_FONTE["transcricao"])
-    # Independent corroboration adds a little, capped: five weak sources do not
-    # add up to one person saying what they did.
+
     tipos = {e.tipo for e in evidencias}
-    return round(min(melhor + 0.05 * max(len(tipos) - 1, 0), 1.0), 2)
+    score = melhor + 0.04 * max(len(tipos) - 1, 0)
+
+    # How much of the day's evidence rests on windows nobody observed. On this
+    # machine every day carries all five sources, so counting sources
+    # discriminates nothing and the score pinned at its ceiling for a whole
+    # week. This is what actually varies: a day held up by floored windows
+    # around isolated commits is weaker than one held up by a meeting whose
+    # length was read off its own transcript.
+    if evidencias:
+        span = sum((e.fim - e.inicio).total_seconds() for e in evidencias)
+        inferido = sum((e.fim - e.inicio).total_seconds()
+                       for e in evidencias if e.inferida)
+        if span > 0:
+            score -= 0.45 * (inferido / span)
+
+    return round(max(min(score, 0.95), 0.05), 2)
 
 
 def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
@@ -304,8 +352,19 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
         return [], [Lacuna(dia, f"O que voce fez em {dia:%d/%m}?",
                            "evidencia sem duracao aproveitavel", horas_esperadas)]
 
-    atividade = (falas_do_dia[0].atividade if falas_do_dia
-                 else (do_dia[0].descricao if do_dia else "trabalho"))
+    # Without a statement the engine knows that time passed and not what was
+    # done, and it must not fill that in. Running with --sem-modelo it used to
+    # paste the first evidence's raw text, producing descriptions like
+    # "soteriaonline-my.sharepoint.com: Gravacao de Reuniao.mp4" as the
+    # activity name. That string is the row label in the billable hours report,
+    # the exact field whose emptiness forced the pilot to be relaunched, so
+    # inventing it from a URL is worse than admitting it is unknown.
+    if falas_do_dia:
+        atividade = falas_do_dia[0].atividade
+        atividade_conhecida = True
+    else:
+        atividade = ATIVIDADE_DESCONHECIDA
+        atividade_conhecida = False
     progressao = (f"{len(janelas)} janelas" if len(janelas) > 1 else "")
     proposta = Proposta(
         dia=dia,
@@ -313,7 +372,7 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
         descricao=descricao_da_casa(atividade, cliente, progressao),
         horas=horas,
         faturavel=classificar_faturavel(tags, atividade),
-        confianca=_confianca(do_dia, bool(falas_do_dia)),
+        confianca=_confianca(do_dia, bool(falas_do_dia), bool(declaradas)),
         tags=tags,
         citacoes=[f.texto for f in falas_do_dia] + [e.descricao for e in do_dia],
         fontes=tuple(sorted({e.tipo for e in do_dia} | ({"transcricao"} if falas_do_dia else set()))),
@@ -329,6 +388,14 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
                      f"O que ocupou as outras {faltando:.1f}h?",
             motivo="evidencia parcial",
             horas_em_aberto=round(faltando, 2),
+        ))
+    if not atividade_conhecida:
+        lacunas.append(Lacuna(
+            dia=dia,
+            pergunta=f"A evidencia mostra {horas:.1f}h em {dia:%d/%m} mas nada "
+                     f"diz o que foi feito. Qual foi a atividade?",
+            motivo="sem fala na daily: houve tempo, falta o que",
+            horas_em_aberto=horas,
         ))
     if proposta.duvidosa:
         lacunas.append(Lacuna(
@@ -346,14 +413,35 @@ def apurar(inicio: date, fim: date, evidencias: list[Evidencia], falas: list[Fal
     """Walk a window day by day, proposing and questioning."""
     ap = Apuracao(inicio=inicio, fim=fim,
                   horas_esperadas_por_dia=horas_esperadas_por_dia)
+    dias_percorridos: set[date] = set()
     d = inicio
     while d <= fim:
         if d.weekday() < 5:
+            dias_percorridos.add(d)
             propostas, lacunas = apurar_dia(
                 d, evidencias, falas, task_id, cliente, tags, horas_esperadas_por_dia)
             ap.propostas.extend(propostas)
             ap.lacunas.extend(lacunas)
         d += timedelta(days=1)
+
+    # Statements that landed on a day the walk never visits. This happens for
+    # real: a Monday standup saying "ontem" dates to Sunday, and a weekday name
+    # can reach back past `inicio`. The walk skips weekends and stops at the
+    # window, so those falas would be consumed by nobody and vanish without a
+    # line anywhere. Losing declared work in silence is the exact failure this
+    # module exists to prevent, so it becomes a question instead.
+    for f in falas:
+        if f.dia in dias_percorridos:
+            continue
+        fora = ("fim de semana" if f.dia.weekday() >= 5
+                else "fora da janela apurada")
+        ap.lacunas.append(Lacuna(
+            dia=f.dia,
+            pergunta=f"A daily aponta trabalho em {f.dia:%d/%m} ({fora}): "
+                     f"{f.atividade}. Isso deve ser lancado?",
+            motivo=f"fala datada em dia que a apuracao nao percorre ({fora})",
+            horas_em_aberto=f.horas_declaradas,
+        ))
     return ap
 
 

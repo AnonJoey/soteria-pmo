@@ -20,7 +20,7 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import auditor, bolsao, cronograma, datas, periodo, reporte, rh, rotina
+from . import auditor, bolsao, coletor, cronograma, daily, datas, horas, periodo, reporte, rh, rotina
 from .clickup import ClickUp
 
 CONFIG_PADRAO = Path.home() / ".delegation_core" / "pmo.json"
@@ -28,6 +28,15 @@ CONFIG_PADRAO = Path.home() / ".delegation_core" / "pmo.json"
 EXEMPLO = {
     "token": "pk_...",
     "team_id": "9007...",
+    "pessoa": "Jordan Bernardes",
+    "evidencia": {
+        "repos": ["~/Projects/delegation-core"],
+        "autor_git": "",
+        "sessoes_ia": "~/.claude/projects",
+        "vault": "~/Documents/Projects_Archive/Claude Vault",
+        "historico_navegador": "~/.config/google-chrome/Default/History",
+    },
+    "task_horas": "86e31gx8v",
     "projetos": [
         {"nome": "Soteria", "list_id": "901716443542", "horas_contratadas": 1800}
     ],
@@ -118,6 +127,58 @@ def cmd_rodar(args) -> int:
     return 1 if digest.erros else 0
 
 
+def cmd_horas(args) -> int:
+    """Apurar um periodo: coletar evidencia, ler as dailies, propor e perguntar.
+
+    Nunca escreve. Sai com 2 quando restam lacunas, porque uma apuracao com
+    pergunta aberta nao esta pronta para lancar e um agendador precisa notar a
+    diferenca entre "apurado" e "apurado e completo".
+    """
+    try:
+        cfg = carregar_config(Path(args.config).expanduser())
+    except ConfigAusente as e:
+        print(f"Sem configuracao do PMO em {e}.\n\nCrie o arquivo com esta forma:\n",
+              file=sys.stderr)
+        print(json.dumps(EXEMPLO, indent=2, ensure_ascii=False), file=sys.stderr)
+        return 2
+
+    inicio = date.fromisoformat(args.de)
+    fim = date.fromisoformat(args.ate)
+    ev_cfg = cfg.get("evidencia") or {}
+    pessoa = args.pessoa or cfg.get("pessoa", "")
+
+    fontes = coletor.Fontes(
+        repos=tuple(ev_cfg.get("repos", ())),
+        autor_git=ev_cfg.get("autor_git", ""),
+        sessoes_ia=ev_cfg.get("sessoes_ia", ""),
+        vault=ev_cfg.get("vault", ""),
+        historico_navegador=ev_cfg.get("historico_navegador", ""),
+    )
+    evidencias, falhas = coletor.coletar(fontes, inicio, fim)
+    print(coletor.resumo(evidencias, falhas))
+    print()
+    # Personal evidence is dropped from the apuracao, not from the report: the
+    # resumo above says how much was separated so a wrong split is visible.
+    evidencias, _pessoais = coletor.separar_pessoal(evidencias)
+
+    falas = []
+    if pessoa and ev_cfg.get("vault"):
+        pasta = Path(ev_cfg["vault"]).expanduser() / "Sessions"
+        if args.sem_modelo:
+            print("Modo sem modelo: as dailies nao serao interpretadas, entao o "
+                  "que a pessoa disse que fez nao entra na apuracao.\n")
+        else:
+            falas = daily.falas_da_pessoa(pasta, pessoa, inicio, fim)
+            print(f"Dailies: {len(falas)} atividade(s) declarada(s) por {pessoa}.\n")
+
+    ap = horas.apurar(inicio, fim, evidencias, falas,
+                      cfg.get("task_horas", ""),
+                      (cfg.get("projetos") or [{}])[0].get("nome", "Cliente"),
+                      tuple(args.tags or ("desenvolvimento",)))
+    print(horas.relatorio(ap))
+    return 0 if ap.pronta_para_lancar else 2
+
+
 def cmd_cadencias(args) -> int:
     """Print what runs when, which is the question people actually ask."""
     hoje = date.fromisoformat(args.dia) if args.dia else date.today()
@@ -145,6 +206,17 @@ def registrar(sub) -> None:
     p_rodar.add_argument("--forcar", nargs="*", default=None,
                          help="itens a rodar fora da cadencia (ex: reporte)")
     p_rodar.set_defaults(func=cmd_rodar)
+
+    p_horas = pmo_sub.add_parser(
+        "horas", help="Apura um periodo a partir da evidencia e das dailies (nao escreve)")
+    p_horas.add_argument("--de", required=True, help="AAAA-MM-DD")
+    p_horas.add_argument("--ate", required=True, help="AAAA-MM-DD")
+    p_horas.add_argument("--config", default=str(CONFIG_PADRAO))
+    p_horas.add_argument("--pessoa", default=None, help="sobrepoe a pessoa do config")
+    p_horas.add_argument("--tags", nargs="*", default=None)
+    p_horas.add_argument("--sem-modelo", action="store_true",
+                         help="nao interpreta as dailies; so evidencia de maquina")
+    p_horas.set_defaults(func=cmd_horas)
 
     p_cad = pmo_sub.add_parser("cadencias", help="Mostra o que roda hoje e o que nao")
     p_cad.add_argument("--dia", default=None)
