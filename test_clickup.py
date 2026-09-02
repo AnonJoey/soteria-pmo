@@ -345,3 +345,39 @@ def test_tarefas_da_lista_segue_a_paginacao_ate_o_fim():
         return httpx.Response(200, json={"tasks": [{"id": "t100"}], "last_page": True})
 
     assert len(cliente(handler).tarefas_da_lista("901716443542")) == 101
+
+
+# ── defeitos que a revisao do modelo local encontrou ─────────────────────────
+
+
+def test_falha_nas_tags_nao_escapa_com_a_entrada_ja_gravada():
+    """O fantasma de novo, por outra porta.
+
+    Nesta altura a entrada existe. Deixar o timeout do PUT subir entrega ao
+    chamador uma excecao sem id nenhum, que e exatamente o estado em que uma
+    escrita aconteceu e ninguem sabe: o proximo passo e retentar e duplicar.
+    """
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "POST":
+            return httpx.Response(200, json={"data": {"id": "te_1"}})
+        if request.method == "PUT":
+            raise httpx.TimeoutException("timeout no PUT de tags")
+        return httpx.Response(200, json={"data": {
+            "id": "te_1", "description": bom().descricao, "billable": True, "tags": []}})
+
+    r = cliente(handler).lancar(bom(), APROVADO)
+    assert r.entry_id == "te_1", "o chamador precisa do id para conferir ou consertar"
+    assert r.escrito and not r.conferido
+    assert any("tags" in d for d in r.divergencias)
+
+
+def test_paginacao_sem_last_page_para_em_vez_de_girar_para_sempre():
+    """O unico jeito de sair do laco era last_page ou lote vazio."""
+    paginas = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        paginas["n"] += 1
+        return httpx.Response(200, json={"tasks": [{"id": f"t{paginas['n']}"}]})
+
+    tarefas = cliente(handler).tarefas_da_lista("901716443542", max_paginas=5)
+    assert paginas["n"] == 5 and len(tarefas) == 5

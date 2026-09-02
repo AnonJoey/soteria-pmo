@@ -191,7 +191,7 @@ def test_vigiar_filtra_entradas_pela_lista_do_projeto():
         def entradas(self, *_a, **_k):
             return [entrada(10), entrada(90, list_id="outra")]
 
-    (s,) = B.vigiar(Falso(), [BOLSAO], date(2026, 9, 1), date(2026, 9, 7))
+    (s,) = B.vigiar(Falso(), [BOLSAO], date(2026, 9, 1), date(2026, 9, 7)).situacoes
     assert s.horas_gastas == 10, "somou horas de outro projeto"
 
 
@@ -200,7 +200,8 @@ def test_vigiar_sobrevive_a_falha_de_leitura():
         def entradas(self, *_a, **_k):
             raise RuntimeError("api fora")
 
-    assert B.vigiar(Quebrado(), [BOLSAO], date(2026, 9, 1), date(2026, 9, 7)) == []
+    v = B.vigiar(Quebrado(), [BOLSAO], date(2026, 9, 1), date(2026, 9, 7))
+    assert v.situacoes == [] and v.falhas
 
 
 # ── guardiao das datas ───────────────────────────────────────────────────────
@@ -270,3 +271,39 @@ def test_vigiar_sobrevive_a_falha_de_leitura():
             raise RuntimeError("api fora")
 
     assert D.vigiar(Quebrado(), "901716443542", HOJE) == ""
+
+
+# ── defeitos que a revisao do modelo local encontrou ─────────────────────────
+
+
+def test_falha_de_leitura_aparece_no_digest_em_vez_de_virar_silencio():
+    """API fora do ar e semana saudavel produziam a mesma saida vazia."""
+    class Quebrado:
+        def entradas(self, *_a, **_k):
+            raise RuntimeError("api fora")
+
+    v = B.vigiar(Quebrado(), [BOLSAO], date(2026, 9, 1), date(2026, 9, 7))
+    assert v.situacoes == [] and len(v.falhas) == 1
+    saida = B.digest(v)
+    assert saida != "", "silencio aqui e indistinguivel de tudo bem"
+    assert "Nao foi possivel ler" in saida and "Soteria" in saida
+    assert "nao quer dizer que estejam bem" in saida
+
+
+def test_vigilancia_sem_falha_e_sem_alerta_continua_silenciosa():
+    class Ok:
+        def entradas(self, *_a, **_k):
+            return [entrada(10)]
+
+    v = B.vigiar(Ok(), [BOLSAO], date(2026, 9, 1), date(2026, 9, 7))
+    assert v.falhas == [] and B.digest(v) == ""
+
+
+def test_digest_ainda_aceita_lista_pura_de_situacoes():
+    s = B.apurar([entrada(95)], BOLSAO, date(2026, 9, 1), date(2026, 9, 7))
+    assert "Soteria" in B.digest([s])
+
+
+def test_percentual_nao_divide_por_zero_se_a_situacao_for_construida_na_mao():
+    s = B.Situacao("x", 0, 10, 10, 0, "ok", 5, None, None, None)
+    assert s.percentual == 0.0
