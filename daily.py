@@ -105,11 +105,18 @@ def ler_transcricao(caminho: str | Path) -> Transcricao | None:
         logger.warning("nao foi possivel ler %s: %s", caminho.name, e)
         return None
 
-    m = _DATA_NO_NOME.search(caminho.name)
-    if not m:
+    # The LAST date in the filename, not the first. The vault names a note
+    # "<data em que foi escrita>-<titulo>.md", and a transcript's title often
+    # carries the meeting's own date, so a note written on 01/09 about a
+    # meeting held on 31/08 is called
+    # "2026-09-01-Cronograma Agentes de Gestao - 2026-08-31.md".
+    # Reading the first date attributed 67 of one person's utterances to the
+    # wrong day, which would move those hours a day forward.
+    datas = _DATA_NO_NOME.findall(caminho.name)
+    if not datas:
         return None
     try:
-        dia = date(int(m.group(1)), int(m.group(2)), int(m.group(3)))
+        dia = date(*(int(x) for x in datas[-1]))
     except ValueError:
         return None
 
