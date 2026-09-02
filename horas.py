@@ -23,11 +23,13 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Protocol
 
-from .clickup import NAO_FATURAVEL, TAGS_DA_CASA, Aprovacao, Lancamento
+from .clickup import (ATIVIDADE_NAO_FATURAVEL, NAO_FATURAVEL, TAGS_DA_CASA,
+                      Aprovacao, Lancamento)
 from .periodo import BRT, Intervalo, data_da_fala, fundir, horas as somar_horas, ms
 
 logger = logging.getLogger("pmo.horas")
@@ -204,6 +206,17 @@ class Apuracao:
 
 # ── formato da casa ──────────────────────────────────────────────────────────
 
+
+def _sem_acento(texto: str) -> str:
+    """Fold accents and case for comparison.
+
+    The activity name reaches this code from a transcript as often as from
+    ClickUp, and "Lancamento" and "Lançamento" are the same activity to
+    everyone except a string comparison.
+    """
+    normalizado = unicodedata.normalize("NFKD", texto.strip().lower())
+    return "".join(c for c in normalizado if not unicodedata.combining(c))
+
 _CLIENTE = re.compile(r"\(([^)]+)\)\s*$")
 
 
@@ -227,13 +240,22 @@ def confere_formato(descricao: str) -> list[str]:
     return problemas
 
 
-def classificar_faturavel(tags: tuple[str, ...]) -> bool:
+def classificar_faturavel(tags: tuple[str, ...], atividade: str = "") -> bool:
     """Billability follows the activity, never a uniform default.
 
     Marking a whole batch billable is how the pilot billed 16 hours it should
-    not have. Daily and time logging are the house's non-billable activities.
+    not have. `daily` and `reuniao interna` are never billed.
+
+    The activity matters and not only the tag, because of one case the house
+    convention treats specially: logging hours carries the `planejamento` tag
+    and is not billable, while everything else tagged `planejamento` is. Deciding
+    on the tag alone bills the act of billing.
     """
-    return not (set(tags) & NAO_FATURAVEL)
+    if set(tags) & NAO_FATURAVEL:
+        return False
+    if _sem_acento(ATIVIDADE_NAO_FATURAVEL) in _sem_acento(atividade):
+        return False
+    return True
 
 
 # ── o motor ──────────────────────────────────────────────────────────────────
@@ -290,7 +312,7 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
         task_id=task_id,
         descricao=descricao_da_casa(atividade, cliente, progressao),
         horas=horas,
-        faturavel=classificar_faturavel(tags),
+        faturavel=classificar_faturavel(tags, atividade),
         confianca=_confianca(do_dia, bool(falas_do_dia)),
         tags=tags,
         citacoes=[f.texto for f in falas_do_dia] + [e.descricao for e in do_dia],

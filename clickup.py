@@ -31,19 +31,32 @@ logger = logging.getLogger("pmo.clickup")
 
 API = "https://api.clickup.com/api/v2"
 
-# The house vocabulary, taken from Marcos Claudio's entries. Closed on purpose:
-# a tag outside this set is a typo, and a typo silently makes an entry invisible
-# in the report everyone reads.
+# The house vocabulary, copied verbatim from Marcos Claudio's entries as
+# recorded in Reference/2026-07-30-Formato de lancamento de atividades no
+# ClickUp. Accents included, because these strings have to match what is in
+# ClickUp and not merely look like it. Closed on purpose: a tag outside this
+# set is a typo, and a typo silently makes an entry invisible in the report
+# everyone reads.
 TAGS_DA_CASA = frozenset({
-    "desenvolvimento", "reuniao", "planejamento", "pesquisa", "documentacao",
-    "revisao", "suporte", "daily", "lancamento de horas", "treinamento",
-    "infraestrutura", "teste", "gestao",
+    "desenvolvimento", "ajustes em qas", "análise", "atividade de qas",
+    "apoio técnico", "alinhamento técnico", "planejamento", "reunião interna",
+    "reunião com o cliente", "daily", "elaboração de material técnico",
+    "deploy", "bug",
 })
 
-# Activities the house does not bill. Billing these is the error the "billable
-# always explicit" control exists to prevent, so the list is enforced rather
-# than advisory.
-NAO_FATURAVEL = frozenset({"daily", "lancamento de horas"})
+# Tags the house never bills. Diverging from this shows up in the comparison
+# between reports, which is where it gets noticed and costs credibility.
+NAO_FATURAVEL = frozenset({"daily", "reunião interna"})
+
+# Explicitly billable, recorded because the first reading of the convention
+# guessed wrong on these three: meeting a client, a technical alignment and
+# technical support are all billed.
+FATURAVEL = frozenset({"reunião com o cliente", "alinhamento técnico", "apoio técnico"})
+
+# The one activity whose tag does not decide it. Logging hours carries the
+# `planejamento` tag and is not billable, while everything else tagged
+# `planejamento` is. A tag-only rule bills the act of billing.
+ATIVIDADE_NAO_FATURAVEL = "lançamento clickup"
 
 
 class ClickUpError(RuntimeError):
