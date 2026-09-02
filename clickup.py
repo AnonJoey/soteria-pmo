@@ -200,7 +200,7 @@ class ClickUp:
     """Thin client. Reads freely, writes only under the four controls."""
 
     def __init__(self, token: str, team_id: str, *, dry_run: bool = True,
-                 client: httpx.Client | None = None, timeout: float = 30.0):
+                 client: httpx.Client | None = None, timeout: float = 90.0):
         if not token:
             raise ValueError("token do ClickUp vazio")
         self.team_id = team_id
@@ -230,16 +230,42 @@ class ClickUp:
         return r.json()
 
     def entradas(self, inicio_ms: int, fim_ms: int,
-                 assignee: str = "any") -> list[dict[str, Any]]:
-        """Time entries in a window.
+                 assignee: str | tuple[str, ...] | None = None) -> list[dict[str, Any]]:
+        """Time entries in a window, for whoever `assignee` names.
 
-        `assignee="any"` by default: without it the API answers with only the
-        authenticated user's entries, which reads as "the team logged nothing"
-        rather than as a filter that was applied.
+        `None` means the authenticated user, which is what the API does when
+        the parameter is absent. Pass explicit ids for other people.
+
+        There used to be a default of `assignee="any"`, on the reasoning that
+        reading only your own entries looks like "the team logged nothing".
+        The reasoning holds and the implementation did not: against the real
+        93-member workspace that query takes 31 seconds and comes back 500,
+        while naming one person answers in 4. So the scope is explicit instead
+        of broad, and `escopo_das_entradas` exists to say which one was used,
+        so a narrow answer is never mistaken for an empty team.
         """
-        data = self._get(f"/team/{self.team_id}/time_entries",
-                         start_date=inicio_ms, end_date=fim_ms, assignee=assignee)
+        params: dict[str, Any] = {"start_date": inicio_ms, "end_date": fim_ms}
+        if assignee:
+            params["assignee"] = (",".join(assignee)
+                                  if isinstance(assignee, (tuple, list)) else assignee)
+        data = self._get(f"/team/{self.team_id}/time_entries", **params)
         return data.get("data", [])
+
+    def escopo_das_entradas(self, assignee: str | tuple[str, ...] | None) -> str:
+        """Human-readable scope of an `entradas` call, to print beside its total."""
+        if not assignee:
+            return "somente o usuario autenticado"
+        if isinstance(assignee, (tuple, list)):
+            return f"{len(assignee)} pessoa(s) nomeada(s)"
+        return f"pessoa {assignee}"
+
+    def membros(self) -> list[dict[str, Any]]:
+        """Everyone in the workspace, for the callers that genuinely need all."""
+        data = self._get(f"/team")
+        for t in data.get("teams", []):
+            if str(t.get("id")) == str(self.team_id):
+                return [m.get("user", {}) for m in t.get("members", [])]
+        return []
 
     def entrada(self, entry_id: str) -> dict[str, Any] | None:
         try:

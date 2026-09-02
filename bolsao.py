@@ -173,9 +173,18 @@ def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
     """
     ini_ms, fim_ms = janela(inicio, fim)
     v = Vigilancia()
+    try:
+        equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
+    except Exception as e:
+        logger.warning("nao foi possivel listar a equipe: %s", e)
+        v.falhas.append(f"lista de membros: {type(e).__name__}: {e}")
+        equipe = None
     for b in bolsoes:
         try:
-            todas = cliente.entradas(ini_ms, fim_ms)
+            # The budget is the whole team's, so this is one of the few callers
+            # that genuinely needs everyone. Naming them beats assignee=any,
+            # which 500s on a workspace this size.
+            todas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
         except Exception as e:
             logger.warning("nao foi possivel ler as entradas de %s: %s", b.projeto, e)
             v.falhas.append(f"{b.projeto}: {type(e).__name__}: {e}")
