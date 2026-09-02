@@ -197,15 +197,21 @@ class ClickUp:
         return self._get(f"/task/{task_id}")
 
     def tarefas_da_lista(self, list_id: str, incluir_fechadas: bool = True,
-                         subtarefas: bool = True) -> list[dict[str, Any]]:
+                         subtarefas: bool = True,
+                         max_paginas: int = 100) -> list[dict[str, Any]]:
         """Every task in a list, following pagination to the end.
 
         The endpoint pages at 100 and answers `last_page`. Reading only the
         first page is the kind of bug that looks like a small list.
+
+        `max_paginas` bounds the walk. The loop's only exits are `last_page`
+        and an empty batch, so an endpoint that stops sending `last_page` while
+        still answering with rows spins forever, and it does it against a
+        remote API. Ten thousand tasks is far past any real list here, so
+        hitting the cap means something is wrong and it is logged as such.
         """
         tarefas: list[dict[str, Any]] = []
-        page = 0
-        while True:
+        for page in range(max_paginas):
             data = self._get(f"/list/{list_id}/task", page=page,
                              include_closed=str(incluir_fechadas).lower(),
                              subtasks=str(subtarefas).lower())
@@ -213,7 +219,11 @@ class ClickUp:
             tarefas.extend(lote)
             if data.get("last_page") or not lote:
                 return tarefas
-            page += 1
+        logger.warning(
+            "lista %s passou de %d paginas sem sinalizar last_page: parando em %d "
+            "tarefas, o resultado pode estar incompleto",
+            list_id, max_paginas, len(tarefas))
+        return tarefas
 
     # ── escrita, sob os quatro controles ─────────────────────────────────────
 
@@ -268,8 +278,17 @@ class ClickUp:
         # Tags in a separate step, and only after the entry exists: the format
         # the create call accepts and the one tags need are not the same, and a
         # create that fails on its tags still writes the entry.
+        #
+        # The failure here must not escape. By this line the entry is written,
+        # so letting a timeout propagate hands the caller an exception carrying
+        # no entry id, which is exactly the state that produced the four ghosts:
+        # the write happened and the caller has no way to know. Swallow it into
+        # the read-back, which reports what is actually there.
         if l.tags:
-            self._aplicar_tags(entry_id, l.tags)
+            try:
+                self._aplicar_tags(entry_id, l.tags)
+            except Exception as e:
+                logger.warning("entrada %s gravada mas as tags falharam: %s", entry_id, e)
 
         return self._conferir(entry_id, l)
 

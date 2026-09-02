@@ -20,7 +20,7 @@ measurement and gets forwarded as one.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from .periodo import BRT, de_ms, dias_uteis, janela
@@ -46,6 +46,22 @@ class Bolsao:
 
 
 @dataclass
+class Vigilancia:
+    """A watch pass: what it saw, and what it could not read.
+
+    `falhas` exists because the alternative is the failure mode this whole
+    package argues against elsewhere: vigiar() swallowing a read error and
+    digest() returning nothing makes an API outage and a healthy week produce
+    byte-identical silence. rotina.py already says a routine where one broken
+    call silences the rest is worse than no routine, and this module was
+    quietly doing it.
+    """
+
+    situacoes: list["Situacao"] = field(default_factory=list)
+    falhas: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Situacao:
     """Where a project's budget stands, and where it is heading."""
 
@@ -62,6 +78,10 @@ class Situacao:
 
     @property
     def percentual(self) -> float:
+        # Guarded rather than assumed: Bolsao rejects a zero budget, but
+        # Situacao is a plain dataclass anyone can build directly.
+        if self.horas_contratadas <= 0:
+            return 0.0
         return self.horas_gastas / self.horas_contratadas
 
     @property
@@ -144,7 +164,7 @@ def apurar(entradas: list[dict], bolsao: Bolsao, inicio: date, fim: date,
 
 
 def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
-           feriados: frozenset[date] = frozenset()) -> list[Situacao]:
+           feriados: frozenset[date] = frozenset()) -> Vigilancia:
     """Read the window once per project and report each position.
 
     Entries are fetched per project list rather than for the whole workspace
@@ -152,28 +172,43 @@ def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
     workspace-wide costs one call per task.
     """
     ini_ms, fim_ms = janela(inicio, fim)
-    situacoes = []
+    v = Vigilancia()
     for b in bolsoes:
         try:
             todas = cliente.entradas(ini_ms, fim_ms)
         except Exception as e:
             logger.warning("nao foi possivel ler as entradas de %s: %s", b.projeto, e)
+            v.falhas.append(f"{b.projeto}: {type(e).__name__}: {e}")
             continue
         do_projeto = [e for e in todas
                       if (e.get("task_location") or {}).get("list_id") == b.list_id]
-        situacoes.append(apurar(do_projeto, b, inicio, fim, feriados))
-    return situacoes
+        v.situacoes.append(apurar(do_projeto, b, inicio, fim, feriados))
+    return v
 
 
-def digest(situacoes: list[Situacao], so_alertas: bool = True) -> str:
+def digest(vigilancia: "Vigilancia | list[Situacao]",
+           so_alertas: bool = True) -> str:
     """The message the watch actually sends.
 
-    Returns an empty string when nothing crossed a threshold. A watch that
-    reports "everything fine" every day trains its readers to skip it, and
-    then the one day it matters is skipped too.
+    Silent when nothing crossed a threshold, because a watch that reports
+    "everything fine" every day trains its readers to skip it, and then the one
+    day it matters is skipped too. But never silent about a project it could
+    not read: that is not good news, it is no news.
     """
+    if isinstance(vigilancia, Vigilancia):
+        situacoes, falhas = vigilancia.situacoes, vigilancia.falhas
+    else:
+        situacoes, falhas = list(vigilancia), []
+
     linhas = [s.linha() for s in sorted(situacoes, key=lambda s: -s.percentual)
               if s.alerta or not so_alertas]
-    if not linhas:
+    if not linhas and not falhas:
         return ""
-    return "Vigia de bolsao\n" + "\n".join(f"  {l}" for l in linhas)
+    partes = ["Vigia de bolsao"]
+    partes.extend(f"  {l}" for l in linhas)
+    if falhas:
+        partes.append("  Nao foi possivel ler:")
+        partes.extend(f"    {f}" for f in falhas)
+        partes.append("  Estes projetos estao sem vigia hoje, o que nao quer dizer "
+                      "que estejam bem.")
+    return "\n".join(partes)
