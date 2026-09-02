@@ -218,14 +218,42 @@ def test_progressao_entra_antes_do_cliente():
 
 @pytest.mark.parametrize("tags,esperado", [
     (("desenvolvimento",), True),
-    (("reuniao",), True),
+    (("reunião com o cliente",), True),
+    (("alinhamento técnico",), True),
+    (("apoio técnico",), True),
+    (("planejamento",), True),
     (("daily",), False),
-    (("lancamento de horas",), False),
+    (("reunião interna",), False),
     (("desenvolvimento", "daily"), False),
 ])
 def test_faturamento_segue_a_atividade_e_nao_um_default(tags, esperado):
-    """Marcar o lote inteiro como faturavel foi o que cobrou 16h indevidas."""
+    """Marcar o lote inteiro como faturavel foi o que cobrou 16h indevidas.
+
+    O vocabulario aqui e o da casa, copiado da nota de referencia. Uma versao
+    anterior deste teste usava tags plausiveis e inventadas, o que o fazia
+    passar contra um vocabulario que nao existe no ClickUp.
+    """
     assert H.classificar_faturavel(tags) is esperado
+
+
+def test_o_lancamento_de_horas_nao_e_faturavel_apesar_da_tag_planejamento():
+    """A unica atividade cuja tag nao decide.
+
+    Lancar horas leva a tag planejamento e nao e faturavel; todo o resto com
+    planejamento e. Decidir so pela tag cobra o proprio ato de cobrar.
+    """
+    assert H.classificar_faturavel(("planejamento",), "Lancamento ClickUp") is False
+    assert H.classificar_faturavel(("planejamento",), "Planejamento do sprint") is True
+
+
+def test_as_13_tags_da_casa_sao_as_reais():
+    from delegation_core.pmo.clickup import TAGS_DA_CASA
+    assert TAGS_DA_CASA == {
+        "desenvolvimento", "ajustes em qas", "análise", "atividade de qas",
+        "apoio técnico", "alinhamento técnico", "planejamento", "reunião interna",
+        "reunião com o cliente", "daily", "elaboração de material técnico",
+        "deploy", "bug",
+    }
 
 
 def test_a_proposta_leva_o_faturamento_da_atividade():
@@ -272,3 +300,11 @@ def test_um_interprete_falso_serve_o_motor_inteiro():
     ap = H.apurar(QUA, QUA, [], falas, "t1", "Soteria")
     assert ap.horas_propostas == 6.0
     assert "transcricao" in ap.propostas[0].fontes
+
+
+def test_lancamento_clickup_e_reconhecido_com_ou_sem_acento():
+    """A atividade chega de transcricao tanto quanto do ClickUp."""
+    for escrito in ("Lançamento ClickUp", "Lancamento ClickUp",
+                    "lancamento clickup", "LANÇAMENTO CLICKUP",
+                    "Lançamento ClickUp do periodo (Soteria)"):
+        assert H.classificar_faturavel(("planejamento",), escrito) is False
