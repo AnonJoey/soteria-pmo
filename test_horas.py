@@ -501,3 +501,21 @@ def test_falha_do_interprete_e_reportada_e_nao_confundida_com_dia_sem_trabalho()
     j = InterpreteLocal("Jordan", chamar=lambda *a: "SEM TRABALHO")
     j.falas_de_trabalho("bom dia", QUA)
     assert j.ultima_falhou is False, "sem trabalho e resposta, nao falha"
+
+
+def test_a_data_da_transcricao_vem_da_ultima_do_nome(tmp_path):
+    """O vault nomeia "<data em que foi escrita>-<titulo>.md", e o titulo de uma
+    transcricao costuma carregar a data da propria reuniao. Ler a primeira
+    atribuiu 67 falas de uma pessoa ao dia errado."""
+    from delegation_core.pmo.daily import ler_transcricao
+    f = tmp_path / "2026-09-01-Cronograma Agentes de Gestao - 2026-08-31.md"
+    f.write_text("---\ntitle: x\n---\n\n[0:10] Jordan Bernardes: falei alguma coisa aqui\n")
+    t = ler_transcricao(f)
+    assert t.dia == date(2026, 8, 31), "a data da reuniao, nao a da nota"
+
+
+def test_nome_com_uma_data_so_continua_funcionando(tmp_path):
+    from delegation_core.pmo.daily import ler_transcricao
+    f = tmp_path / "2026-09-02-Daily-Equipe-Dev-transcricao.md"
+    f.write_text("---\ntitle: x\n---\n\n[0:10] Jordan Bernardes: falei alguma coisa aqui\n")
+    assert ler_transcricao(f).dia == date(2026, 9, 2)
