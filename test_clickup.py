@@ -323,17 +323,6 @@ def test_corrigir_sem_nada_para_mudar_nao_chama():
 # ── leitura ──────────────────────────────────────────────────────────────────
 
 
-def test_entradas_pede_assignee_any_por_padrao():
-    """Without it the API answers with only the caller's own entries, which
-    reads as 'the team logged nothing' rather than as a filter."""
-    visto = {}
-
-    def handler(request: httpx.Request) -> httpx.Response:
-        visto.update(dict(request.url.params))
-        return httpx.Response(200, json={"data": []})
-
-    cliente(handler).entradas(0, 1000)
-    assert visto.get("assignee") == "any"
 
 
 def test_tarefas_da_lista_segue_a_paginacao_ate_o_fim():

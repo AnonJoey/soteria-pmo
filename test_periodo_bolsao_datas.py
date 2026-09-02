@@ -188,6 +188,9 @@ def test_digest_ordena_do_mais_estourado_para_o_menos():
 
 def test_vigiar_filtra_entradas_pela_lista_do_projeto():
     class Falso:
+        def membros(self):
+            return [{"id": "1"}, {"id": "2"}]
+
         def entradas(self, *_a, **_k):
             return [entrada(10), entrada(90, list_id="outra")]
 
@@ -197,6 +200,9 @@ def test_vigiar_filtra_entradas_pela_lista_do_projeto():
 
 def test_vigiar_sobrevive_a_falha_de_leitura():
     class Quebrado:
+        def membros(self):
+            return [{"id": "1"}]
+
         def entradas(self, *_a, **_k):
             raise RuntimeError("api fora")
 
@@ -279,6 +285,9 @@ def test_vigiar_sobrevive_a_falha_de_leitura():
 def test_falha_de_leitura_aparece_no_digest_em_vez_de_virar_silencio():
     """API fora do ar e semana saudavel produziam a mesma saida vazia."""
     class Quebrado:
+        def membros(self):
+            return [{"id": "1"}]
+
         def entradas(self, *_a, **_k):
             raise RuntimeError("api fora")
 
@@ -292,6 +301,9 @@ def test_falha_de_leitura_aparece_no_digest_em_vez_de_virar_silencio():
 
 def test_vigilancia_sem_falha_e_sem_alerta_continua_silenciosa():
     class Ok:
+        def membros(self):
+            return [{"id": "1"}]
+
         def entradas(self, *_a, **_k):
             return [entrada(10)]
 
@@ -342,3 +354,18 @@ def test_o_resumo_diz_quanto_foi_separado_como_pessoal():
     ev = [Evidencia("nota_vault", d, d.replace(hour=11), "nota: Palworld crash")]
     texto = C.resumo(ev, [])
     assert "provavelmente pessoais" in texto and "confira" in texto
+
+
+def test_falha_ao_listar_a_equipe_e_reportada_e_nao_impede_a_leitura():
+    """O bolsao e da equipe toda, entao ele precisa nomear todo mundo. Se a
+    lista falhar, isso vira falha visivel em vez de virar leitura estreita
+    passando por leitura completa."""
+    class SemMembros:
+        def membros(self):
+            raise RuntimeError("sem permissao")
+
+        def entradas(self, *_a, **_k):
+            return [entrada(10)]
+
+    v = B.vigiar(SemMembros(), [BOLSAO], date(2026, 9, 1), date(2026, 9, 7))
+    assert any("membros" in f for f in v.falhas)
