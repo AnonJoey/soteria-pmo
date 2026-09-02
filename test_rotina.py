@@ -124,3 +124,35 @@ def test_a_rotina_nao_tem_caminho_de_escrita():
         codigo = fh.read()
     for proibido in ("lancar(", "corrigir(", "remover(", "requests.", "httpx."):
         assert proibido not in codigo, f"a rotina nao deveria alcancar {proibido}"
+
+
+# ── feriado, achado ao rodar o CLI contra o calendario real ──────────────────
+
+
+SETE = date(2026, 9, 7)   # segunda, e feriado da Independencia
+FERIADO = frozenset({SETE})
+
+
+def test_feriado_para_tudo_inclusive_o_semanal_que_cai_nele():
+    """07/09/2026 cai numa segunda, que e o dia do reporte semanal.
+
+    Sem isso o reporte sai num feriado, o que produz um documento que ninguem
+    abre e ainda desloca a janela da semana seguinte.
+    """
+    assert R.devido("reporte", SETE), "sem feriados declarados, roda"
+    assert not R.devido("reporte", SETE, feriados=FERIADO)
+    assert not any(R.devido(i, SETE, feriados=FERIADO) for i in R.CADENCIAS)
+
+
+def test_mensal_pula_para_o_proximo_dia_util_se_o_primeiro_for_feriado():
+    jan1 = date(2027, 1, 1)      # sexta, feriado
+    jan4 = date(2027, 1, 4)      # segunda
+    feriados = frozenset({jan1})
+    assert not R.devido("auditor", jan1, feriados=feriados)
+    assert R.devido("auditor", jan4, feriados=feriados)
+
+
+def test_rodar_respeita_feriado():
+    chamados = []
+    R.rodar(SETE, {"bolsao": lambda: chamados.append("x")}, feriados=FERIADO)
+    assert chamados == []
