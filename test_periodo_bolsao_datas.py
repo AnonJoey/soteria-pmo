@@ -307,3 +307,38 @@ def test_digest_ainda_aceita_lista_pura_de_situacoes():
 def test_percentual_nao_divide_por_zero_se_a_situacao_for_construida_na_mao():
     s = B.Situacao("x", 0, 10, 10, 0, "ok", 5, None, None, None)
     assert s.percentual == 0.0
+
+
+# ── evidencia pessoal separada da de cliente ─────────────────────────────────
+
+
+def test_evidencia_pessoal_e_separada_da_de_cliente():
+    """A maquina mistura as duas: o vault tem nota sobre Conan Exiles e sobre
+    ClickUp, e o historico tem Discord e SharePoint. Cobrar a primeira e a
+    mesma classe das 16h indevidas."""
+    from datetime import datetime
+    from delegation_core.pmo import coletor as C
+    from delegation_core.pmo.horas import Evidencia
+
+    def e(desc):
+        d = datetime(2026, 9, 2, 9, tzinfo=BRT)
+        return Evidencia("nota_vault", d, d, desc)
+
+    cliente, pessoal = C.separar_pessoal([
+        e("nota: Cronograma dos Agentes PMO"),
+        e("nota: Conan Exiles UE5 travamentos"),
+        e("app.clickup.com: Inbox Soteria"),
+        e("nota: Discord travado sob ProtonVPN"),
+    ])
+    assert len(cliente) == 2 and len(pessoal) == 2
+    assert all("clickup" in c.descricao.lower() or "PMO" in c.descricao for c in cliente)
+
+
+def test_o_resumo_diz_quanto_foi_separado_como_pessoal():
+    from datetime import datetime
+    from delegation_core.pmo import coletor as C
+    from delegation_core.pmo.horas import Evidencia
+    d = datetime(2026, 9, 2, 9, tzinfo=BRT)
+    ev = [Evidencia("nota_vault", d, d.replace(hour=11), "nota: Palworld crash")]
+    texto = C.resumo(ev, [])
+    assert "provavelmente pessoais" in texto and "confira" in texto

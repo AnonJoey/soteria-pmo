@@ -133,11 +133,44 @@ def test_transcricao_vale_mais_que_pilha_de_abas():
     assert so_fala > so_navegador
 
 
+def test_a_confianca_e_sobre_as_horas_e_nao_sobre_a_atividade():
+    """Na primeira versao isso devolvia 1.00 para as cinco propostas de uma
+    semana real, porque fala existe quase todo dia e a transcricao pesa mais
+    que tudo. Score que nao varia nao e score."""
+    sem_hora = H._confianca([ev("commit", QUA, 9, 12)], tem_fala=True,
+                            horas_declaradas=False)
+    com_hora = H._confianca([ev("commit", QUA, 9, 12)], tem_fala=True,
+                            horas_declaradas=True)
+    assert com_hora == 1.0
+    assert sem_hora < 1.0, "fala sem hora nao certifica duracao"
+
+
+def test_sem_hora_declarada_nunca_chega_a_1():
+    """O teto sem hora declarada e 0.95: sobra sempre a duvida da duracao."""
+    tudo = [ev(t, QUA, 9, 12) for t in
+            ("commit", "sessao_ia", "nota_vault", "reuniao", "arquivo", "navegador")]
+    assert H._confianca(tudo, tem_fala=True, horas_declaradas=False) <= 0.95
+
+
+def test_fala_sozinha_sustenta_pouco_a_duracao():
+    """Ela prova que o dia foi trabalhado, nao quanto."""
+    assert H._confianca([], tem_fala=True, horas_declaradas=False) == 0.55
+
+
 def test_fontes_independentes_somam_pouco_e_com_teto():
     uma = H._confianca([ev("commit", QUA, 9, 10)], tem_fala=False)
     varias = H._confianca([ev("commit", QUA, 9, 10), ev("nota_vault", QUA, 10, 11),
                            ev("arquivo", QUA, 11, 12)], tem_fala=False)
-    assert varias > uma and varias <= 1.0
+    assert varias > uma and varias <= 0.95
+
+
+def test_fonte_com_duracao_medida_vence_fonte_de_instante():
+    """Reuniao traz a duracao lida da transcricao; commit e um instante cuja
+    janela so existe porque o coletor agrupou os vizinhos."""
+    reuniao = H._confianca([ev("reuniao", QUA, 14, 15)], tem_fala=False)
+    commit = H._confianca([ev("commit", QUA, 9, 10)], tem_fala=False)
+    navegador = H._confianca([ev("navegador", QUA, 9, 10)], tem_fala=False)
+    assert reuniao > commit > navegador
 
 
 def test_sem_nenhuma_fonte_a_confianca_e_zero():
@@ -308,3 +341,121 @@ def test_lancamento_clickup_e_reconhecido_com_ou_sem_acento():
                     "lancamento clickup", "LANÇAMENTO CLICKUP",
                     "Lançamento ClickUp do periodo (Soteria)"):
         assert H.classificar_faturavel(("planejamento",), escrito) is False
+
+
+# ── falas que caem fora dos dias percorridos ─────────────────────────────────
+
+
+def test_fala_datada_em_fim_de_semana_vira_pergunta_em_vez_de_sumir():
+    """Numa segunda, "ontem" resolve para domingo. O apurar so percorre dias
+    uteis, entao sem isso a fala seria consumida por ninguem."""
+    domingo = date(2026, 8, 30)
+    seg, sex = date(2026, 8, 31), date(2026, 9, 4)
+    ap = H.apurar(seg, sex, [], [fala(domingo, atividade="Ajuste do coletor", hs=3)],
+                  "t1", "Soteria")
+    orfas = [l for l in ap.lacunas if "nao percorre" in l.motivo]
+    assert len(orfas) == 1
+    assert orfas[0].dia == domingo
+    assert "fim de semana" in orfas[0].motivo
+    assert orfas[0].horas_em_aberto == 3
+    assert not ap.pronta_para_lancar
+
+
+def test_fala_datada_antes_da_janela_tambem_vira_pergunta():
+    """Um nome de dia da semana pode alcancar antes do inicio apurado."""
+    antes = date(2026, 8, 28)
+    ap = H.apurar(date(2026, 8, 31), date(2026, 9, 4), [],
+                  [fala(antes, atividade="Pesquisa de MCP")], "t1", "Soteria")
+    assert any("fora da janela" in l.motivo for l in ap.lacunas)
+
+
+def test_fala_dentro_da_janela_nao_gera_lacuna_de_orfa():
+    ap = H.apurar(QUA, QUA, [ev("commit", QUA, 9, 17)], [fala(QUA, hs=8)], "t1", "Soteria")
+    assert [l for l in ap.lacunas if "nao percorre" in l.motivo] == []
+
+
+# ── o interprete das dailies ─────────────────────────────────────────────────
+
+
+def test_atividade_repetida_na_mesma_daily_vira_uma_so():
+    """Visto na daily real de 25/08: o modelo devolveu a mesma atividade
+    datada em dois dias, o que viraria duas propostas para um trabalho so."""
+    from delegation_core.pmo.daily import InterpreteLocal
+    resposta = (
+        "ATIVIDADE: Finalizacao do documento\nQUANDO: ontem\nHORAS: ?\n---\n"
+        "ATIVIDADE: Finalizacao do documento\nQUANDO: hoje\nHORAS: ?\n")
+    i = InterpreteLocal("Jordan", chamar=lambda *a: resposta)
+    falas = i.falas_de_trabalho("qualquer coisa", QUA)
+    assert len(falas) == 1
+    assert falas[0].dia == TER, "fica com a data mais antiga"
+
+
+def test_sem_trabalho_devolve_lista_vazia():
+    from delegation_core.pmo.daily import InterpreteLocal
+    i = InterpreteLocal("Jordan", chamar=lambda *a: "SEM TRABALHO")
+    assert i.falas_de_trabalho("bom dia galera", QUA) == []
+
+
+def test_modelo_fora_do_ar_nao_vira_dia_sem_trabalho():
+    """Tem que cair no protocolo de lacunas, nao virar silencio."""
+    from delegation_core.pmo.daily import InterpreteLocal
+
+    def explode(*a):
+        raise RuntimeError("llama fora")
+
+    i = InterpreteLocal("Jordan", chamar=explode)
+    assert i.falas_de_trabalho("falou bastante", QUA) == []
+    ap = H.apurar(QUA, QUA, [], [], "t1", "Soteria")
+    assert not ap.pronta_para_lancar and ap.lacunas
+
+
+def test_hora_declarada_absurda_e_descartada():
+    from delegation_core.pmo.daily import InterpreteLocal
+    r = "ATIVIDADE: Maratona\nQUANDO: hoje\nHORAS: 40\n"
+    i = InterpreteLocal("Jordan", chamar=lambda *a: r)
+    assert i.falas_de_trabalho("x", QUA)[0].horas_declaradas is None
+
+
+def test_janela_inferida_derruba_a_confianca():
+    """O que de fato varia entre os dias: quanto das horas se apoia em janela
+    que ninguem observou. Contar fontes nao discriminava nada nesta maquina."""
+    medida = H.Evidencia("commit", ev("commit", QUA, 9, 12).inicio,
+                         ev("commit", QUA, 9, 12).fim, "x", inferida=False)
+    inferida = H.Evidencia("commit", ev("commit", QUA, 9, 12).inicio,
+                           ev("commit", QUA, 9, 12).fim, "x", inferida=True)
+    assert H._confianca([medida], tem_fala=True) > H._confianca([inferida], tem_fala=True)
+
+
+def test_confianca_nunca_zera_por_inferencia_sozinha():
+    inferida = H.Evidencia("navegador", ev("navegador", QUA, 9, 10).inicio,
+                           ev("navegador", QUA, 9, 10).fim, "x", inferida=True)
+    assert H._confianca([inferida], tem_fala=False) >= 0.05
+
+
+# ── nao inventar o que nao se sabe ───────────────────────────────────────────
+
+
+def test_sem_fala_a_atividade_nao_e_inventada_a_partir_da_evidencia():
+    """Rodando so com evidencia de maquina, a versao anterior colava o texto
+    cru da primeira evidencia como nome da atividade, produzindo coisas como
+    "sharepoint.com: Gravacao de Reuniao.mp4". Esse campo e o rotulo da linha
+    no relatorio de horas faturaveis."""
+    p, lacunas = H.apurar_dia(QUA, [ev("navegador", QUA, 9, 17,
+                                       "sharepoint.com: Gravacao.mp4")],
+                              [], "t1", "Soteria", ("desenvolvimento",))
+    assert H.ATIVIDADE_DESCONHECIDA in p[0].descricao
+    assert "sharepoint" not in p[0].descricao.lower()
+    assert any("falta o que" in l.motivo for l in lacunas)
+
+
+def test_atividade_desconhecida_impede_o_lancamento():
+    ap = H.apurar(QUA, QUA, [ev("commit", QUA, 9, 17)], [], "t1", "Soteria")
+    assert not ap.pronta_para_lancar
+
+
+def test_com_fala_a_atividade_vem_dela():
+    p, lacunas = H.apurar_dia(QUA, [ev("navegador", QUA, 9, 17, "sharepoint.com: x")],
+                              [fala(QUA, atividade="Desenvolvimento do coletor")],
+                              "t1", "Soteria", ("desenvolvimento",))
+    assert "Desenvolvimento do coletor" in p[0].descricao
+    assert not any("falta o que" in l.motivo for l in lacunas)
