@@ -122,7 +122,7 @@ descartavel.
 python -m pytest tests/pmo/ -q
 ```
 
-188 testes, nenhum toca a rede: `httpx.MockTransport` responde por todas as
+215 testes, nenhum toca a rede: `httpx.MockTransport` responde por todas as
 chamadas e o interprete do modelo entra por `Protocol`.
 
 Os comportamentos criticos foram conferidos por mutacao, e um deles expos um
