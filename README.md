@@ -140,3 +140,49 @@ mutacao ao mexer nestes pontos:
 `docs/agentes-pmo/fumaca_dado_real.py` roda os modulos sobre as doze tarefas
 reais da lista, congeladas como a API as devolveu, porque teste com payload
 proprio prova a logica e nao prova as formas que chegam de verdade.
+
+## Duas classes de constante, e so uma pode estar errada em silencio
+
+Escrevi duas constantes de cabeca nesta base e as duas estavam erradas: o
+vocabulario de 13 tags e os status de conclusao. Nenhuma das duas levanta erro
+quando errada. Uma tag fora do vocabulario e aceita pelo ClickUp e so faz a
+entrada nao casar com o que o relatorio agrupa; um status inexistente faz toda
+tarefa entregue ser reportada como aberta. Foram encontradas conferindo o vault,
+nao testando, porque os testes afirmavam os mesmos valores inventados.
+
+A defesa e separar as duas classes e tratar cada uma como ela merece.
+
+### Fatos do workspace: tem fonte, e mudar exige conferir a fonte
+
+Descrevem algo que existe fora deste codigo. Errar e falha silenciosa.
+
+| Constante | Onde | Fonte |
+|---|---|---|
+| `TAGS_DA_CASA` | `clickup.py` | `Reference/2026-07-30-Formato de lancamento`, lancamentos do Marcos Claudio |
+| `NAO_FATURAVEL`, `FATURAVEL`, `ATIVIDADE_NAO_FATURAVEL` | `clickup.py` | mesma nota, convencao de faturamento |
+| `WORKFLOW`, `CONCLUIDOS`, `BLOQUEADOS` | `clickup.py` | mesma nota, workflow da pasta AI - Claude |
+| `CADENCIAS` | `rotina.py` | mapa de cadencias de 30/08, com o bolsao fora do tempo real por 31/08 |
+| `_MARCA_ONTEM` | `periodo.py` | regra de datacao apurada em 07/08 |
+| `API`, `BRT` | `clickup.py`, `periodo.py` | API do ClickUp e fuso do time |
+
+**Ao mexer em qualquer uma destas, abrir a fonte.** Nao vale confiar na memoria,
+que foi exatamente o que falhou duas vezes.
+
+### Escolhas de desenho: sem verdade externa, ajustar a vontade
+
+Errar aqui produz alerta cedo demais ou tarde demais, nao um numero errado.
+
+| Constante | Onde | O que decide |
+|---|---|---|
+| `FAIXAS` | `bolsao.py` | 75/90/100% para atencao, critico, estourado |
+| `NIVEIS` | `cronograma.py` | dias de silencio para lembrete, cobranca, escalar |
+| `HORIZONTE` | `datas.py` | quantos dias antes um prazo comeca a aparecer |
+| `TOLERANCIA` | `auditor.py` | quanto a hora lancada pode divergir da evidencia |
+| `CONFIANCA_MINIMA`, `PESO_FONTE` | `horas.py` | o que e proposta duvidosa, e quanto vale cada fonte |
+| `ANTECEDENCIA` | `rh.py` | antecedencia de cada tipo de data |
+| `DIA_DO_SEMANAL` | `rotina.py` | segunda, para a semana comecar com o reporte da anterior |
+
+`CADENCIA_PADRAO_DIAS` em `cronograma.py` e um caso a parte: parece escolha mas
+e um **placeholder de um fato que ainda nao foi levantado**, a calibragem de
+ritmo por pessoa, em aberto com o Abner. Por isso todo alerta pontuado contra
+ele sai marcado como nao calibrado, em vez de aplicar a regua em silencio.
