@@ -154,8 +154,15 @@ def commits(repos: list[str | Path], inicio: date, fim: date,
         if not (raiz / ".git").exists():
             logger.warning("nao e um repositorio git: %s", raiz)
             continue
+        # The hour is not optional. Git's approximate date parser reads a bare
+        # YYYY-MM-DD as that day *at the current wall-clock time*, so at 16:11
+        # a --since of today silently drops every commit made before 16:11
+        # today. Measured: --since=2026-09-02 returned 0 commits and
+        # --since=2026-09-02T00:00:00 returned 18, on the same repo, one second
+        # apart. Nothing errors; the day just comes back empty.
         cmd = ["git", "-C", str(raiz), "log",
-               f"--since={inicio.isoformat()}", f"--until={(fim + timedelta(days=1)).isoformat()}",
+               f"--since={inicio.isoformat()}T00:00:00",
+               f"--until={fim.isoformat()}T23:59:59",
                "--date=iso-strict", "--pretty=%aI%x09%s"]
         if autor:
             cmd.insert(4, f"--author={autor}")
