@@ -23,14 +23,13 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 
+from .clickup import concluida as _concluida, status_normalizado
 from .periodo import de_ms, janela
 
 logger = logging.getLogger("pmo.reporte")
 
-# Statuses that mean the work is finished, lowercased for comparison. Anything
-# else counts as in progress or not started, which the report distinguishes by
-# whether hours were logged.
-CONCLUIDOS = frozenset({"complete", "concluido", "concluído", "done", "fechado", "closed"})
+# The status vocabulary lives in clickup.py, next to the tag vocabulary, because
+# both have to match this workspace exactly and both were guessed once.
 
 
 @dataclass
@@ -105,8 +104,7 @@ def montar(tarefas: list[dict], entradas: list[dict], projeto: str,
     linhas = []
     for t in tarefas:
         tid = str(t.get("id"))
-        status = t.get("status")
-        nome_status = (status.get("status") if isinstance(status, dict) else status) or "?"
+        nome_status = status_normalizado(t.get("status")) or "?"
         responsaveis = t.get("assignees") or []
         vence = de_ms(t.get("due_date"))
         linhas.append(Linha(
@@ -116,7 +114,7 @@ def montar(tarefas: list[dict], entradas: list[dict], projeto: str,
             responsavel=(responsaveis[0].get("username") if responsaveis
                          else "sem responsavel"),
             horas=round(horas_por_tarefa.get(tid, 0.0), 2),
-            concluida=nome_status.strip().lower() in CONCLUIDOS,
+            concluida=_concluida(t.get("status")),
             vence_em=vence.date() if vence else None,
         ))
 

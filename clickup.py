@@ -58,6 +58,47 @@ FATURAVEL = frozenset({"reunião com o cliente", "alinhamento técnico", "apoio 
 # `planejamento` is. A tag-only rule bills the act of billing.
 ATIVIDADE_NAO_FATURAVEL = "lançamento clickup"
 
+# The status workflow of the "AI - Claude" folder, in order, as recorded in
+# Reference/2026-07-30-Formato de lancamento de atividades no ClickUp. It is a
+# development workflow and not a generic activity one, so the terminal state is
+# `publicado/finalizado` and nothing here is called "done" or "complete".
+#
+# Worth stating because the first version of this file guessed: it used
+# complete/concluido/done/closed, none of which exist in this workspace, which
+# would have reported every finished task as open and kept the schedule agent
+# chasing work that shipped.
+WORKFLOW = (
+    "ideia", "proposta de solução", "aprovação com cliente", "planejamento técnico",
+    "backlog", "desenvolvimento", "homologação", "bloqueado",
+    "aguardando deploy", "publicado/finalizado",
+)
+
+# Work is over here and nowhere earlier.
+CONCLUIDOS = frozenset({"publicado/finalizado"})
+
+# Not late, waiting on something. A blocked task going quiet is expected, so
+# the schedule agent must not read it as neglect.
+BLOQUEADOS = frozenset({"bloqueado"})
+
+
+def status_normalizado(status) -> str:
+    """The status name, from either shape ClickUp uses, lowercased.
+
+    ClickUp returns a dict on a task and a bare string in some listings, and
+    picking one shape is how a status silently becomes "?".
+    """
+    if isinstance(status, dict):
+        status = status.get("status")
+    return (status or "").strip().lower()
+
+
+def concluida(status) -> bool:
+    return status_normalizado(status) in CONCLUIDOS
+
+
+def bloqueada(status) -> bool:
+    return status_normalizado(status) in BLOQUEADOS
+
 
 class ClickUpError(RuntimeError):
     """A call that failed in a way the caller has to see."""

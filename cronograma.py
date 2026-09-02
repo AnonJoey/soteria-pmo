@@ -24,6 +24,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
+from .clickup import bloqueada, concluida, status_normalizado
 from .periodo import de_ms, dias_uteis
 
 logger = logging.getLogger("pmo.cronograma")
@@ -109,9 +110,13 @@ def avaliar(tarefas: list[dict], cadencias: dict[str, Cadencia], hoje: date,
     divergencias: list[Divergencia] = []
 
     for t in tarefas:
-        status = t.get("status")
-        nome_status = (status.get("status") if isinstance(status, dict) else status) or "?"
-        if nome_status.strip().lower() in {"complete", "concluido", "done", "closed"}:
+        nome_status = status_normalizado(t.get("status")) or "?"
+        if concluida(t.get("status")):
+            continue
+        if bloqueada(t.get("status")):
+            # Blocked is not neglect. A blocked task is expected to sit still,
+            # and chasing it puts the alert on the wrong person: whoever is
+            # blocking it is not whoever owns the card.
             continue
 
         responsaveis = t.get("assignees") or []
