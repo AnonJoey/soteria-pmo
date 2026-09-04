@@ -255,3 +255,90 @@ def test_acompanhar_sobrevive_a_falha_de_leitura():
             raise RuntimeError("api fora")
 
     assert C.acompanhar(Quebrado(), "1", {}, HOJE) == ""
+
+
+# ── testes da regra de 03/09 por tipo de trabalho ───────────────────────────
+
+
+def test_avaliar_projeto_implantacao_dispara_com_4_dias_sem_horas():
+    t_ativa = tarefa(nome="Desenvolvimento API", tocado_ha=6, status="desenvolvimento")
+    div = C.avaliar_projeto(
+        projeto="Implantacao CRM",
+        list_id="list_1",
+        tarefas=[t_ativa],
+        entradas=[],  # Nenhuma hora lancada
+        tipo=C.TIPO_PROJETO,
+        hoje=HOJE,
+    )
+    assert div is not None
+    assert div.precisa_de_alerta
+    assert div.regua_dias == 4
+    assert div.tipo == "projeto"
+    assert "4 dias uteis sem horas apontadas" in div.linha()
+
+
+def test_avaliar_projeto_chamado_dispara_com_2_dias_sem_horas():
+    t_chamado = tarefa(nome="Correcao Bug", tocado_ha=4, status="desenvolvimento")
+    div = C.avaliar_projeto(
+        projeto="Sustentacao Geral",
+        list_id="list_2",
+        tarefas=[t_chamado],
+        entradas=[],
+        tipo=C.TIPO_CHAMADO,
+        hoje=HOJE,
+    )
+    assert div is not None
+    assert div.precisa_de_alerta
+    assert div.regua_dias == 2
+    assert div.tipo == "chamado"
+
+
+def test_avaliar_projeto_com_horas_recentes_nao_dispara_alerta():
+    t_ativa = tarefa(nome="Desenvolvimento API", tocado_ha=1, status="desenvolvimento")
+    e_recente = entrada(HOJE, 4.0)
+    div = C.avaliar_projeto(
+        projeto="Implantacao CRM",
+        list_id="list_1",
+        tarefas=[t_ativa],
+        entradas=[e_recente],
+        tipo=C.TIPO_PROJETO,
+        hoje=HOJE,
+    )
+    assert div is None
+
+
+def test_avaliar_projeto_com_tarefas_concluidas_ou_bloqueadas_nao_dispara():
+    t_conc = tarefa(nome="Done", tocado_ha=10, status="publicado/finalizado")
+    t_bloq = tarefa(nome="Blocked", tocado_ha=10, status="bloqueado")
+    div = C.avaliar_projeto(
+        projeto="Projeto Parado",
+        list_id="list_3",
+        tarefas=[t_conc, t_bloq],
+        entradas=[],
+        tipo=C.TIPO_PROJETO,
+        hoje=HOJE,
+    )
+    assert div is None
+
+
+def test_log_de_divergencias_projetos_formata_saida():
+    div = C.DivergenciaProjeto(
+        projeto="Projeto Alpha",
+        list_id="list_1",
+        tipo="projeto",
+        regua_dias=4,
+        dias_sem_horas=5,
+        horas_no_periodo=0.0,
+        tarefas_em_desenvolvimento=2,
+        tarefas_bloqueadas=1,
+        tarefas_concluidas=3,
+        responsaveis=["Jordan", "Abner"],
+        notas=["1 tarefas bloqueadas aguardando resolucao externa"],
+    )
+    log = C.log_de_divergencias_projetos([div], HOJE)
+    assert "Acompanhamento de cronograma por projeto" in log
+    assert "[PROJETO] Projeto Alpha" in log
+    assert "Jordan, Abner" in log
+    assert "1 tarefas bloqueadas" in log
+    assert div.ambiguidade in log
+

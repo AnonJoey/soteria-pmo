@@ -370,3 +370,21 @@ def test_paginacao_sem_last_page_para_em_vez_de_girar_para_sempre():
 
     tarefas = cliente(handler).tarefas_da_lista("901716443542", max_paginas=5)
     assert paginas["n"] == 5 and len(tarefas) == 5
+
+
+def test_tags_de_espaco_especifico_sao_aceitas_quando_informadas():
+    lanc = Lancamento(
+        task_id="t1",
+        inicio_ms=1000,
+        duracao_ms=3600000,
+        descricao="Suporte ticket #4812 (Grupo Anjos)",
+        faturavel=True,
+        tags=("chamado-4812", "aguardando retorno do cliente"),
+    )
+    # Sem vocabulario do espaco: reclama de tags desconhecidas
+    assert any("fora do vocabulario" in p for p in lanc.problemas())
+
+    # Com vocabulario especifico do espaco do cliente:
+    tags_espaco = frozenset({"chamado-4812", "aguardando retorno do cliente"})
+    assert lanc.problemas(tags_permitidas=tags_espaco) == []
+

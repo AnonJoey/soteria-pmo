@@ -394,3 +394,39 @@ def test_git_e_consultado_com_hora_explicita(tmp_path, monkeypatch):
     cmd = " ".join(visto["cmd"])
     assert "--since=2026-09-02T00:00:00" in cmd
     assert "--until=2026-09-02T23:59:59" in cmd
+
+
+def test_teto_sugerido_conhece_principais_clientes():
+    assert B.teto_sugerido("China Gate Sustentacao") == 100.0
+    assert B.teto_sugerido("Yoshii Imoveis") == 160.0
+    assert B.teto_sugerido("Grupo Dimas") == 30.0
+    assert B.teto_sugerido("Grupo Anjos") == 100.0
+    assert B.teto_sugerido("Cliente Desconhecido") is None
+
+
+def test_carregar_bolsoes_de_config_ou_lista():
+    cfg = {
+        "bolsoes": [
+            {"projeto": "China Gate", "list_id": "lg_1", "horas_contratadas": 100.0},
+            {"projeto": "Yoshii", "list_id": "lg_2"},  # Usa teto sugerido 160h
+        ]
+    }
+    bolsoes = B.carregar_bolsoes(cfg)
+    assert len(bolsoes) == 2
+    assert bolsoes[0].horas_contratadas == 100.0
+    assert bolsoes[1].horas_contratadas == 160.0
+
+
+def test_higiene_pega_inversao_de_data_entre_mae_e_filha():
+    # Caso real registrado em 02/09: tarefa-mae com data vencendo antes da subtarefa
+    tarefas = [
+        {"id": "mae", "name": "3. Desenvolvimento", "due_date": ms(datetime(2026, 9, 3, tzinfo=BRT)),
+         "parent": None, "assignees": [{"username": "Jordan"}], "description": "mae", "time_estimate": 1000},
+        {"id": "filha", "name": "3.1 Coleta de Evidencia", "due_date": ms(datetime(2026, 9, 8, tzinfo=BRT)),
+         "parent": "mae", "assignees": [{"username": "Jordan"}], "description": "filha", "time_estimate": 1000},
+    ]
+    prazos = D.ler(tarefas)
+    probs = D.higiene(prazos)
+    assert any("inversao de datas" in p.lower() for p in probs)
+    assert any("3. Desenvolvimento" in p and "3.1 Coleta de Evidencia" in p for p in probs)
+

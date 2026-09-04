@@ -227,3 +227,57 @@ def test_gerar_sobrevive_a_falha_de_leitura():
             return []
 
     assert R.gerar(Quebrado(), "1", "Soteria", INI, FIM) == ""
+
+
+# ── feedback bimestral e reporte executivo consolidado ──────────────────────
+
+
+def test_ciclo_de_feedback_bimestral_dispara_aviso_quando_proximo():
+    # Ultimo feedback ha 50 dias: em 10 dias fecha 60 dias (dentro dos 15 dias de antecedencia)
+    p = rh.Pessoa("Carlos", ultimo_feedback=HOJE - rh.timedelta(days=50))
+    eventos = [e for e in rh.eventos([p], HOJE) if e.tipo == "ciclo de feedback"]
+    assert len(eventos) == 1
+    assert eventos[0].dias == 10
+    assert "ultimo em" in eventos[0].detalhe
+
+
+def test_ciclo_de_feedback_atrasado_ainda_aparece():
+    # Ultimo feedback ha 70 dias: ciclo de 60 dias venceu ha 10 dias
+    p = rh.Pessoa("Carlos", ultimo_feedback=HOJE - rh.timedelta(days=70))
+    eventos = [e for e in rh.eventos([p], HOJE) if e.tipo == "ciclo de feedback"]
+    assert len(eventos) == 1
+    assert eventos[0].dias == -10
+
+
+def test_reporte_executivo_cliente_consolida_implantacao_e_sustentacao():
+    rep_imp = R.montar(
+        [tarefa("t1", "Setup Inicial", status="publicado/finalizado")],
+        [entrada("t1", 20.0)],
+        "Projeto Angelus Core",
+        INI,
+        FIM,
+    )
+    rep_sust = R.montar(
+        [tarefa("t2", "Ajuste de Permissoes", status="desenvolvimento")],
+        [entrada("t2", 5.0)],
+        "Chamados Angelus",
+        INI,
+        FIM,
+    )
+    cliente_rep = R.ReporteCliente(
+        cliente="Grupo Angelus",
+        inicio=INI,
+        fim=FIM,
+        implantacao=[rep_imp],
+        sustentacao=[rep_sust],
+    )
+    assert cliente_rep.total_horas == 25.0
+    assert cliente_rep.total_faturavel == 25.0
+    md = R.markdown_consolidado(cliente_rep)
+    assert "# Reporte Executivo: Grupo Angelus" in md
+    assert "## Projetos de Implantacao" in md
+    assert "## Chamados e Sustentacao" in md
+    assert "Setup Inicial" in md
+    assert "Ajuste de Permissoes" in md
+    assert "Max valida e envia (nivel 2)" in md
+
