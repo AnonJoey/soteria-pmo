@@ -209,7 +209,7 @@ def sessoes_ia(raiz: str | Path, inicio: date, fim: date) -> list[Evidencia]:
     for arquivo in raiz.rglob("*.jsonl"):
         marcas: list[datetime] = []
         try:
-            with arquivo.open() as fh:
+            with arquivo.open(encoding="utf-8") as fh:
                 for linha in fh:
                     try:
                         t = json.loads(linha).get("timestamp")

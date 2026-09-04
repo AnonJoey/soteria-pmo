@@ -35,7 +35,11 @@ ANTECEDENCIA = {
     "fim de experiencia": 15,
     "fim de contrato": 30,
     "ferias": 10,
+    "feedback": 15,
 }
+
+# Ciclo padrao bimestral acordado com Max em 24/06
+CICLO_FEEDBACK_DIAS = 60
 
 
 class RosterAusente(RuntimeError):
@@ -56,6 +60,7 @@ class Pessoa:
     fim_experiencia: date | None = None
     fim_contrato: date | None = None
     ferias_inicio: date | None = None
+    ultimo_feedback: date | None = None
 
 
 @dataclass(frozen=True)
@@ -98,9 +103,9 @@ def carregar(caminho: str | Path) -> list[Pessoa]:
         raise RosterAusente(f"roster de RH nao encontrado em {p}")
     try:
         if p.suffix.lower() == ".json":
-            linhas = json.loads(p.read_text())
+            linhas = json.loads(p.read_text(encoding="utf-8"))
         else:
-            with p.open(newline="") as fh:
+            with p.open(newline="", encoding="utf-8") as fh:
                 linhas = list(csv.DictReader(fh))
     except Exception as e:
         raise RosterAusente(f"roster de RH ilegivel em {p}: {e}") from e
@@ -117,6 +122,7 @@ def carregar(caminho: str | Path) -> list[Pessoa]:
             fim_experiencia=_data(linha.get("fim_experiencia")),
             fim_contrato=_data(linha.get("fim_contrato")),
             ferias_inicio=_data(linha.get("ferias_inicio")),
+            ultimo_feedback=_data(linha.get("ultimo_feedback") or linha.get("data_ultimo_feedback")),
         ))
     return pessoas
 
@@ -156,6 +162,14 @@ def eventos(pessoas: list[Pessoa], hoje: date) -> list[Evento]:
                 if anos >= 1:
                     achados.append(Evento(p.nome, "tempo de casa", q, d,
                                           f"{anos} ano{'s' if anos > 1 else ''}"))
+
+        # Feedback cycle: 60 days after last feedback date
+        if p.ultimo_feedback:
+            prox_fb = p.ultimo_feedback + timedelta(days=CICLO_FEEDBACK_DIAS)
+            d = (prox_fb - hoje).days
+            if -30 <= d <= ANTECEDENCIA["feedback"]:
+                achados.append(Evento(p.nome, "ciclo de feedback", prox_fb, d,
+                                      f"ultimo em {p.ultimo_feedback:%d/%m}"))
 
         # One-off dates. Past ones still surface: a probation period that ended
         # last week without anyone noticing is the case worth catching.

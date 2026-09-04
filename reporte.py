@@ -167,3 +167,69 @@ def gerar(cliente, list_id: str, projeto: str, inicio: date, fim: date) -> str:
         logger.warning("nao foi possivel montar o reporte de %s: %s", projeto, e)
         return ""
     return markdown(montar(tarefas, entradas, projeto, inicio, fim))
+
+
+@dataclass
+class ReporteCliente:
+    """Consolidated client report separating Implantação from Sustentação.
+
+    Directly implements the 24/06 specification: consolidates the whole client
+    (e.g. Grupo Angelus), separating active implementation projects from support
+    queues/tickets, at executive level.
+    """
+
+    cliente: str
+    inicio: date
+    fim: date
+    implantacao: list[Reporte] = field(default_factory=list)
+    sustentacao: list[Reporte] = field(default_factory=list)
+    destino: str = "Max valida e envia (nivel 2)"
+
+    @property
+    def total_horas(self) -> float:
+        return round(sum(r.horas_totais for r in self.implantacao + self.sustentacao), 2)
+
+    @property
+    def total_faturavel(self) -> float:
+        return round(sum(r.horas_faturaveis for r in self.implantacao + self.sustentacao), 2)
+
+    @property
+    def total_nao_faturavel(self) -> float:
+        return round(sum(r.horas_nao_faturaveis for r in self.implantacao + self.sustentacao), 2)
+
+
+def markdown_consolidado(rc: ReporteCliente) -> str:
+    """Render the executive consolidated client report."""
+    linhas = [
+        f"# Reporte Executivo: {rc.cliente}",
+        f"Periodo: {rc.inicio:%d/%m/%Y} a {rc.fim:%d/%m/%Y}",
+        "",
+        f"**Consolidado de Horas**: {rc.total_horas:.1f}h totais "
+        f"({rc.total_faturavel:.1f}h faturaveis, {rc.total_nao_faturavel:.1f}h nao faturaveis)",
+        "",
+    ]
+
+    if rc.implantacao:
+        linhas.append("## Projetos de Implantacao")
+        for rep in rc.implantacao:
+            linhas.append(f"\n### {rep.projeto} ({rep.horas_totais:.1f}h)")
+            linhas.append(f"- Concluidas: {len(rep.concluidas)} | Em andamento: {len(rep.em_andamento)} | Sem horas no periodo: {len(rep.paradas)}")
+            for t in rep.concluidas:
+                linhas.append(f"  * [Concluida] {t.nome} ({t.horas:.1f}h) [{t.responsavel}]")
+            for t in rep.em_andamento:
+                v = f", vence {t.vence_em:%d/%m}" if t.vence_em else ""
+                linhas.append(f"  * [Andamento] {t.nome} ({t.horas:.1f}h){v} [{t.responsavel}]")
+
+    if rc.sustentacao:
+        linhas.append("\n## Chamados e Sustentacao")
+        for rep in rc.sustentacao:
+            linhas.append(f"\n### {rep.projeto} ({rep.horas_totais:.1f}h)")
+            linhas.append(f"- Concluidos: {len(rep.concluidas)} | Em atendimento: {len(rep.em_andamento)} | Sem horas: {len(rep.paradas)}")
+            for t in rep.concluidas:
+                linhas.append(f"  * [Resolvido] {t.nome} ({t.horas:.1f}h) [{t.responsavel}]")
+            for t in rep.em_andamento:
+                linhas.append(f"  * [Aberto] {t.nome} ({t.horas:.1f}h) [{t.responsavel}]")
+
+    linhas.append(f"\n---\n{rc.destino}. Documento executivo para aprovacao previa.")
+    return "\n".join(linhas) + "\n"
+

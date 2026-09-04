@@ -31,6 +31,28 @@ logger = logging.getLogger("pmo.bolsao")
 # an alert on every run is an alert nobody reads.
 FAIXAS = ((1.00, "estourado"), (0.90, "critico"), (0.75, "atencao"))
 
+# Tetos mensais de referencia levantados na reuniao de 03/09 com Abner:
+# (China Gate: 100h sustentacao, Yoshii: 160h, Grupo Dimas: 30h, Grupo Anjos: ~100h)
+TETOS_DE_REFERENCIA: dict[str, float] = {
+    "china gate": 100.0,
+    "chinagate": 100.0,
+    "yoshii": 160.0,
+    "yoshi": 160.0,
+    "grupo dimas": 30.0,
+    "dimas": 30.0,
+    "grupo anjos": 100.0,
+    "anjos": 100.0,
+}
+
+
+def teto_sugerido(projeto: str) -> float | None:
+    """Return benchmark monthly hours for known clients when unconfigured."""
+    p = (projeto or "").strip().lower()
+    for k, v in TETOS_DE_REFERENCIA.items():
+        if k in p:
+            return v
+    return None
+
 
 @dataclass(frozen=True)
 class Bolsao:
@@ -221,3 +243,17 @@ def digest(vigilancia: "Vigilancia | list[Situacao]",
         partes.append("  Estes projetos estao sem vigia hoje, o que nao quer dizer "
                       "que estejam bem.")
     return "\n".join(partes)
+
+
+def carregar_bolsoes(dados: list[dict] | dict) -> list[Bolsao]:
+    """Parse Bolsao instances from configuration data (list or dict)."""
+    itens = dados.get("bolsoes", []) if isinstance(dados, dict) else dados
+    resultado: list[Bolsao] = []
+    for item in itens:
+        nome = item.get("projeto") or item.get("nome") or ""
+        lid = str(item.get("list_id") or "")
+        horas = float(item.get("horas_contratadas") or item.get("horas") or teto_sugerido(nome) or 0.0)
+        if nome and lid and horas > 0:
+            resultado.append(Bolsao(projeto=nome, list_id=lid, horas_contratadas=horas))
+    return resultado
+

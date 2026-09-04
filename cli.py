@@ -54,7 +54,7 @@ class ConfigAusente(RuntimeError):
 def carregar_config(caminho: Path) -> dict:
     if not caminho.exists():
         raise ConfigAusente(str(caminho))
-    return json.loads(caminho.read_text())
+    return json.loads(caminho.read_text(encoding="utf-8"))
 
 
 def _feriados(cfg: dict) -> frozenset[date]:
@@ -186,7 +186,7 @@ def cmd_cadencias(args) -> int:
     feriados = frozenset()
     caminho = Path(getattr(args, "config", "") or CONFIG_PADRAO).expanduser()
     if caminho.exists():
-        feriados = _feriados(json.loads(caminho.read_text()))
+        feriados = _feriados(json.loads(caminho.read_text(encoding="utf-8")))
     if hoje in feriados:
         print("  (feriado: nada roda hoje)\n")
     for item, cadencia in sorted(rotina.CADENCIAS.items()):

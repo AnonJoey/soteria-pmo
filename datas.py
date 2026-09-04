@@ -40,6 +40,8 @@ class Prazo:
     status: str
     tem_descricao: bool
     tem_estimativa: bool
+    parent_id: str | None = None
+    dependencias: tuple[str, ...] = ()
 
     def dias(self, hoje: date) -> int | None:
         return None if self.vence_em is None else (self.vence_em - hoje).days
@@ -61,6 +63,13 @@ def ler(tarefas: list[dict]) -> list[Prazo]:
     for t in tarefas:
         vence = de_ms(t.get("due_date"))
         responsaveis = t.get("assignees") or []
+        pid = t.get("parent")
+        parent_id = str(pid) if pid and str(pid).strip() not in ("None", "null", "") else None
+        deps = []
+        for dep in t.get("dependencies") or []:
+            dep_id = dep.get("depends_on") or dep.get("task_id")
+            if dep_id:
+                deps.append(str(dep_id))
         prazos.append(Prazo(
             task_id=str(t.get("id")),
             nome=t.get("name") or "(sem nome)",
@@ -70,6 +79,8 @@ def ler(tarefas: list[dict]) -> list[Prazo]:
                     if isinstance(t.get("status"), dict) else t.get("status")) or "?",
             tem_descricao=bool((t.get("description") or t.get("text_content") or "").strip()),
             tem_estimativa=t.get("time_estimate") not in (None, 0, "0"),
+            parent_id=parent_id,
+            dependencias=tuple(deps),
         ))
     return prazos
 
@@ -104,6 +115,18 @@ def higiene(prazos: list[Prazo]) -> list[str]:
         problemas.append(f"{len(sem_estimativa)} de {len(prazos)} sem estimativa de tempo")
     if sem_data:
         problemas.append(f"{len(sem_data)} sem data de entrega")
+
+    # Inversoes de hierarquia (tarefa-mae vencendo antes de subtarefa)
+    por_id = {p.task_id: p for p in prazos}
+    for p in prazos:
+        if p.parent_id and p.parent_id in por_id:
+            pai = por_id[p.parent_id]
+            if pai.vence_em and p.vence_em and pai.vence_em < p.vence_em:
+                problemas.append(
+                    f"inversao de datas: tarefa-mae '{pai.nome}' vence em {pai.vence_em:%d/%m}, "
+                    f"antes da subtarefa '{p.nome}' ({p.vence_em:%d/%m})"
+                )
+
     return problemas
 
 

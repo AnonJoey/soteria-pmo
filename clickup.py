@@ -155,7 +155,7 @@ class Lancamento:
     faturavel: bool
     tags: tuple[str, ...] = ()
 
-    def problemas(self) -> list[str]:
+    def problemas(self, tags_permitidas: set[str] | frozenset[str] | None = None) -> list[str]:
         """Everything wrong with this entry, before anything is sent."""
         erros: list[str] = []
         if not self.descricao.strip():
@@ -165,7 +165,8 @@ class Lancamento:
             erros.append("descricao vazia: a entrada some do relatorio de horas")
         if self.duracao_ms <= 0:
             erros.append(f"duracao invalida: {self.duracao_ms}ms")
-        desconhecidas = set(self.tags) - TAGS_DA_CASA
+        vocabulario = tags_permitidas if tags_permitidas is not None else TAGS_DA_CASA
+        desconhecidas = set(self.tags) - vocabulario
         if desconhecidas:
             erros.append(f"tags fora do vocabulario da casa: {sorted(desconhecidas)}")
         cobrando_o_que_nao_cobra = set(self.tags) & NAO_FATURAVEL

@@ -122,7 +122,7 @@ descartavel.
 python -m pytest tests/pmo/ -q
 ```
 
-215 testes, nenhum toca a rede: `httpx.MockTransport` responde por todas as
+252 testes, nenhum toca a rede: `httpx.MockTransport` responde por todas as
 chamadas e o interprete do modelo entra por `Protocol`.
 
 Os comportamentos criticos foram conferidos por mutacao, e um deles expos um
@@ -134,8 +134,10 @@ mutacao ao mexer nestes pontos:
 - cobertura dividida por si mesma
 - lancar com lacuna aberta
 - faturavel uniforme
-- cronograma com regua unica
+- cronograma com regua unica ou sem distincao de projeto vs chamado
 - alerta afirmando abandono
+- inversao de datas entre tarefa-mae e subtarefas
+- ciclo bimestral de feedback de RH
 
 `docs/agentes-pmo/fumaca_dado_real.py` roda os modulos sobre as doze tarefas
 reais da lista, congeladas como a API as devolveu, porque teste com payload

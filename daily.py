@@ -100,7 +100,7 @@ def ler_transcricao(caminho: str | Path) -> Transcricao | None:
     """
     caminho = Path(caminho)
     try:
-        texto = caminho.read_text()
+        texto = caminho.read_text(encoding="utf-8")
     except OSError as e:
         logger.warning("nao foi possivel ler %s: %s", caminho.name, e)
         return None
@@ -163,7 +163,7 @@ def horario_no_texto(t: "Transcricao") -> "time | None":
     if t.caminho is None:
         return None
     try:
-        m = _FAIXA.search(t.caminho.read_text())
+        m = _FAIXA.search(t.caminho.read_text(encoding="utf-8"))
     except OSError:
         return None
     if not m:
