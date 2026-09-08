@@ -297,3 +297,62 @@ def test_sem_leitura_o_reporte_continua_inteiro():
     corpo = "# Soteria\ncorpo com numeros"
     assert R.com_pre_analise(corpo, "") == corpo
     assert R.com_pre_analise(corpo, "   ") == corpo
+
+
+def test_o_reporte_le_as_horas_do_time_e_nao_so_as_de_quem_roda():
+    """Primeira execucao real: o reporte de um cliente saiu 0,0h numa semana
+    com trabalho, porque entradas() sem assignee devolve so as do usuario
+    autenticado, que num relatorio de cliente e a pessoa errada por definicao."""
+    pedidos = []
+
+    class Falso:
+        def tarefas_da_lista(self, list_id, *a, **k):
+            return [{"id": "t1", "name": "Tarefa", "status": {"status": "desenvolvimento"},
+                     "assignees": [{"username": "Ana"}], "due_date": None}]
+
+        def membros(self):
+            return [{"id": "1"}, {"id": "2"}]
+
+        def entradas(self, ini, fim, assignee=None):
+            pedidos.append(assignee)
+            return [{"id": "e1", "duration": 7_200_000, "billable": True,
+                     "task": {"id": "t1"},
+                     "task_location": {"list_id": "L1"}}]
+
+    saida = R.gerar(Falso(), "L1", "Cliente", date(2026, 9, 1), date(2026, 9, 7))
+    assert pedidos == [("1", "2")]
+    assert "2.0h" in saida
+
+
+def test_o_reporte_nao_soma_horas_de_outro_cliente():
+    """A janela devolve o workspace inteiro; sem filtro, as horas de todos os
+    clientes entravam no relatorio de um."""
+    class Falso:
+        def tarefas_da_lista(self, list_id, *a, **k):
+            return [{"id": "t1", "name": "Tarefa", "status": {"status": "desenvolvimento"},
+                     "assignees": [], "due_date": None}]
+
+        def membros(self):
+            return [{"id": "1"}]
+
+        def entradas(self, ini, fim, assignee=None):
+            return [{"id": "e1", "duration": 3_600_000, "billable": True,
+                     "task": {"id": "t1"}, "task_location": {"list_id": "L1"}},
+                    {"id": "e2", "duration": 36_000_000, "billable": True,
+                     "task": {"id": "t99"}, "task_location": {"list_id": "OUTRA"}}]
+
+    saida = R.gerar(Falso(), "L1", "Cliente", date(2026, 9, 1), date(2026, 9, 7))
+    assert "Horas no periodo: 1.0h" in saida
+
+
+def test_lista_de_sustentacao_nao_despeja_o_backlog_inteiro():
+    """Medido em 08/09: o relatorio de um cliente listava 370 tarefas abertas
+    sem horas, e o que aconteceu na semana sumia no meio."""
+    linhas = [R.Linha(task_id=f"t{i}", nome=f"Chamado {i}", status="ideia",
+                      responsavel="Ana", horas=0.0, concluida=False, vence_em=None)
+              for i in range(40)]
+    rep = R.Reporte(projeto="Cliente", inicio=date(2026, 9, 1), fim=date(2026, 9, 7),
+                    linhas=linhas)
+    saida = R.markdown(rep)
+    assert "e mais 25 tarefas abertas sem horas" in saida
+    assert saida.count("- Chamado") == R.TETO_DE_PARADAS

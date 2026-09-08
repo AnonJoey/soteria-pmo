@@ -132,13 +132,19 @@ def montar(tarefas: list[dict], entradas: list[dict], projeto: str,
 
 def markdown(r: Reporte) -> str:
     """Render the report. Text document first, as agreed on 31/08."""
-    def bloco(titulo: str, linhas: list[Linha], mostrar_horas: bool = True) -> str:
+    def bloco(titulo: str, linhas: list[Linha], mostrar_horas: bool = True,
+              teto: int | None = None) -> str:
         if not linhas:
             return ""
+        ordenadas = sorted(linhas, key=lambda x: -x.horas)
+        cortadas = ordenadas[:teto] if teto else ordenadas
         itens = []
-        for l in sorted(linhas, key=lambda x: -x.horas):
+        for l in cortadas:
             sufixo = f" ({l.horas:.1f}h)" if mostrar_horas and l.horas else ""
             itens.append(f"- {l.nome}{sufixo} [{l.responsavel}]")
+        if teto and len(ordenadas) > teto:
+            itens.append(f"- e mais {len(ordenadas) - teto} tarefas abertas sem "
+                         "horas no periodo, nao listadas uma a uma")
         return f"\n### {titulo}\n" + "\n".join(itens) + "\n"
 
     cabecalho = (
@@ -153,7 +159,11 @@ def markdown(r: Reporte) -> str:
 
     corpo = (bloco("Concluido no periodo", r.concluidas)
              + bloco("Em andamento", r.em_andamento)
-             + bloco("Sem horas lancadas no periodo", r.paradas, mostrar_horas=False))
+             # Teto porque uma lista de sustentacao carrega o backlog inteiro:
+             # medido em 08/09, o relatorio de um cliente listava 370 tarefas
+             # abertas sem horas, e o que aconteceu na semana sumia no meio.
+             + bloco("Sem horas lancadas no periodo", r.paradas,
+                     mostrar_horas=False, teto=TETO_DE_PARADAS))
 
     rodape = (
         f"\n---\n{r.destino}. "
@@ -163,6 +173,11 @@ def markdown(r: Reporte) -> str:
     )
     return cabecalho + corpo + rodape
 
+
+#: Quantas tarefas abertas sem horas o relatorio lista antes de resumir o resto.
+#: Escolha de desenho, sem verdade externa: errar aqui deixa o relatorio longo
+#: ou curto demais, nao errado.
+TETO_DE_PARADAS = 15
 
 #: Cabecalho do bloco de leitura. Fixo, para que quem le saiba, sempre no mesmo
 #: lugar e com as mesmas palavras, onde termina o numero e comeca a opiniao.
@@ -193,14 +208,36 @@ def com_pre_analise(corpo: str, analise: str) -> str:
 
 
 def gerar(cliente, list_id: str, projeto: str, inicio: date, fim: date) -> str:
-    """Read the week from ClickUp and render it."""
+    """Read the week from ClickUp and render it.
+
+    Dois cuidados que a primeira execucao real, em 08/09/2026, mostrou serem
+    necessarios, porque sem eles o reporte de um cliente saiu com 0,0h numa
+    semana em que houve trabalho:
+
+    1. **As entradas sao do time.** `entradas()` sem `assignee` devolve as do
+       usuario autenticado, que num relatorio de cliente e a pessoa errada por
+       definicao. Nomear a equipe bate `assignee=any`, que responde 500 num
+       workspace deste tamanho.
+    2. **As entradas sao filtradas para esta lista.** A janela devolve o
+       workspace inteiro, entao sem filtro as horas de todos os clientes
+       entravam no relatorio de um.
+    """
     ini_ms, fim_ms = janela(inicio, fim)
     try:
         tarefas = cliente.tarefas_da_lista(list_id)
-        entradas = cliente.entradas(ini_ms, fim_ms)
+        try:
+            equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
+        except Exception as e:
+            logger.warning("nao foi possivel listar a equipe para %s: %s", projeto, e)
+            equipe = None
+        todas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
     except Exception as e:
         logger.warning("nao foi possivel montar o reporte de %s: %s", projeto, e)
         return ""
+    ids = {str(t.get("id")) for t in tarefas}
+    entradas = [e for e in todas
+                if str(campo_objeto(e, "task_location").get("list_id") or "") == str(list_id)
+                or str(campo_objeto(e, "task").get("id") or "") in ids]
     return markdown(montar(tarefas, entradas, projeto, inicio, fim))
 
 
