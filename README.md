@@ -35,9 +35,9 @@ nome: o que ja existe e mantido e reportado como mantido.
 
 O workspace vive em `~/.soteria-pmo/pmo.json`, e nenhum comando roda sem ele.
 Sao as coisas que codigo nenhum deve trazer embutidas: qual lista e qual
-projeto, quantas horas cada bolsao tem, quem esta no time e qual o ritmo de
-cada pessoa. Rodar qualquer subcomando sem o arquivo imprime o exemplo completo
-com os campos esperados, em vez de um traceback.
+projeto, se cada um e projeto de implantacao ou fila de chamado, quantas horas
+cada bolsao tem, e quem esta no time. Rodar qualquer subcomando sem o arquivo
+imprime o exemplo completo com os campos esperados, em vez de um traceback.
 
 Quem tinha o arquivo em `~/.delegation_core/pmo.json`, de antes da separacao,
 continua funcionando: a cli le esse caminho como segunda opcao e diz de onde
@@ -82,7 +82,7 @@ muito diferente de um agente caro fazendo a mesma coisa.
 | # | Modulo | O que faz | Cadencia |
 |---|---|---|---|
 | 1 | `reporte.py` | Relatorio do periodo, preenchendo template com dado estruturado | semanal + disparo manual |
-| 2 | `cronograma.py` | Log de divergencias entre ritmo esperado e observado | continua |
+| 2 | `cronograma.py` | Log de projetos sem horas apontadas, na regua por tipo de trabalho | continua |
 | 3 | `auditor.py` | Confere o que foi lancado contra a evidencia e as entradas entre si | diaria, mais o mes fechado |
 | 4 | `horas.py` | Propoe lancamentos a partir de evidencia, e pergunta pelo resto | diaria |
 | 5 | `bolsao.py` | Consumo do bolsao e projecao de estouro | diaria |
@@ -150,10 +150,21 @@ andou e nao foi apontado. `cronograma.py` declara essa ambiguidade em todo
 alerta em vez de escolher a leitura acusatoria, porque cobrar quem estava
 trabalhando e o jeito mais rapido de o sistema inteiro ser desligado.
 
-Pela mesma razao a cadencia e por pessoa. Com regua unica, quem junta a semana
-na sexta e marcado como parado na quarta. Quem ainda nao tem calibragem recebe a
-regua padrao **com o alerta marcado como nao calibrado**, nunca um default
-silencioso. A calibragem real segue em aberto com o Abner.
+Pela mesma razao a unidade e o **projeto**, e nao a tarefa. Um dev que larga uma
+tarefa e vai para a proxima do mesmo projeto nao e projeto parado, e a regua e
+por tipo de trabalho: quatro dias uteis sem hora apontada para projeto de
+implantacao, dois para chamado e sustentacao.
+
+Isso substituiu uma tentativa anterior de calibrar o ritmo **por pessoa**.
+Perguntado em 03/09 quantos dias cada dev costuma passar sem tocar numa tarefa,
+o Abner respondeu que nao consegue precisar isso e que individualizar daria
+problema. O caminho por pessoa foi apagado em 08/09, e nao deixado ao lado do
+novo: nos quatro dias em que os dois conviveram, era o antigo que rodava, e
+toda execucao real pedia uma calibragem que ja tinha sido recusada.
+
+O furo que o proprio Abner apontou continua declarado em cada alerta: nem todo
+mundo lanca hora todo dia, entao ausencia de lancamento nao separa "nao andou"
+de "andou e nao foi apontado". O alerta diz isso em vez de escolher.
 
 **3. Entrada sem rastro nao vira erro.**
 
@@ -236,10 +247,12 @@ Descrevem algo que existe fora deste codigo. Errar e falha silenciosa.
 
 | Constante | Onde | Fonte |
 |---|---|---|
-| `TAGS_DA_CASA` | `clickup.py` | `Reference/2026-07-30-Formato de lancamento`, lancamentos do Marcos Claudio |
+| `TAGS_DA_CASA` | `clickup.py` | lido da API em 08/09/2026, `GET /team/{id}/time_entries/tags` |
 | `NAO_FATURAVEL`, `FATURAVEL`, `ATIVIDADE_NAO_FATURAVEL` | `clickup.py` | mesma nota, convencao de faturamento |
 | `WORKFLOW`, `CONCLUIDOS`, `BLOQUEADOS` | `clickup.py` | mesma nota, workflow da pasta AI - Claude |
 | `CADENCIAS` | `rotina.py` | mapa de cadencias de 30/08, com o bolsao fora do tempo real por 31/08 |
+| `REGUA_PROJETO_DIAS`, `REGUA_CHAMADO_DIAS` | `cronograma.py` | regua acordada com o Abner em 03/09 |
+| `TETOS_DE_REFERENCIA` | `bolsao.py` | tetos ditos com firmeza pelo Abner em 03/09; o texto escrito segue pendente |
 | `_MARCA_ONTEM` | `periodo.py` | regra de datacao apurada em 07/08 |
 | `API`, `BRT` | `clickup.py`, `periodo.py` | API do ClickUp e fuso do time |
 
@@ -253,14 +266,19 @@ Errar aqui produz alerta cedo demais ou tarde demais, nao um numero errado.
 | Constante | Onde | O que decide |
 |---|---|---|
 | `FAIXAS` | `bolsao.py` | 75/90/100% para atencao, critico, estourado |
-| `NIVEIS` | `cronograma.py` | dias de silencio para lembrete, cobranca, escalar |
+| `MULTIPLOS` | `cronograma.py` | quantas reguas de silencio viram lembrete, cobranca, escalar |
 | `HORIZONTE` | `datas.py` | quantos dias antes um prazo comeca a aparecer |
 | `TOLERANCIA` | `auditor.py` | quanto a hora lancada pode divergir da evidencia |
 | `CONFIANCA_MINIMA`, `PESO_FONTE` | `horas.py` | o que e proposta duvidosa, e quanto vale cada fonte |
 | `ANTECEDENCIA` | `rh.py` | antecedencia de cada tipo de data |
 | `DIA_DO_SEMANAL` | `rotina.py` | segunda, para a semana comecar com o reporte da anterior |
 
-`CADENCIA_PADRAO_DIAS` em `cronograma.py` e um caso a parte: parece escolha mas
-e um **placeholder de um fato que ainda nao foi levantado**, a calibragem de
-ritmo por pessoa, em aberto com o Abner. Por isso todo alerta pontuado contra
-ele sai marcado como nao calibrado, em vez de aplicar a regua em silencio.
+### Uma constante que existiu e nao existe mais
+
+`CADENCIA_PADRAO_DIAS` era o placeholder da calibragem de ritmo por pessoa,
+apresentada aqui como pergunta em aberto com o Abner. Ela foi respondida em
+03/09 e respondida ao contrario: ele nao consegue precisar o ritmo de cada dev
+e disse que individualizar daria problema. A regua por tipo de trabalho tomou o
+lugar, e o caminho por pessoa foi apagado em 08/09 em vez de ficar ao lado do
+novo. Ficar ao lado ja tinha custado quatro dias de execucoes reais pedindo uma
+calibragem que ninguem ia dar.

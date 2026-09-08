@@ -28,7 +28,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from typing import Protocol
 
-from .clickup import (ATIVIDADE_NAO_FATURAVEL, NAO_FATURAVEL, TAGS_DA_CASA,
+from .clickup import (ATIVIDADE_NAO_FATURAVEL, NAO_FATURAVEL,
                       Aprovacao, Lancamento)
 from .periodo import BRT, Intervalo, data_da_fala, fundir, horas as somar_horas, ms
 

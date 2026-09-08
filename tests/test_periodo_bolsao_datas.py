@@ -396,12 +396,22 @@ def test_git_e_consultado_com_hora_explicita(tmp_path, monkeypatch):
     assert "--until=2026-09-02T23:59:59" in cmd
 
 
-def test_teto_sugerido_conhece_principais_clientes():
+def test_teto_sugerido_traz_so_os_tetos_ditos_com_firmeza():
     assert B.teto_sugerido("China Gate Sustentacao") == 100.0
     assert B.teto_sugerido("Yoshii Imoveis") == 160.0
     assert B.teto_sugerido("Grupo Dimas") == 30.0
-    assert B.teto_sugerido("Grupo Anjos") == 100.0
     assert B.teto_sugerido("Cliente Desconhecido") is None
+
+
+def test_cliente_sem_teto_fixado_nao_ganha_um_numero_inventado():
+    """O Grupo Anjos foi dito como "sem limite rigido, algo em torno de 150, 75",
+    e o codigo carregava 100.0, que e o meio-termo que ninguem falou."""
+    assert B.teto_sugerido("Grupo Anjos") is None
+    assert "75" in B.teto_a_confirmar("Grupo Anjos")
+
+
+def test_o_que_e_incerto_e_dito_como_incerto_e_nao_calado():
+    assert B.teto_a_confirmar("Cliente Desconhecido") is None
 
 
 def test_carregar_bolsoes_de_config_ou_lista():
@@ -411,7 +421,7 @@ def test_carregar_bolsoes_de_config_ou_lista():
             {"projeto": "Yoshii", "list_id": "lg_2"},  # Usa teto sugerido 160h
         ]
     }
-    bolsoes = B.carregar_bolsoes(cfg)
+    bolsoes, _sem_teto = B.carregar_bolsoes(cfg)
     assert len(bolsoes) == 2
     assert bolsoes[0].horas_contratadas == 100.0
     assert bolsoes[1].horas_contratadas == 160.0
@@ -430,3 +440,23 @@ def test_higiene_pega_inversao_de_data_entre_mae_e_filha():
     assert any("inversao de datas" in p.lower() for p in probs)
     assert any("3. Desenvolvimento" in p and "3.1 Coleta de Evidencia" in p for p in probs)
 
+
+
+def test_projeto_sem_teto_sai_nomeado_em_vez_de_sumir_do_digest():
+    """Ausencia do digest e indistinguivel de projeto saudavel. Ate 08/09 um
+    projeto sem teto era descartado calado em carregar_bolsoes."""
+    bolsoes, sem_teto = B.carregar_bolsoes([
+        {"nome": "Grupo Anjos", "list_id": "1"},
+        {"nome": "Yoshii", "list_id": "2"},
+    ])
+    assert [b.projeto for b in bolsoes] == ["Yoshii"]
+    assert any("Grupo Anjos" in t and "sem teto configurado" in t for t in sem_teto)
+    assert any("75" in t for t in sem_teto), "diz o que se sabe, mesmo incerto"
+
+
+def test_o_digest_conta_quem_ficou_fora_da_projecao():
+    v = B.Vigilancia(sem_teto=["Grupo Anjos: sem teto configurado"])
+    saida = B.digest(v)
+    assert "Sem teto para medir contra" in saida
+    assert "Grupo Anjos" in saida
+    assert "fora da projecao de estouro" in saida

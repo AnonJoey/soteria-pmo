@@ -31,8 +31,15 @@ logger = logging.getLogger("pmo.bolsao")
 # an alert on every run is an alert nobody reads.
 FAIXAS = ((1.00, "estourado"), (0.90, "critico"), (0.75, "atencao"))
 
-# Tetos mensais de referencia levantados na reuniao de 03/09 com Abner:
-# (China Gate: 100h sustentacao, Yoshii: 160h, Grupo Dimas: 30h, Grupo Anjos: ~100h)
+# Tetos mensais levantados de viva voz com o Abner em 03/09/2026, e o texto
+# escrito que ele ficou de mandar ainda nao chegou. So entram aqui os que ele
+# disse com firmeza; os que ele mesmo marcou como a conferir ficam de fora.
+#
+# O Grupo Anjos foi removido em 08/09. A transcricao registra "sem limite
+# rigido, algo em torno de 150, 75", e o codigo carregava 100.0: um meio-termo
+# entre dois numeros incertos que ninguem disse. Um teto errado nao levanta
+# erro, so move a faixa de alerta, e a projecao de estouro sai confiante sobre
+# um numero inventado. Sem teto o vigia diz que nao tem teto, que e verdade.
 TETOS_DE_REFERENCIA: dict[str, float] = {
     "china gate": 100.0,
     "chinagate": 100.0,
@@ -40,15 +47,35 @@ TETOS_DE_REFERENCIA: dict[str, float] = {
     "yoshi": 160.0,
     "grupo dimas": 30.0,
     "dimas": 30.0,
-    "grupo anjos": 100.0,
-    "anjos": 100.0,
+}
+
+# Ditos na mesma conversa e marcados pelo proprio Abner como a conferir. Nao
+# viram numero: existem para que o vigia possa dizer "ha uma referencia nao
+# confirmada" em vez de calar sobre um cliente que foi citado.
+TETOS_A_CONFIRMAR: dict[str, str] = {
+    "grupo anjos": "sem limite rigido; a transcricao registra algo entre 75 e 150",
+    "anjos": "sem limite rigido; a transcricao registra algo entre 75 e 150",
 }
 
 
 def teto_sugerido(projeto: str) -> float | None:
-    """Return benchmark monthly hours for known clients when unconfigured."""
+    """Benchmark monthly hours for the clients stated firmly, or None.
+
+    None is the honest answer for a client whose ceiling was never fixed, and
+    the caller turns it into "no ceiling configured" instead of a projection
+    against a number nobody gave.
+    """
     p = (projeto or "").strip().lower()
     for k, v in TETOS_DE_REFERENCIA.items():
+        if k in p:
+            return v
+    return None
+
+
+def teto_a_confirmar(projeto: str) -> str | None:
+    """What is known but unconfirmed about this client's ceiling, if anything."""
+    p = (projeto or "").strip().lower()
+    for k, v in TETOS_A_CONFIRMAR.items():
         if k in p:
             return v
     return None
@@ -81,6 +108,9 @@ class Vigilancia:
 
     situacoes: list["Situacao"] = field(default_factory=list)
     falhas: list[str] = field(default_factory=list)
+    #: Projetos citados no config sem teto contra o que medir, com o motivo.
+    #: Mesma razao de `falhas`: sumir do digest e parecer saudavel.
+    sem_teto: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -186,7 +216,8 @@ def apurar(entradas: list[dict], bolsao: Bolsao, inicio: date, fim: date,
 
 
 def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
-           feriados: frozenset[date] = frozenset()) -> Vigilancia:
+           feriados: frozenset[date] = frozenset(),
+           sem_teto: list[str] | None = None) -> Vigilancia:
     """Read the window once per project and report each position.
 
     Entries are fetched per project list rather than for the whole workspace
@@ -194,7 +225,7 @@ def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
     workspace-wide costs one call per task.
     """
     ini_ms, fim_ms = janela(inicio, fim)
-    v = Vigilancia()
+    v = Vigilancia(sem_teto=list(sem_teto or ()))
     try:
         equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
     except Exception as e:
@@ -228,12 +259,13 @@ def digest(vigilancia: "Vigilancia | list[Situacao]",
     """
     if isinstance(vigilancia, Vigilancia):
         situacoes, falhas = vigilancia.situacoes, vigilancia.falhas
+        sem_teto = list(vigilancia.sem_teto)
     else:
-        situacoes, falhas = list(vigilancia), []
+        situacoes, falhas, sem_teto = list(vigilancia), [], []
 
     linhas = [s.linha() for s in sorted(situacoes, key=lambda s: -s.percentual)
               if s.alerta or not so_alertas]
-    if not linhas and not falhas:
+    if not linhas and not falhas and not sem_teto:
         return ""
     partes = ["Vigia de bolsao"]
     partes.extend(f"  {l}" for l in linhas)
@@ -242,18 +274,38 @@ def digest(vigilancia: "Vigilancia | list[Situacao]",
         partes.extend(f"    {f}" for f in falhas)
         partes.append("  Estes projetos estao sem vigia hoje, o que nao quer dizer "
                       "que estejam bem.")
+    if sem_teto:
+        partes.append("  Sem teto para medir contra:")
+        partes.extend(f"    {t}" for t in sem_teto)
+        partes.append("  Enquanto o teto nao vier por escrito, estes ficam fora "
+                      "da projecao de estouro.")
     return "\n".join(partes)
 
 
-def carregar_bolsoes(dados: list[dict] | dict) -> list[Bolsao]:
-    """Parse Bolsao instances from configuration data (list or dict)."""
+def carregar_bolsoes(dados: list[dict] | dict) -> tuple[list[Bolsao], list[str]]:
+    """Os bolsoes que dao para vigiar, e os que ficaram de fora com o motivo.
+
+    Um projeto sem teto nao pode ser vigiado, porque nao ha contra o que medir
+    o consumo. Ate 08/09/2026 ele era simplesmente descartado aqui, e um
+    projeto ausente do digest e indistinguivel de um projeto saudavel. Agora
+    sai nomeado, com a razao, pelo mesmo motivo que uma leitura que falhou sai:
+    ausencia de alerta nao e boa noticia, e falta de noticia.
+    """
     itens = dados.get("bolsoes", []) if isinstance(dados, dict) else dados
     resultado: list[Bolsao] = []
+    sem_teto: list[str] = []
     for item in itens:
         nome = item.get("projeto") or item.get("nome") or ""
         lid = str(item.get("list_id") or "")
-        horas = float(item.get("horas_contratadas") or item.get("horas") or teto_sugerido(nome) or 0.0)
-        if nome and lid and horas > 0:
+        horas = float(item.get("horas_contratadas") or item.get("horas")
+                      or teto_sugerido(nome) or 0.0)
+        if not (nome and lid):
+            continue
+        if horas > 0:
             resultado.append(Bolsao(projeto=nome, list_id=lid, horas_contratadas=horas))
-    return resultado
+            continue
+        incerto = teto_a_confirmar(nome)
+        sem_teto.append(f"{nome}: sem teto configurado"
+                        + (f"; {incerto}" if incerto else ""))
+    return resultado, sem_teto
 

@@ -31,22 +31,38 @@ logger = logging.getLogger("pmo.clickup")
 
 API = "https://api.clickup.com/api/v2"
 
-# The house vocabulary, copied verbatim from Marcos Claudio's entries as
-# recorded in Reference/2026-07-30-Formato de lancamento de atividades no
-# ClickUp. Accents included, because these strings have to match what is in
-# ClickUp and not merely look like it. Closed on purpose: a tag outside this
-# set is a typo, and a typo silently makes an entry invisible in the report
-# everyone reads.
+# O vocabulario de etiquetas DE ENTRADA DE TEMPO, lido da API em 08/09/2026 por
+# GET /team/{id}/time_entries/tags. Sao 17, e este e o conjunto inteiro.
+#
+# Duas coisas que essa leitura acertou, e as duas estavam erradas antes:
+#
+# 1. As 13 tags que este pacote carregava, transcritas dos lancamentos do Marcos
+#    Claudio, EXISTEM todas. O que faltava eram quatro: "ajustes em prod",
+#    "auxilio dev", "nao faturavel" e "projeto hubin". Como o vocabulario e
+#    fechado na validacao, um lancamento com qualquer uma delas era recusado
+#    como invalido sendo que e tag real.
+# 2. Etiqueta de entrada de tempo NAO e por espaco. O que o Abner mostrou em
+#    03/09, cada espaco de cliente com o seu conjunto, e verdade para tag de
+#    TAREFA: o espaco Soteria tem 7 e nenhuma delas coincide com estas. Sao dois
+#    namespaces diferentes na API, e a pendencia registrada confundia os dois.
+#
+# Isto e uma FOTOGRAFIA, e serve de piso quando a leitura ao vivo falha. Quem
+# escreve deve preferir `ClickUp.tags_de_entrada()`, porque uma tag nova criada
+# no workspace amanha nao chega aqui sozinha, e a falha e silenciosa: o ClickUp
+# aceita a tag e ela so deixa de casar com o que o relatorio agrupa.
 TAGS_DA_CASA = frozenset({
-    "desenvolvimento", "ajustes em qas", "análise", "atividade de qas",
-    "apoio técnico", "alinhamento técnico", "planejamento", "reunião interna",
-    "reunião com o cliente", "daily", "elaboração de material técnico",
-    "deploy", "bug",
+    "ajustes em prod", "ajustes em qas", "alinhamento técnico", "análise",
+    "apoio técnico", "atividade de qas", "auxilio dev", "bug", "daily",
+    "deploy", "desenvolvimento", "elaboração de material técnico",
+    "não faturável", "planejamento", "projeto hubin",
+    "reunião com o cliente", "reunião interna",
 })
 
 # Tags the house never bills. Diverging from this shows up in the comparison
 # between reports, which is where it gets noticed and costs credibility.
-NAO_FATURAVEL = frozenset({"daily", "reunião interna"})
+# "nao faturavel" entrou em 08/09/2026 pela leitura da API: e uma tag real do
+# workspace e o nome dela e a propria classificacao, nao uma inferencia.
+NAO_FATURAVEL = frozenset({"daily", "reunião interna", "não faturável"})
 
 # Explicitly billable, recorded because the first reading of the convention
 # guessed wrong on these three: meeting a client, a technical alignment and
@@ -168,7 +184,11 @@ class Lancamento:
         vocabulario = tags_permitidas if tags_permitidas is not None else TAGS_DA_CASA
         desconhecidas = set(self.tags) - vocabulario
         if desconhecidas:
-            erros.append(f"tags fora do vocabulario da casa: {sorted(desconhecidas)}")
+            erros.append(
+                f"tags fora do vocabulario deste espaco: {sorted(desconhecidas)}. "
+                "Se sao tags reais deste cliente, declare-as em projetos[].tags "
+                "no config: o conjunto da casa e o piso transversal, nao a lista "
+                "inteira do workspace")
         cobrando_o_que_nao_cobra = set(self.tags) & NAO_FATURAVEL
         if self.faturavel and cobrando_o_que_nao_cobra:
             erros.append(
@@ -207,6 +227,10 @@ class ClickUp:
         self.team_id = team_id
         self.dry_run = dry_run
         self._own_client = client is None
+        #: Cache do vocabulario lido do workspace. Uma leitura por cliente:
+        #: a lista nao muda no meio de um lote e uma chamada por lancamento
+        #: seria uma ida a rede para reconfirmar o que ja se sabe.
+        self._vocab: frozenset[str] | None = None
         self._c = client or httpx.Client(
             timeout=timeout,
             headers={"Authorization": token, "Content-Type": "application/json"},
@@ -260,6 +284,63 @@ class ClickUp:
             return f"{len(assignee)} pessoa(s) nomeada(s)"
         return f"pessoa {assignee}"
 
+    def tags_de_entrada(self) -> tuple[str, ...]:
+        """O vocabulario de etiquetas de entrada de tempo, lido do workspace.
+
+        E de equipe, nao de espaco: a API expoe isto em
+        `/team/{id}/time_entries/tags`, enquanto tag de TAREFA vive em
+        `/space/{id}/tag` e e outro conjunto. Confundir os dois foi o que fez
+        este pacote carregar uma lista fechada escrita a mao por um mes.
+
+        Devolve `()` quando nao da para ler, e o chamador cai em `TAGS_DA_CASA`,
+        que e a fotografia de 08/09/2026 do mesmo endpoint.
+        """
+        try:
+            dados = self._get(f"/team/{self.team_id}/time_entries/tags")
+        except ClickUpError as e:
+            logger.warning("nao foi possivel ler as tags de entrada: %s", e)
+            return ()
+        tags = dados.get("data", dados) if isinstance(dados, dict) else dados
+        return tuple(t["name"] for t in tags if isinstance(t, dict) and t.get("name"))
+
+    def vocabulario_de_tags(self) -> frozenset[str]:
+        """As tags que valem agora: as do workspace, ou a fotografia se falhar.
+
+        Lido uma vez por cliente e guardado, porque validar cada lancamento de
+        um lote contra a rede e ir buscar de novo o que nao mudou.
+        """
+        if self._vocab is None:
+            ao_vivo = self.tags_de_entrada()
+            self._vocab = frozenset(ao_vivo) if ao_vivo else TAGS_DA_CASA
+        return self._vocab
+
+    def espaco_da_lista(self, list_id: str) -> dict[str, Any] | None:
+        """The space a list belongs to, or None when it cannot be read.
+
+        Needed because the tag vocabulary is a property of the space, not of
+        the list, and the config names lists.
+        """
+        try:
+            return (self._get(f"/list/{list_id}") or {}).get("space")
+        except ClickUpError as e:
+            logger.warning("nao foi possivel ler a lista %s: %s", list_id, e)
+            return None
+
+    def tags_do_espaco(self, space_id: str) -> tuple[str, ...]:
+        """This space's own tag vocabulary, as ClickUp holds it.
+
+        Exists because the package spent a month treating `TAGS_DA_CASA` as the
+        whole workspace vocabulary. Abner showed on 03/09/2026 that each client
+        space carries its own set. Reading it beats writing it down: a list
+        typed by hand is the fourth constant that goes stale in silence.
+        """
+        try:
+            dados = self._get(f"/space/{space_id}/tag")
+        except ClickUpError as e:
+            logger.warning("nao foi possivel ler as tags do espaco %s: %s", space_id, e)
+            return ()
+        return tuple(t["name"] for t in dados.get("tags", []) if t.get("name"))
+
     def membros(self) -> list[dict[str, Any]]:
         """Everyone in the workspace, for the callers that genuinely need all."""
         data = self._get(f"/team")
@@ -308,15 +389,24 @@ class ClickUp:
 
     # ── escrita, sob os quatro controles ─────────────────────────────────────
 
-    def lancar(self, l: Lancamento, aprovacao: Aprovacao | None) -> Resultado:
+    def lancar(self, l: Lancamento, aprovacao: Aprovacao | None,
+               tags_permitidas: set[str] | frozenset[str] | None = None) -> Resultado:
         """Write one time entry: validate, approve, write, read back.
 
         The read-back is the control that matters most, because a call that
         fails partway still records the entry. Without reading it back, a
         failed call and a successful one are indistinguishable from here, and
         retrying the "failed" one is what produced the ghosts.
+
+        `tags_permitidas` is this client space's vocabulary, from the config.
+        Absent, the transversal floor applies.
         """
-        problemas = l.problemas()
+        # Sem `tags_permitidas` vale a fotografia, que e local. Buscar o
+        # vocabulario ao vivo aqui custaria a garantia que este metodo tem e
+        # que dois testes travam: lancamento invalido nao faz chamada nenhuma,
+        # e dry_run nao toca a rede. Quem quer o conjunto de agora chama
+        # `vocabulario_de_tags()` uma vez e passa adiante.
+        problemas = l.problemas(tags_permitidas)
         if problemas:
             return Resultado(None, False, False,
                              detalhe="lancamento invalido", divergencias=problemas)
@@ -418,9 +508,17 @@ class ClickUp:
     def corrigir(self, entry_id: str, aprovacao: Aprovacao | None, *,
                  descricao: str | None = None, faturavel: bool | None = None,
                  tags: tuple[str, ...] | None = None,
+                 tags_permitidas: set[str] | frozenset[str] | None = None,
                  acao_tags: Literal["replace", "add", "remove"] = "replace") -> Resultado:
         """Repair an entry that was written wrong. This is the path that the
-        "the API cannot edit" premise wrongly said did not exist."""
+        "the API cannot edit" premise wrongly said did not exist.
+
+        `tags_permitidas` is this client space's vocabulary. Without it the
+        transversal floor applies, which is the same contract `Lancamento
+        .problemas` already had: until 08/09/2026 this method validated against
+        the global set with no way to pass another, so a correction carrying a
+        tag that is real in one space was refused as invalid.
+        """
         if aprovacao is None:
             raise AprovacaoAusente(f"correcao de {entry_id} sem aprovacao")
         corpo: dict[str, Any] = {}
@@ -429,10 +527,15 @@ class ClickUp:
         if faturavel is not None:
             corpo["billable"] = faturavel
         if tags is not None:
-            desconhecidas = set(tags) - TAGS_DA_CASA
+            # Mesma razao de `lancar`: a recusa por tag invalida acontece sem
+            # chamada nenhuma, entao o piso aqui e a fotografia local.
+            vocabulario = tags_permitidas if tags_permitidas is not None else TAGS_DA_CASA
+            desconhecidas = set(tags) - vocabulario
             if desconhecidas:
                 return Resultado(entry_id, False, False, detalhe="tags invalidas",
-                                 divergencias=[f"fora do vocabulario: {sorted(desconhecidas)}"])
+                                 divergencias=[
+                                     f"fora do vocabulario deste espaco: {sorted(desconhecidas)}. "
+                                     "Declare as tags do cliente em projetos[].tags no config"])
             corpo["tags"] = _tag_payload(tags)
             corpo["tag_action"] = acao_tags
         if not corpo:

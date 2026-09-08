@@ -57,10 +57,14 @@ EXEMPLO = {
     },
     "task_horas": "86e31gx8v",
     "projetos": [
-        {"nome": "Soteria", "list_id": "901716443542", "horas_contratadas": 1800}
+        # "tipo" escolhe a regua do item 2: "projeto" da 4 dias uteis sem hora
+        # apontada, "chamado" da 2. Ausente vale "projeto".
+        # "tags" e o vocabulario de etiquetas DESTE espaco de cliente; ausente,
+        # vale o conjunto transversal da casa.
+        {"nome": "Soteria", "list_id": "901716443542", "horas_contratadas": 1800,
+         "tipo": "projeto", "tags": []}
     ],
     "roster_rh": "~/.soteria-pmo/rh.csv",
-    "cadencias": {"Jordan Bernardes": 2, "Abner Ben de Morais": 5},
     "feriados": ["2026-09-07"],
 }
 
@@ -85,11 +89,6 @@ def carregar_config(caminho: Path) -> dict:
 
 def _feriados(cfg: dict) -> frozenset[date]:
     return frozenset(date.fromisoformat(d) for d in cfg.get("feriados", []))
-
-
-def _cadencias(cfg: dict) -> dict[str, cronograma.Cadencia]:
-    return {nome: cronograma.Cadencia(nome, int(dias))
-            for nome, dias in (cfg.get("cadencias") or {}).items()}
 
 
 def fontes_de_evidencia(cfg: dict) -> "coletor.Fontes":
@@ -132,8 +131,10 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
     free of any client and can be tested without a network."""
     projetos = cfg.get("projetos") or []
     feriados = _feriados(cfg)
-    bolsoes = [bolsao.Bolsao(p["nome"], p["list_id"], float(p["horas_contratadas"]))
-               for p in projetos]
+    # Passa pelo carregador em vez de construir aqui: e ele que sabe cair no
+    # teto de referencia quando o config nao traz horas, e que devolve os
+    # projetos sem teto nenhum para o digest dizer que ficaram de fora.
+    bolsoes, bolsoes_sem_teto = bolsao.carregar_bolsoes(projetos)
     primeiro = projetos[0] if projetos else None
 
     inicio_semana = hoje - timedelta(days=hoje.weekday() + 7)
@@ -148,10 +149,14 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
 
     tarefas: dict[str, callable] = {
         "bolsao": lambda: bolsao.digest(
-            bolsao.vigiar(cliente, bolsoes, hoje - timedelta(days=30), hoje, feriados)),
+            bolsao.vigiar(cliente, bolsoes, hoje - timedelta(days=30), hoje,
+                          feriados, sem_teto=bolsoes_sem_teto)),
         "datas": lambda: datas.vigiar(cliente, primeiro["list_id"], hoje) if primeiro else "",
-        "cronograma": lambda: cronograma.acompanhar(
-            cliente, primeiro["list_id"], _cadencias(cfg), hoje, feriados) if primeiro else "",
+        # Item 2 le TODOS os projetos, nao so o primeiro: a regua de 03/09 e
+        # por projeto, e avaliar um de uma lista de nove nao e acompanhar
+        # cronograma nenhum.
+        "cronograma": lambda: cronograma.acompanhar_projetos(
+            cliente, projetos, hoje, feriados),
     }
 
     if cfg.get("roster_rh"):

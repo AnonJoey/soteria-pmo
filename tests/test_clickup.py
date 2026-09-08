@@ -226,8 +226,12 @@ def test_tag_fora_do_vocabulario_da_casa_e_recusada():
     assert any("vocabulario" in d for d in r.divergencias)
 
 
-def test_o_vocabulario_tem_as_13_tags():
-    assert len(TAGS_DA_CASA) == 13
+def test_o_vocabulario_tem_as_17_tags_lidas_da_api():
+    """Eram 13 escritas a mao ate 08/09/2026, e as 13 existiam mesmo. Faltavam
+    quatro tags reais, entao um lancamento valido era recusado como invalido."""
+    assert len(TAGS_DA_CASA) == 17
+    for nova in ("ajustes em prod", "auxilio dev", "não faturável", "projeto hubin"):
+        assert nova in TAGS_DA_CASA
 
 
 # ── validacao antes de qualquer chamada ──────────────────────────────────────
@@ -388,3 +392,71 @@ def test_tags_de_espaco_especifico_sao_aceitas_quando_informadas():
     tags_espaco = frozenset({"chamado-4812", "aguardando retorno do cliente"})
     assert lanc.problemas(tags_permitidas=tags_espaco) == []
 
+
+
+# ── vocabulario de etiquetas por espaco de cliente (Abner, 03/09/2026) ───────
+
+
+def test_tag_so_deste_cliente_e_aceita_quando_o_espaco_a_declara():
+    """Cada espaco tem o seu conjunto: o numero do chamado no Grupo Anjos e tag
+    real la e nao existe em lugar nenhum do conjunto transversal."""
+    l = Lancamento(task_id="t1", inicio_ms=1, duracao_ms=3_600_000,
+                     descricao="Atendimento do chamado (Grupo Anjos)",
+                     faturavel=True, tags=("chamado 4471",))
+    assert l.problemas() != [], "sem o vocabulario do espaco, e desconhecida"
+    assert l.problemas({"chamado 4471"}) == []
+
+
+def test_a_recusa_de_tag_ensina_onde_declarar_o_vocabulario():
+    l = Lancamento(task_id="t1", inicio_ms=1, duracao_ms=3_600_000,
+                     descricao="x", faturavel=True, tags=("inventada",))
+    (erro,) = [e for e in l.problemas() if "vocabulario" in e]
+    assert "projetos[].tags" in erro
+
+
+def test_corrigir_aceita_o_vocabulario_do_espaco():
+    """Ate 08/09 este caminho validava contra o conjunto global sem alternativa,
+    entao corrigir uma entrada com tag real de cliente era impossivel."""
+    cliente = ClickUp("tok", "9", dry_run=True)
+    ap = Aprovacao.de("jordan", "correcao de tag por espaco")
+    r = cliente.corrigir("te_1", ap, tags=("chamado 4471",))
+    assert not r.escrito and r.detalhe == "tags invalidas"
+    r = cliente.corrigir("te_1", ap, tags=("chamado 4471",),
+                         tags_permitidas={"chamado 4471"})
+    assert r.detalhe != "tags invalidas"
+
+
+def test_vocabulario_ao_vivo_e_lido_uma_vez_so():
+    """Validar cada lancamento de um lote contra a rede seria ir buscar de novo
+    o que nao mudou no meio do lote."""
+    chamadas = []
+
+    def rota(rq):
+        chamadas.append(str(rq.url))
+        return httpx.Response(200, json={"data": [{"name": "tag do workspace"}]})
+
+    c = cliente(rota)
+    assert c.vocabulario_de_tags() == {"tag do workspace"}
+    assert c.vocabulario_de_tags() == {"tag do workspace"}
+    assert len(chamadas) == 1
+    assert "time_entries/tags" in chamadas[0]
+
+
+def test_sem_conseguir_ler_o_vocabulario_cai_na_fotografia():
+    c = cliente(lambda rq: httpx.Response(500))
+    assert c.vocabulario_de_tags() == TAGS_DA_CASA
+
+
+def test_validar_tag_nao_vai_a_rede():
+    """Garantia que o padrao local existe para preservar: lancamento invalido e
+    recusa de tag acontecem sem tocar a API."""
+    chamadas = []
+
+    def rota(rq):
+        chamadas.append(str(rq.url))
+        return httpx.Response(200, json={"data": []})
+
+    c = cliente(rota)
+    r = c.corrigir("te_1", APROVADO, tags=("inventada",))
+    assert r.detalhe == "tags invalidas"
+    assert chamadas == []

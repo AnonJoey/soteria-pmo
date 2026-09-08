@@ -75,8 +75,14 @@ def main() -> int:
     print("=" * 72)
     print("ACOMPANHAMENTO DE CRONOGRAMA sobre as mesmas 12")
     print("=" * 72)
-    divergencias = C.avaliar(TAREFAS_REAIS, {}, HOJE)
-    print(C.log_de_divergencias(divergencias, HOJE) or "(nada a dizer)")
+    # A unidade e o projeto desde 03/09, entao as doze tarefas entram como a
+    # lista de um projeto so, sem hora lancada no periodo, que e o estado real
+    # do card congelado.
+    divergencia = C.avaliar_projeto(
+        projeto="Agentes de Gestao", list_id="901716443542",
+        tarefas=TAREFAS_REAIS, entradas=[], tipo=C.TIPO_PROJETO, hoje=HOJE)
+    print(C.log_de_divergencias_projetos([divergencia] if divergencia else [], HOJE)
+          or "(nada a dizer)")
 
     print()
     print("=" * 72)

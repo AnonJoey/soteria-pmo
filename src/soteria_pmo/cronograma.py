@@ -3,24 +3,25 @@
 Watches whether work is moving and raises escalating alerts when it is not.
 Two constraints from the meetings shape it, and both are about not crying wolf.
 
-The first was that **cadence is not uniform across developers**, which produced
-the per-person `Cadencia` path below. That premise was ANSWERED AND DISCARDED on
-03/09/2026: asked how many days each dev usually goes without touching a task,
-Abner said he cannot pin that down and that individualising it would cause
-trouble. What replaced it is the work-type ruler in `avaliar_projeto`, four days
-for a project and two for support, alerting per project rather than per task.
+The first is the ruler, and it changed once. The module was built around a
+**per-person cadence**, on the reasoning that a single ruler marks as abandoned
+a task that is simply following another pace. Asked to calibrate it on
+03/09/2026, Abner said he cannot pin down how many days each dev goes without
+touching a task, and that individualising it would cause trouble. What he
+agreed instead is a ruler **by type of work**: four business days without
+logged hours for an implementation project, two for support and tickets, with
+the alert raised **per project rather than per task**, because a developer
+moving between tasks of the same project is not a stalled project.
 
-Both paths live here, and the wiring still points at the old one: `acompanhar`
-runs `avaliar`, so a real run still labels alerts as uncalibrated and asks Abner
-for a calibration he has already declined to give. Pointing `cli.montar_tarefas`
-at `avaliar_projeto` is what closes this, and it needs the project's time
-entries plus its type in the config.
+The per-person path was deleted on 08/09/2026 rather than left beside the new
+one. It had survived four days after being rejected, still printing "confirm
+this person's rhythm with Abner" in real runs, which is what keeping both costs.
 
-The second is that this agent cannot tell "the task stopped" from "the task
-moved and nobody logged it". Both look like silence in ClickUp. Every alert
-therefore states the ambiguity it could not resolve instead of picking the
-accusatory reading, because an alert that says "abandoned" about someone who
-was working is the fastest way to get the whole system turned off.
+The second constraint is that this agent cannot tell "the project stopped" from
+"the project moved and nobody logged it". Both look like silence in ClickUp.
+Every alert therefore states the ambiguity it could not resolve instead of
+picking the accusatory reading, because an alert that says "abandoned" about
+someone who was working is the fastest way to get the whole system turned off.
 """
 
 from __future__ import annotations
@@ -29,14 +30,16 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from .clickup import bloqueada, concluida, status_normalizado
+from .clickup import bloqueada, concluida
 from .periodo import de_ms, dias_uteis
 
 logger = logging.getLogger("pmo.cronograma")
 
-# Escalation, in business days of silence. Levels rather than one threshold so
-# a first nudge is cheap and a real escalation is rare.
-NIVEIS = ((10, "escalar"), (5, "cobranca"), (3, "lembrete"))
+# Escalada, em MULTIPLOS da regua do tipo de trabalho. Niveis em vez de um
+# limite so para que o primeiro toque seja barato e a escalada seja rara.
+# Escolha de desenho, sem verdade externa: o Abner acordou a regua, nao a
+# escalada. Errar aqui produz alerta cedo ou tarde demais, nao numero errado.
+MULTIPLOS = ((3.0, "escalar"), (2.0, "cobranca"), (1.0, "lembrete"))
 
 # Regua acordada com Abner em 03/09/2026 por tipo de trabalho:
 # - Projetos de implantacao: 4 dias uteis sem lancamento de horas
@@ -47,164 +50,7 @@ REGUA_CHAMADO_DIAS = 2
 TIPO_PROJETO = "projeto"
 TIPO_CHAMADO = "chamado"
 
-# Placeholder, NOT a measurement. The real per-person calibration is an open
-# question with Abner. Anything scored against this is reported as
-# uncalibrated so nobody mistakes the default for a measured pace.
-CADENCIA_PADRAO_DIAS = 3
-
-
-@dataclass(frozen=True)
-class Cadencia:
-    """One person's working rhythm, as calibrated with them.
-
-    `dias_entre_toques` is how long this person normally goes between touching
-    a task before it means anything. Someone who batches a week of work into
-    Friday is not late on Wednesday.
-    """
-
-    pessoa: str
-    dias_entre_toques: int
-    calibrada: bool = True
-    observacao: str = ""
-
-    @classmethod
-    def nao_calibrada(cls, pessoa: str) -> "Cadencia":
-        return cls(pessoa=pessoa, dias_entre_toques=CADENCIA_PADRAO_DIAS,
-                   calibrada=False,
-                   observacao="sem calibragem: regua padrao aplicada, "
-                              "confirmar o ritmo desta pessoa com o Abner")
-
-
-@dataclass
-class Divergencia:
-    """A task that has gone quiet, with what the data cannot say about it."""
-
-    task_id: str
-    nome: str
-    pessoa: str
-    status: str
-    dias_em_silencio: int
-    nivel: str
-    cadencia: Cadencia
-    vence_em: date | None = None
-    ambiguidade: str = ""
-    notas: list[str] = field(default_factory=list)
-
-    @property
-    def atrasada(self) -> bool:
-        return self.vence_em is not None and self.vence_em < date.today()
-
-    def linha(self) -> str:
-        base = (f"[{self.nivel}] {self.nome} ({self.pessoa}, {self.status}): "
-                f"{self.dias_em_silencio} dias uteis sem toque")
-        if not self.cadencia.calibrada:
-            base += " [ritmo nao calibrado]"
-        if self.vence_em:
-            base += f", vence {self.vence_em:%d/%m}"
-        return base
-
-
-def _nivel(silencio: int, cadencia: Cadencia) -> str | None:
-    """Escalation level, scaled by this person's own rhythm.
-
-    The thresholds are multiples of the person's cadence rather than fixed
-    days: three days of silence means something different for someone who
-    touches a task daily and someone who batches weekly.
-    """
-    fator = max(cadencia.dias_entre_toques, 1) / CADENCIA_PADRAO_DIAS
-    for limite, nome in NIVEIS:
-        if silencio >= limite * fator:
-            return nome
-    return None
-
-
-def avaliar(tarefas: list[dict], cadencias: dict[str, Cadencia], hoje: date,
-            feriados: frozenset[date] = frozenset()) -> list[Divergencia]:
-    """Score every open task against its owner's rhythm."""
-    divergencias: list[Divergencia] = []
-
-    for t in tarefas:
-        nome_status = status_normalizado(t.get("status")) or "?"
-        if concluida(t.get("status")):
-            continue
-        if bloqueada(t.get("status")):
-            # Blocked is not neglect. A blocked task is expected to sit still,
-            # and chasing it puts the alert on the wrong person: whoever is
-            # blocking it is not whoever owns the card.
-            continue
-
-        responsaveis = t.get("assignees") or []
-        pessoa = responsaveis[0].get("username") if responsaveis else "sem responsavel"
-        cadencia = cadencias.get(pessoa) or Cadencia.nao_calibrada(pessoa)
-
-        tocado = de_ms(t.get("date_updated")) or de_ms(t.get("date_created"))
-        if tocado is None:
-            continue
-        silencio = max(dias_uteis(tocado.date(), hoje, feriados) - 1, 0)
-
-        nivel = _nivel(silencio, cadencia)
-        if nivel is None:
-            continue
-
-        vence = de_ms(t.get("due_date"))
-        notas = []
-        if not cadencia.calibrada:
-            notas.append(cadencia.observacao)
-        if t.get("time_estimate") in (None, 0, "0"):
-            notas.append("sem estimativa de tempo: nao da para dizer se o silencio "
-                         "e compativel com o tamanho da tarefa")
-
-        divergencias.append(Divergencia(
-            task_id=str(t.get("id")),
-            nome=t.get("name") or "(sem nome)",
-            pessoa=pessoa,
-            status=nome_status,
-            dias_em_silencio=silencio,
-            nivel=nivel,
-            cadencia=cadencia,
-            vence_em=vence.date() if vence else None,
-            # Stated on every alert, never resolved by guessing.
-            ambiguidade="o card ficou parado; isso pode ser trabalho que nao "
-                        "andou ou trabalho que andou e nao foi apontado, e este "
-                        "agente nao consegue separar os dois",
-            notas=notas,
-        ))
-
-    ordem = {"escalar": 0, "cobranca": 1, "lembrete": 2}
-    return sorted(divergencias, key=lambda d: (ordem[d.nivel], -d.dias_em_silencio))
-
-
-def log_de_divergencias(divergencias: list[Divergencia], hoje: date) -> str:
-    """The simple divergence log the plan settled on, not a dashboard."""
-    if not divergencias:
-        return ""
-    linhas = [f"Acompanhamento de cronograma, {hoje:%d/%m}", ""]
-    for d in divergencias:
-        linhas.append(f"  {d.linha()}")
-        for n in d.notas:
-            linhas.append(f"      {n}")
-    nao_calibradas = {d.pessoa for d in divergencias if not d.cadencia.calibrada}
-    linhas.append("")
-    linhas.append(f"  Leitura: {divergencias[0].ambiguidade}.")
-    if nao_calibradas:
-        linhas.append(f"  Sem ritmo calibrado: {', '.join(sorted(nao_calibradas))}. "
-                      "Ate calibrar, estes alertas usam a regua padrao e podem estar "
-                      "cobrando quem so trabalha em outro ritmo.")
-    return "\n".join(linhas)
-
-
-def acompanhar(cliente, list_id: str, cadencias: dict[str, Cadencia], hoje: date,
-               feriados: frozenset[date] = frozenset()) -> str:
-    """Read a list and produce today's divergence log."""
-    try:
-        tarefas = cliente.tarefas_da_lista(list_id)
-    except Exception as e:
-        logger.warning("nao foi possivel ler a lista %s: %s", list_id, e)
-        return ""
-    return log_de_divergencias(avaliar(tarefas, cadencias, hoje, feriados), hoje)
-
-
-# ── Acompanhamento por Projeto (Regra acordada em 03/09/2026 com Abner) ──────
+# ── Acompanhamento por projeto, a regra acordada em 03/09/2026 com o Abner ──
 
 
 @dataclass
@@ -232,11 +78,26 @@ class DivergenciaProjeto:
     def precisa_de_alerta(self) -> bool:
         return self.dias_sem_horas >= self.regua_dias and self.tarefas_em_desenvolvimento > 0
 
+    @property
+    def nivel(self) -> str:
+        """Lembrete, cobranca ou escalar, contado em multiplos da regua.
+
+        A regua tem fonte, o Abner em 03/09. A escalada nao tem, e por isso e
+        multiplo dela em vez de dias soltos: mudar a regua leva a escalada
+        junto, e nao sobra um numero de tres dias que ninguem sabe de onde veio.
+        """
+        razao = self.dias_sem_horas / max(self.regua_dias, 1)
+        for corte, nome in MULTIPLOS:
+            if razao >= corte:
+                return nome
+        return "lembrete"
+
     def linha(self) -> str:
         resp = f" ({', '.join(self.responsaveis)})" if self.responsaveis else ""
         return (
-            f"[{self.tipo.upper()}] {self.projeto}{resp}: {self.dias_sem_horas} dias uteis "
-            f"sem horas apontadas (limite: {self.regua_dias}d, "
+            f"[{self.nivel}] {self.projeto}{resp} ({self.tipo}): "
+            f"{self.dias_sem_horas} dias uteis sem horas apontadas "
+            f"(limite: {self.regua_dias}d, "
             f"{self.tarefas_em_desenvolvimento} tarefas em andamento)"
         )
 
@@ -249,12 +110,25 @@ def avaliar_projeto(
     tipo: str = TIPO_PROJETO,
     hoje: date | None = None,
     feriados: frozenset[date] = frozenset(),
+    inicio: date | None = None,
 ) -> DivergenciaProjeto | None:
     """Evaluate a project as a whole against the 4-day / 2-day work type ruler.
 
     Agreed on 03/09/2026: a developer switching tasks within the same project is
-    not a stalled project. The concrete signal is absence of hours logged against
-    the project in the period.
+    not a stalled project. The concrete signal is **absence of hours logged**
+    against the project in the period.
+
+    `inicio` is the start of the window the entries came from, and it exists
+    because of a false negative measured against the real workspace on
+    08/09/2026. With no entries at all, the silence used to be counted from the
+    most recent task update, so a project with zero hours logged in thirty days
+    stayed quiet as long as somebody edited a card. That is the opposite of the
+    agreed signal, and it hid a real case: the audit was reporting 63,4h of
+    evidenced work with nothing logged while this item said nothing.
+
+    So no entries means the silence spans the whole window. The one exception
+    is a project too young to judge: if every open task was created within the
+    ruler, there has not been time to log anything yet, and it stays quiet.
     """
     if hoje is None:
         hoje = date.today()
@@ -263,6 +137,7 @@ def avaliar_projeto(
     em_dev = 0
     bloq = 0
     conc = 0
+    sem_estimativa = 0
     responsaveis_set = set()
 
     for t in tarefas:
@@ -273,18 +148,14 @@ def avaliar_projeto(
         if bloqueada(st):
             bloq += 1
             continue
-        norm = status_normalizado(st)
-        if norm in ("desenvolvimento", "em desenvolvimento", "em andamento", "progresso"):
-            em_dev += 1
-            for a in t.get("assignees") or []:
-                if a.get("username"):
-                    responsaveis_set.add(a["username"])
-        else:
-            # Qualquer tarefa aberta ativa entra na contagem de dev
-            em_dev += 1
-            for a in t.get("assignees") or []:
-                if a.get("username"):
-                    responsaveis_set.add(a["username"])
+        # Toda tarefa aberta e ativa conta como em andamento, esteja o status
+        # nomeado como desenvolvimento ou nao.
+        em_dev += 1
+        if not t.get("time_estimate"):
+            sem_estimativa += 1
+        for a in t.get("assignees") or []:
+            if a.get("username"):
+                responsaveis_set.add(a["username"])
 
     if em_dev == 0:
         return None
@@ -299,22 +170,39 @@ def avaliar_projeto(
         if start:
             datas_entradas.append(start.date())
 
+    nota_de_janela = ""
     if datas_entradas:
         mais_recente = max(datas_entradas)
         silencio = max(dias_uteis(mais_recente, hoje, feriados) - 1, 0)
     else:
-        # Nenhuma hora lancada: olha a atualizacao mais recente das tarefas
-        datas_tarefas = []
-        for t in tarefas:
-            if not concluida(t.get("status")) and not bloqueada(t.get("status")):
-                up = de_ms(t.get("date_updated")) or de_ms(t.get("date_created"))
-                if up:
-                    datas_tarefas.append(up.date())
-        if datas_tarefas:
-            mais_recente = max(datas_tarefas)
-            silencio = max(dias_uteis(mais_recente, hoje, feriados) - 1, 0)
-        else:
-            silencio = regua
+        # Projeto novo demais para julgar: nenhuma tarefa aberta e mais velha
+        # que a propria regua, entao nao houve tempo de lancar nada.
+        criacoes = [d for d in (de_ms(t.get("date_created")) for t in tarefas
+                                if not concluida(t.get("status"))
+                                and not bloqueada(t.get("status"))) if d]
+        if criacoes:
+            idade = max(dias_uteis(min(c.date() for c in criacoes), hoje, feriados) - 1, 0)
+            if idade < regua:
+                return None
+        # Duas medidas do mesmo silencio, e vale a maior. A janela e a do sinal
+        # acordado, horas lancadas, e so existe quando o chamador diz de onde
+        # as entradas vieram. A data de toque das tarefas e o proxy que sobra
+        # quando ela nao existe, e por si so mascarava o caso de trinta dias
+        # sem hora nenhuma com um card editado ontem.
+        candidatos: list[int] = []
+        if inicio:
+            candidatos.append(max(dias_uteis(inicio, hoje, feriados) - 1, 0))
+            nota_de_janela = (
+                f"nenhuma hora lancada no projeto na janela lida, de "
+                f"{inicio:%d/%m} a {hoje:%d/%m}")
+        toques = [d for d in (de_ms(t.get("date_updated")) or de_ms(t.get("date_created"))
+                              for t in tarefas
+                              if not concluida(t.get("status"))
+                              and not bloqueada(t.get("status"))) if d]
+        if toques:
+            candidatos.append(max(dias_uteis(max(t.date() for t in toques),
+                                             hoje, feriados) - 1, 0))
+        silencio = max(candidatos) if candidatos else regua
 
     divergencia = DivergenciaProjeto(
         projeto=projeto,
@@ -329,8 +217,14 @@ def avaliar_projeto(
         responsaveis=sorted(responsaveis_set),
     )
 
+    if nota_de_janela:
+        divergencia.notas.append(nota_de_janela)
     if bloq > 0:
         divergencia.notas.append(f"{bloq} tarefas bloqueadas aguardando resolucao externa")
+    if sem_estimativa:
+        divergencia.notas.append(
+            f"{sem_estimativa} das {em_dev} tarefas em andamento estao sem estimativa: "
+            "nao da para dizer se o silencio e compativel com o tamanho do trabalho")
 
     return divergencia if divergencia.precisa_de_alerta else None
 
@@ -348,3 +242,65 @@ def log_de_divergencias_projetos(divergencias: list[DivergenciaProjeto], hoje: d
     linhas.append(f"  Leitura: {divergencias[0].ambiguidade}.")
     return "\n".join(linhas)
 
+
+
+def acompanhar_projetos(cliente, projetos: list[dict], hoje: date,
+                        feriados: frozenset[date] = frozenset(),
+                        janela_dias: int = 30) -> str:
+    """A porta do item 2: le cada projeto e devolve o log das divergencias.
+
+    Le a equipe uma vez e as entradas de tempo por projeto, porque uma entrada
+    nomeia a sua tarefa e mapear tarefa para projeto no workspace inteiro custa
+    uma chamada por tarefa. E o mesmo caminho que `bolsao.vigiar` ja usa, pela
+    mesma razao, incluindo nomear a equipe em vez de pedir `assignee=any`, que
+    responde 500 num workspace deste tamanho.
+
+    Um projeto que nao pode ser lido nao derruba os outros e tambem nao some em
+    silencio: ausencia de alerta e indistinguivel de projeto saudavel, entao a
+    falha e dita no proprio log.
+    """
+    if not projetos:
+        return ""
+
+    inicio = hoje - timedelta(days=janela_dias)
+    from .periodo import janela as _janela          # import local: evita ciclo
+    ini_ms, fim_ms = _janela(inicio, hoje)
+
+    try:
+        equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
+    except Exception as e:
+        logger.warning("nao foi possivel listar a equipe: %s", e)
+        equipe = None
+
+    divergencias: list[DivergenciaProjeto] = []
+    falhas: list[str] = []
+
+    for proj in projetos:
+        nome = proj.get("nome") or proj.get("list_id", "")
+        list_id = proj.get("list_id")
+        if not list_id:
+            continue
+        tipo = proj.get("tipo") or TIPO_PROJETO
+        try:
+            tarefas = cliente.tarefas_da_lista(list_id)
+            todas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
+        except Exception as e:
+            logger.warning("nao foi possivel ler %s: %s", nome, e)
+            falhas.append(f"{nome}: {type(e).__name__}: {e}")
+            continue
+        do_projeto = [e for e in todas
+                      if (e.get("task_location") or {}).get("list_id") == list_id]
+        d = avaliar_projeto(nome, list_id, tarefas, do_projeto,
+                            tipo=tipo, hoje=hoje, feriados=feriados, inicio=inicio)
+        if d:
+            divergencias.append(d)
+
+    ordem = {"escalar": 0, "cobranca": 1, "lembrete": 2}
+    divergencias.sort(key=lambda d: (ordem[d.nivel], -d.dias_sem_horas))
+
+    log = log_de_divergencias_projetos(divergencias, hoje)
+    if falhas:
+        aviso = ["", "  Projetos que nao puderam ser lidos, e por isso nao foram avaliados:"]
+        aviso += [f"      {f}" for f in falhas]
+        log = (log or f"Acompanhamento de cronograma por projeto, {hoje:%d/%m}") + "\n".join(aviso)
+    return log

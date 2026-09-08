@@ -317,102 +317,165 @@ def tarefa(nome="3.4 Lancamento", quem="Jordan", status="ideia",
             "due_date": due, "time_estimate": est}
 
 
-def test_tarefa_recem_tocada_nao_gera_divergencia():
-    assert C.avaliar([tarefa(tocado_ha=0)], {}, HOJE) == []
+def proj(tarefas, entradas=(), tipo=C.TIPO_PROJETO, nome="Implantacao CRM",
+         list_id="list_1", hoje=HOJE):
+    """Avalia um projeto, que e a unidade do item 2 desde 03/09/2026."""
+    return C.avaliar_projeto(projeto=nome, list_id=list_id, tarefas=tarefas,
+                             entradas=list(entradas), tipo=tipo, hoje=hoje)
+
+
+def test_projeto_com_horas_de_hoje_nao_gera_divergencia():
+    assert proj([tarefa(tocado_ha=0)], [entrada(HOJE, 4.0)]) is None
+
+
+def test_dev_que_troca_de_tarefa_dentro_do_projeto_nao_e_projeto_parado():
+    """O motivo de a unidade ter deixado de ser a tarefa em 03/09.
+
+    A tarefa antiga esta parada ha muito tempo, a nova foi tocada hoje e ha
+    hora lancada no projeto. Pela regua por tarefa isso era alerta; pela regua
+    por projeto nao e, e essa e exatamente a diferenca acordada com o Abner.
+    """
+    parada = tarefa(nome="3.4 antiga", tocado_ha=20, status="desenvolvimento")
+    andando = tarefa(nome="3.5 nova", tocado_ha=0, status="desenvolvimento")
+    assert proj([parada, andando], [entrada(HOJE, 6.0)]) is None
 
 
 def test_silencio_longo_escala():
-    (d,) = C.avaliar([tarefa(tocado_ha=20)], {}, HOJE)
+    d = proj([tarefa(tocado_ha=20)])
     assert d.nivel == "escalar"
 
 
-def test_ritmo_proprio_evita_cobrar_quem_so_trabalha_em_lote():
-    """A restricao central: com regua unica, quem junta a semana na sexta e
-    marcado como abandonado na quarta."""
-    lote = {"Bia": C.Cadencia("Bia", dias_entre_toques=7)}
-    t = tarefa(quem="Bia", tocado_ha=5)
-    assert C.avaliar([t], lote, HOJE) == []
-    assert C.avaliar([t], {}, HOJE) != [], "na regua padrao, 5 dias ja alertaria"
+def test_a_escalada_e_multiplo_da_regua_e_acompanha_o_tipo_de_trabalho():
+    """Chamado tem regua de 2 dias, entao escala com menos silencio que projeto.
 
-
-def test_pessoa_sem_calibragem_e_marcada_como_tal():
-    (d,) = C.avaliar([tarefa(tocado_ha=20)], {}, HOJE)
-    assert not d.cadencia.calibrada
-    assert "nao calibrado" in d.linha()
-    assert any("Abner" in n for n in d.notas)
+    O que amarra os dois e o multiplo, nao um numero de dias solto: mexer na
+    regua leva a escalada junto.
+    """
+    mesmo_silencio = [tarefa(tocado_ha=7, status="desenvolvimento")]
+    assert proj(mesmo_silencio, tipo=C.TIPO_CHAMADO).nivel == "cobranca"
+    assert proj(mesmo_silencio, tipo=C.TIPO_PROJETO).nivel == "lembrete"
 
 
 def test_todo_alerta_declara_a_ambiguidade_que_nao_consegue_resolver():
-    (d,) = C.avaliar([tarefa(tocado_ha=20)], {}, HOJE)
+    d = proj([tarefa(tocado_ha=20)])
     assert "nao foi apontado" in d.ambiguidade
     assert "nao consegue separar" in d.ambiguidade
 
 
 def test_o_log_nunca_usa_a_palavra_abandonada():
-    log = C.log_de_divergencias(C.avaliar([tarefa(tocado_ha=20)], {}, HOJE), HOJE)
+    log = C.log_de_divergencias_projetos([proj([tarefa(tocado_ha=20)])], HOJE)
     for palavra in ("abandonada", "abandonado", "parou de trabalhar"):
         assert palavra not in log.lower()
-    assert "pode ser trabalho que nao andou ou trabalho que andou e nao foi apontado" in log
+    assert "nao andou ou trabalho que andou e nao foi apontado" in log
 
 
-def test_tarefa_concluida_sai_do_radar():
-    assert C.avaliar([tarefa(tocado_ha=30, status="publicado/finalizado")], {}, HOJE) == []
+def test_projeto_so_com_tarefa_concluida_sai_do_radar():
+    assert proj([tarefa(tocado_ha=30, status="publicado/finalizado")]) is None
 
 
-def test_tarefa_bloqueada_sai_do_radar_porque_parada_e_o_esperado():
+def test_projeto_so_com_tarefa_bloqueada_sai_do_radar():
     """Bloqueado nao e negligencia. Cobrar quem tem o card poe o alerta na
     pessoa errada: quem bloqueia nao e quem e dono."""
-    assert C.avaliar([tarefa(tocado_ha=30, status="bloqueado")], {}, HOJE) == []
+    assert proj([tarefa(tocado_ha=30, status="bloqueado")]) is None
 
 
 @pytest.mark.parametrize("status", ["ideia", "desenvolvimento", "homologação",
                                     "aguardando deploy", "backlog"])
 def test_estados_intermediarios_do_workflow_real_continuam_no_radar(status):
-    assert C.avaliar([tarefa(tocado_ha=30, status=status)], {}, HOJE) != []
+    assert proj([tarefa(tocado_ha=30, status=status)]) is not None
+
+
+def test_bloqueada_no_meio_de_tarefas_ativas_vira_nota_e_nao_some():
+    d = proj([tarefa(nome="ativa", tocado_ha=20),
+              tarefa(nome="travada", tocado_ha=20, status="bloqueado")])
+    assert d.tarefas_bloqueadas == 1
+    assert any("bloqueadas" in n for n in d.notas)
 
 
 def test_sem_estimativa_o_alerta_diz_que_nao_da_para_julgar_o_tamanho():
-    (d,) = C.avaliar([tarefa(tocado_ha=20, est=None)], {}, HOJE)
+    d = proj([tarefa(tocado_ha=20, est=None)])
     assert any("sem estimativa" in n for n in d.notas)
 
 
 def test_com_estimativa_essa_nota_some():
-    (d,) = C.avaliar([tarefa(tocado_ha=20, est=3600000)], {}, HOJE)
+    d = proj([tarefa(tocado_ha=20, est=3600000)])
     assert not any("sem estimativa" in n for n in d.notas)
 
 
-def test_ordena_escalar_antes_de_lembrete():
-    tarefas = [tarefa(nome="novo", tocado_ha=4), tarefa(nome="velho", tocado_ha=25)]
-    niveis = [d.nome for d in C.avaliar(tarefas, {}, HOJE)]
-    assert niveis[0] == "velho"
-
-
 def test_tarefa_sem_responsavel_nao_quebra():
-    (d,) = C.avaliar([tarefa(quem=None, tocado_ha=20)], {}, HOJE)
-    assert d.pessoa == "sem responsavel"
-
-
-def test_tarefa_sem_data_de_toque_e_pulada():
-    assert C.avaliar([{"id": "t", "name": "x", "status": "ideia",
-                       "assignees": [], "date_updated": None,
-                       "date_created": None}], {}, HOJE) == []
+    d = proj([tarefa(quem=None, tocado_ha=20)])
+    assert d.responsaveis == []
 
 
 def test_log_vazio_quando_nada_divergiu():
-    assert C.log_de_divergencias([], HOJE) == ""
+    assert C.log_de_divergencias_projetos([], HOJE) == ""
 
 
-def test_log_lista_quem_esta_sem_calibragem():
-    log = C.log_de_divergencias(C.avaliar([tarefa(quem="Ana", tocado_ha=20)], {}, HOJE), HOJE)
-    assert "Sem ritmo calibrado: Ana" in log
+# ── acompanhar_projetos, a porta que a rotina chama ─────────────────────────
 
 
-def test_acompanhar_sobrevive_a_falha_de_leitura():
-    class Quebrado:
-        def tarefas_da_lista(self, *_a, **_k):
+class ClienteFalso:
+    """Cliente de mentira com o minimo que `acompanhar_projetos` consome."""
+
+    def __init__(self, por_lista, entradas=(), quebra_em=()):
+        self.por_lista = por_lista
+        self._entradas = list(entradas)
+        self.quebra_em = set(quebra_em)
+
+    def membros(self):
+        return [{"id": "1"}, {"id": "2"}]
+
+    def tarefas_da_lista(self, list_id, *_a, **_k):
+        if list_id in self.quebra_em:
             raise RuntimeError("api fora")
+        return self.por_lista[list_id]
 
-    assert C.acompanhar(Quebrado(), "1", {}, HOJE) == ""
+    def entradas(self, *_a, **_k):
+        return self._entradas
+
+
+def test_acompanhar_projetos_le_todos_os_projetos_e_nao_so_o_primeiro():
+    cliente = ClienteFalso({"a": [tarefa(nome="A", tocado_ha=20)],
+                            "b": [tarefa(nome="B", tocado_ha=20)]})
+    log = C.acompanhar_projetos(cliente, [{"nome": "Alfa", "list_id": "a"},
+                                          {"nome": "Beta", "list_id": "b"}], HOJE)
+    assert "Alfa" in log and "Beta" in log
+
+
+def test_acompanhar_projetos_ordena_escalar_antes_de_lembrete():
+    """Os dois com horas lancadas, em datas diferentes, para o nivel sair do
+    silencio de cada um e nao da janela comum a todos."""
+    recente = dict(entrada(HOJE - timedelta(days=3), 4.0),
+                   task_location={"list_id": "a"})
+    antigo = dict(entrada(HOJE - timedelta(days=25), 4.0),
+                  task_location={"list_id": "b"})
+    cliente = ClienteFalso({"a": [tarefa(nome="A", tocado_ha=3)],
+                            "b": [tarefa(nome="B", tocado_ha=25)]},
+                           entradas=[recente, antigo])
+    log = C.acompanhar_projetos(cliente, [{"nome": "Recente", "list_id": "a",
+                                           "tipo": C.TIPO_CHAMADO},
+                                          {"nome": "Antigo", "list_id": "b"}], HOJE)
+    assert log.index("Antigo") < log.index("Recente")
+
+
+def test_acompanhar_projetos_conta_so_as_horas_do_proprio_projeto():
+    """Uma entrada de outra lista nao pode calar o alerta deste projeto."""
+    de_outra = dict(entrada(HOJE, 8.0), task_location={"list_id": "outra"})
+    cliente = ClienteFalso({"a": [tarefa(tocado_ha=20)]}, entradas=[de_outra])
+    assert "Alfa" in C.acompanhar_projetos(cliente, [{"nome": "Alfa", "list_id": "a"}], HOJE)
+
+
+def test_projeto_que_nao_pode_ser_lido_e_dito_e_nao_some_em_silencio():
+    """Ausencia de alerta e indistinguivel de projeto saudavel, entao falhar
+    calado seria reportar saude que ninguem verificou."""
+    cliente = ClienteFalso({"a": []}, quebra_em={"a"})
+    log = C.acompanhar_projetos(cliente, [{"nome": "Alfa", "list_id": "a"}], HOJE)
+    assert "nao puderam ser lidos" in log
+    assert "Alfa" in log
+
+
+def test_acompanhar_projetos_sem_projeto_nenhum_e_silencioso():
+    assert C.acompanhar_projetos(ClienteFalso({}), [], HOJE) == ""
 
 
 # ── testes da regra de 03/09 por tipo de trabalho ───────────────────────────
@@ -495,8 +558,34 @@ def test_log_de_divergencias_projetos_formata_saida():
     )
     log = C.log_de_divergencias_projetos([div], HOJE)
     assert "Acompanhamento de cronograma por projeto" in log
-    assert "[PROJETO] Projeto Alpha" in log
+    assert "[lembrete] Projeto Alpha" in log
     assert "Jordan, Abner" in log
     assert "1 tarefas bloqueadas" in log
     assert div.ambiguidade in log
 
+
+
+def test_trinta_dias_sem_hora_nenhuma_nao_fica_calado_por_card_editado_ontem():
+    """O falso negativo medido contra o workspace real em 08/09/2026.
+
+    Antes, sem entrada nenhuma, o silencio vinha da data de toque das tarefas,
+    entao editar um card zerava o alarme de um projeto que nao tinha uma hora
+    lancada em trinta dias. O sinal acordado com o Abner e hora lancada.
+    """
+    tocado_hoje = tarefa(nome="editado agora", tocado_ha=0, status="desenvolvimento")
+    tocado_hoje["date_created"] = ms(datetime.combine(
+        HOJE - timedelta(days=90), datetime.min.time(), tzinfo=BRT))
+    d = C.avaliar_projeto("Soteria", "l", [tocado_hoje], [],
+                          hoje=HOJE, inicio=HOJE - timedelta(days=30))
+    assert d is not None and d.nivel == "escalar"
+    assert any("nenhuma hora lancada" in n for n in d.notas)
+
+
+def test_projeto_novo_demais_para_julgar_fica_quieto():
+    """Sem tarefa mais velha que a propria regua nao houve tempo de lancar
+    nada, e cobrar quem acabou de comecar e o mesmo erro por outra porta."""
+    nova = tarefa(nome="comecou ontem", tocado_ha=0, status="desenvolvimento")
+    nova["date_created"] = ms(datetime.combine(
+        HOJE - timedelta(days=1), datetime.min.time(), tzinfo=BRT))
+    assert C.avaliar_projeto("Novo", "l", [nova], [], hoje=HOJE,
+                             inicio=HOJE - timedelta(days=30)) is None

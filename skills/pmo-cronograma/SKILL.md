@@ -23,12 +23,17 @@ soteria-pmo rodar --forcar cronograma
   proposito: e o jeito mais rapido de o sistema inteiro ser desligado.
 - **Calibragem por pessoa foi descartada nessa mesma conversa.** Perguntado
   quantos dias cada dev costuma passar sem tocar numa tarefa, o Abner respondeu
-  que nao consegue precisar isso e que individualizar daria problema. O modulo
-  ainda carrega o caminho antigo, por pessoa, e e ele que a rotina chama hoje:
-  `avaliar_projeto` implementa a regua acima e ainda nao foi ligada no lugar de
-  `acompanhar`. Ate isso mudar, o log fala em ritmo nao calibrado e pede ao
-  Abner uma calibragem que ele ja respondeu que nao existe. Nao repita esse
-  pedido para quem perguntar.
+  que nao consegue precisar isso e que individualizar daria problema. O caminho
+  por pessoa foi apagado do modulo em 08/09; se alguem pedir o ritmo calibrado
+  de um dev, a resposta e que essa nao e mais a regra.
+- **O sinal e hora lancada, e nao card editado.** Sem nenhuma entrada de tempo
+  na janela lida, o silencio vale a janela inteira. Antes de 08/09 ele vinha da
+  data de toque das tarefas, entao um card editado ontem calava o alarme de um
+  projeto com trinta dias sem uma hora apontada. Medido contra o workspace
+  real: o auditor reportava 63,4h de trabalho evidenciado e sem lancamento
+  enquanto este item nao dizia nada.
+- **Projeto novo demais fica quieto.** Se nenhuma tarefa aberta e mais velha que
+  a propria regua, nao houve tempo de lancar nada.
 
 ## A ambiguidade que todo alerta declara
 
@@ -41,6 +46,13 @@ se ela voltar.
 Tarefa concluida sai do radar. Tarefa bloqueada tambem, porque parada e o
 esperado dela. Tarefa sem estimativa gera alerta com a nota de que nao da para
 julgar o tamanho.
+
+## Escalada
+
+Lembrete, cobranca e escalar saem de MULTIPLOS da regua do tipo de trabalho, e
+nao de dias soltos. A regua tem fonte, o Abner em 03/09; a escalada e escolha de
+desenho, e amarrar uma na outra evita um numero de dias que ninguem sabe de onde
+veio.
 
 ## Codigo
 

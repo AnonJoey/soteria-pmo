@@ -279,14 +279,26 @@ def test_o_lancamento_de_horas_nao_e_faturavel_apesar_da_tag_planejamento():
     assert H.classificar_faturavel(("planejamento",), "Planejamento do sprint") is True
 
 
-def test_as_13_tags_da_casa_sao_as_reais():
+def test_o_vocabulario_e_o_que_a_api_devolveu_e_nao_o_que_alguem_lembrou():
+    """Lido em 08/09/2026 de GET /team/{id}/time_entries/tags.
+
+    A versao anterior deste teste afirmava as mesmas 13 strings que o codigo
+    afirmava, entao os dois estavam incompletos juntos e a suite ficava verde.
+    """
     from soteria_pmo.clickup import TAGS_DA_CASA
     assert TAGS_DA_CASA == {
-        "desenvolvimento", "ajustes em qas", "análise", "atividade de qas",
-        "apoio técnico", "alinhamento técnico", "planejamento", "reunião interna",
-        "reunião com o cliente", "daily", "elaboração de material técnico",
-        "deploy", "bug",
+        "ajustes em prod", "ajustes em qas", "alinhamento técnico", "análise",
+        "apoio técnico", "atividade de qas", "auxilio dev", "bug", "daily",
+        "deploy", "desenvolvimento", "elaboração de material técnico",
+        "não faturável", "planejamento", "projeto hubin",
+        "reunião com o cliente", "reunião interna",
     }
+
+
+def test_a_tag_nao_faturavel_nao_e_cobrada():
+    from soteria_pmo.clickup import NAO_FATURAVEL
+    assert "não faturável" in NAO_FATURAVEL
+    assert H.classificar_faturavel(("não faturável",)) is False
 
 
 def test_a_proposta_leva_o_faturamento_da_atividade():
