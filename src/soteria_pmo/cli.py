@@ -57,12 +57,16 @@ EXEMPLO = {
     },
     "task_horas": "86e31gx8v",
     "projetos": [
+        # "space_id" e a unidade do bolsao: o trabalho de um cliente se espalha
+        # por dezenas de listas do espaco dele, entao medir consumo por uma
+        # lista mede uma fatia. "list_id" segue sendo o que o item 2 e o
+        # guardiao das datas leem, porque esses olham tarefa.
         # "tipo" escolhe a regua do item 2: "projeto" da 4 dias uteis sem hora
         # apontada, "chamado" da 2. Ausente vale "projeto".
-        # "tags" e o vocabulario de etiquetas DESTE espaco de cliente; ausente,
-        # vale o conjunto transversal da casa.
-        {"nome": "Soteria", "list_id": "901716443542", "horas_contratadas": 1800,
-         "tipo": "projeto", "tags": []}
+        {"nome": "Soteria", "list_id": "901716443542", "space_id": "90070084485",
+         "horas_contratadas": 1800, "tipo": "projeto"},
+        {"nome": "China Gate", "space_id": "90070091337",
+         "horas_contratadas": 100, "tipo": "chamado"}
     ],
     "roster_rh": "~/.soteria-pmo/rh.csv",
     "feriados": ["2026-09-07"],

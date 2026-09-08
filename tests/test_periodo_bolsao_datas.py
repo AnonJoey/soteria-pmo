@@ -404,10 +404,17 @@ def test_teto_sugerido_traz_so_os_tetos_ditos_com_firmeza():
 
 
 def test_cliente_sem_teto_fixado_nao_ganha_um_numero_inventado():
-    """O Grupo Anjos foi dito como "sem limite rigido, algo em torno de 150, 75",
-    e o codigo carregava 100.0, que e o meio-termo que ninguem falou."""
-    assert B.teto_sugerido("Grupo Anjos") is None
-    assert "75" in B.teto_a_confirmar("Grupo Anjos")
+    """O Grupo Angelus foi dito como "sem limite rigido, algo em torno de 150,
+    75", e o codigo carregava 100.0, o meio-termo que ninguem falou."""
+    assert B.teto_sugerido("Grupo Angelus") is None
+    assert "75" in B.teto_a_confirmar("Grupo Angelus")
+
+
+def test_o_cliente_se_chama_angelus_e_nao_anjos():
+    """A transcricao automatica moeu o nome, e a chave antiga nunca casaria:
+    os 12 espacos foram lidos do workspace em 08/09 e nenhum e "Grupo Anjos"."""
+    assert B.teto_a_confirmar("Grupo Anjos") is None
+    assert B.teto_a_confirmar("Grupo Angelus") is not None
 
 
 def test_o_que_e_incerto_e_dito_como_incerto_e_nao_calado():
@@ -446,11 +453,11 @@ def test_projeto_sem_teto_sai_nomeado_em_vez_de_sumir_do_digest():
     """Ausencia do digest e indistinguivel de projeto saudavel. Ate 08/09 um
     projeto sem teto era descartado calado em carregar_bolsoes."""
     bolsoes, sem_teto = B.carregar_bolsoes([
-        {"nome": "Grupo Anjos", "list_id": "1"},
-        {"nome": "Yoshii", "list_id": "2"},
+        {"nome": "Grupo Angelus", "space_id": "1"},
+        {"nome": "Yoshii", "space_id": "2"},
     ])
     assert [b.projeto for b in bolsoes] == ["Yoshii"]
-    assert any("Grupo Anjos" in t and "sem teto configurado" in t for t in sem_teto)
+    assert any("Grupo Angelus" in t and "sem teto configurado" in t for t in sem_teto)
     assert any("75" in t for t in sem_teto), "diz o que se sabe, mesmo incerto"
 
 
@@ -460,3 +467,29 @@ def test_o_digest_conta_quem_ficou_fora_da_projecao():
     assert "Sem teto para medir contra" in saida
     assert "Grupo Anjos" in saida
     assert "fora da projecao de estouro" in saida
+
+
+def test_o_bolsao_de_um_cliente_e_o_espaco_e_nao_uma_lista():
+    """Medido no workspace em 08/09: o trabalho de um cliente se espalha por
+    dezenas de listas do espaco dele. Casar por uma lista mede uma fatia."""
+    b = B.Bolsao(projeto="China Gate", list_id="", horas_contratadas=100.0,
+                 space_id="90070091337")
+    sustentacao = {"task_location": {"list_id": "901704356465",
+                                     "space_id": "90070091337"}}
+    sprint = {"task_location": {"list_id": "901716501450",
+                                "space_id": "90070091337"}}
+    outro_cliente = {"task_location": {"list_id": "900902364226",
+                                       "space_id": "90090493842"}}
+    assert b.pertence(sustentacao) and b.pertence(sprint)
+    assert not b.pertence(outro_cliente)
+
+
+def test_sem_espaco_o_bolsao_ainda_vigia_uma_lista_so():
+    b = B.Bolsao(projeto="Uma frente", list_id="123", horas_contratadas=10.0)
+    assert b.pertence({"task_location": {"list_id": "123", "space_id": "9"}})
+    assert not b.pertence({"task_location": {"list_id": "456", "space_id": "9"}})
+
+
+def test_bolsao_sem_lista_nem_espaco_e_recusado_na_construcao():
+    with pytest.raises(ValueError):
+        B.Bolsao(projeto="Nenhum lugar", list_id="", horas_contratadas=10.0)

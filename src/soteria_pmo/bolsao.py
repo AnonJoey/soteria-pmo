@@ -52,9 +52,11 @@ TETOS_DE_REFERENCIA: dict[str, float] = {
 # Ditos na mesma conversa e marcados pelo proprio Abner como a conferir. Nao
 # viram numero: existem para que o vigia possa dizer "ha uma referencia nao
 # confirmada" em vez de calar sobre um cliente que foi citado.
+# "Grupo Anjos" nao existe no workspace. Os 12 espacos de cliente foram lidos em
+# 08/09/2026 e o nome e **Grupo Angelus**: a transcricao automatica da reuniao
+# moeu "Angelus" em "Anjos", e a chave antiga nunca casaria com projeto nenhum.
 TETOS_A_CONFIRMAR: dict[str, str] = {
-    "grupo anjos": "sem limite rigido; a transcricao registra algo entre 75 e 150",
-    "anjos": "sem limite rigido; a transcricao registra algo entre 75 e 150",
+    "angelus": "sem limite rigido; a transcricao registra algo entre 75 e 150",
 }
 
 
@@ -83,15 +85,36 @@ def teto_a_confirmar(projeto: str) -> str | None:
 
 @dataclass(frozen=True)
 class Bolsao:
-    """A project's contracted hours."""
+    """As horas contratadas de um cliente, e onde o consumo delas mora.
+
+    `space_id` existe porque a unidade errada era a lista. Medido no workspace
+    em 08/09/2026: o trabalho de um cliente se espalha por dezenas de listas
+    dentro do espaco dele, o China Gate tem 42 sprints mais chamados,
+    sustentacao e oito cronogramas. Casar o consumo por uma lista so mede uma
+    fatia e chama de bolsao. A entrada de tempo carrega
+    `task_location.space_id`, entao o espaco e uma chave que existe no dado.
+
+    Quando os dois estao presentes o espaco vence, e `list_id` sozinho continua
+    servindo para vigiar uma frente especifica de propositode.
+    """
 
     projeto: str
     list_id: str
     horas_contratadas: float
+    space_id: str = ""
 
     def __post_init__(self) -> None:
         if self.horas_contratadas <= 0:
             raise ValueError(f"bolsao de {self.projeto} sem horas contratadas")
+        if not (self.list_id or self.space_id):
+            raise ValueError(f"bolsao de {self.projeto} sem lista nem espaco")
+
+    def pertence(self, entrada: dict) -> bool:
+        """Se esta entrada de tempo consome este bolsao."""
+        onde = entrada.get("task_location") or {}
+        if self.space_id:
+            return str(onde.get("space_id") or "") == str(self.space_id)
+        return str(onde.get("list_id") or "") == str(self.list_id)
 
 
 @dataclass
@@ -242,8 +265,7 @@ def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
             logger.warning("nao foi possivel ler as entradas de %s: %s", b.projeto, e)
             v.falhas.append(f"{b.projeto}: {type(e).__name__}: {e}")
             continue
-        do_projeto = [e for e in todas
-                      if (e.get("task_location") or {}).get("list_id") == b.list_id]
+        do_projeto = [e for e in todas if b.pertence(e)]
         v.situacoes.append(apurar(do_projeto, b, inicio, fim, feriados))
     return v
 
@@ -297,12 +319,14 @@ def carregar_bolsoes(dados: list[dict] | dict) -> tuple[list[Bolsao], list[str]]
     for item in itens:
         nome = item.get("projeto") or item.get("nome") or ""
         lid = str(item.get("list_id") or "")
+        sid = str(item.get("space_id") or "")
         horas = float(item.get("horas_contratadas") or item.get("horas")
                       or teto_sugerido(nome) or 0.0)
-        if not (nome and lid):
+        if not (nome and (lid or sid)):
             continue
         if horas > 0:
-            resultado.append(Bolsao(projeto=nome, list_id=lid, horas_contratadas=horas))
+            resultado.append(Bolsao(projeto=nome, list_id=lid,
+                                    horas_contratadas=horas, space_id=sid))
             continue
         incerto = teto_a_confirmar(nome)
         sem_teto.append(f"{nome}: sem teto configurado"
