@@ -87,10 +87,14 @@ def test_entrada_sem_descricao_e_apontada_porque_some_do_relatorio():
     assert any("some do relatorio" in o for o in a.observacoes)
 
 
-def test_descricao_sem_cliente_entre_parenteses_e_apontada():
+def test_descricao_sem_cliente_entre_parenteses_NAO_e_apontada():
+    """Medido sobre agosto fechado, 1506 entradas de 14 pessoas: so 7,6%
+    terminam com o cliente entre parenteses. Era estilo tratado como formato, e
+    reprovava 177 das 271 entradas do proprio autor do padrao."""
     aud = A.auditar([entrada(DIA, 8, desc="Desenvolvimento do coletor")],
                     [ev("commit", DIA, 9, 17)], INI, FIM)
-    assert aud.achados[0].veredito == "fora do formato"
+    assert aud.achados[0].veredito == "corroborada"
+    assert aud.achados[0].observacoes == []
 
 
 def test_dia_com_evidencia_e_sem_lancamento_vira_orfa():
@@ -589,3 +593,45 @@ def test_projeto_novo_demais_para_julgar_fica_quieto():
         HOJE - timedelta(days=1), datetime.min.time(), tzinfo=BRT))
     assert C.avaliar_projeto("Novo", "l", [nova], [], hoje=HOJE,
                              inicio=HOJE - timedelta(days=30)) is None
+
+
+def test_task_como_string_nao_derruba_a_auditoria():
+    """Forma real, achada auditando agosto fechado do time com a suite verde:
+    o ClickUp devolve `task` como string em parte das entradas, e `or {}` deixa
+    a string passar porque string nao vazia e verdadeira."""
+    torta = dict(entrada(DIA, 4), task="apenas-um-id")
+    aud = A.auditar([torta], [], INI, FIM, com_evidencia=False)
+    assert len(aud.achados) == 1
+    assert aud.achados[0].task_id == "?"
+
+
+def test_auditoria_de_outra_pessoa_nao_emite_veredito_de_lastro():
+    """Sem a maquina dela nao ha o que comparar, e marcar tudo como sem lastro
+    e verdadeiro e inutil: imprime a lista inteira."""
+    aud = A.auditar([entrada(DIA, 4)], [], INI, FIM, com_evidencia=False)
+    assert aud.achados[0].veredito == "sem veredito de lastro"
+    assert aud.excecoes == []
+    assert "nao foi procurada" in A.relatorio(aud)
+
+
+def test_entradas_sem_tarefa_nao_viram_uma_tarefa_gigante():
+    """Com "?" no lugar do id, todas as entradas sem tarefa somavam entre si.
+    Medido sobre agosto do time: um achado de 293,8h "numa tarefa so" que eram
+    240 entradas de onze pessoas empilhadas num id inventado."""
+    sem_tarefa = [dict(em(DIA, 8 + i, 3.0, eid=f"e{i}"), task=None) for i in range(6)]
+    assert A.concentracoes(sem_tarefa) == []
+
+
+def test_concentracao_soma_por_pessoa_e_nao_pelo_time():
+    """Os cortes do Andre descrevem UMA pessoa numa tarefa. Somar o time
+    transforma trabalho paralelo normal em alerta."""
+    mesma_tarefa = [
+        dict(em(DIA, 9, 5.0, eid="a", task="t9"), user={"username": "Ana"}),
+        dict(em(DIA, 9, 5.0, eid="b", task="t9"), user={"username": "Bia"}),
+    ]
+    assert A.concentracoes(mesma_tarefa) == []
+    sozinha = [
+        dict(em(DIA, 9, 5.0, eid="a", task="t9"), user={"username": "Ana"}),
+        dict(em(DIA, 15, 5.0, eid="b", task="t9"), user={"username": "Ana"}),
+    ]
+    assert any(c.escopo == "dia" for c in A.concentracoes(sozinha))

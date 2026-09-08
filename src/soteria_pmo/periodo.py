@@ -137,3 +137,16 @@ def fundir(intervalos: list[Intervalo]) -> list[Intervalo]:
 def horas(intervalos: list[Intervalo]) -> float:
     """Total hours across windows, counting overlaps once."""
     return sum(i.horas for i in fundir(intervalos))
+
+
+def campo_objeto(dado: dict, chave: str) -> dict:
+    """O sub-objeto de uma entrada de tempo, ou vazio quando nao e um.
+
+    `or {}` nao basta: o ClickUp devolve `task` como string em parte das
+    entradas reais, e string e verdadeira, entao o `or` a deixa passar e o
+    `.get` seguinte estoura. Achado auditando agosto fechado do time em
+    08/09/2026, 1506 entradas, com uma suite de 291 testes verde: nenhum
+    payload de teste tinha essa forma.
+    """
+    valor = dado.get(chave)
+    return valor if isinstance(valor, dict) else {}

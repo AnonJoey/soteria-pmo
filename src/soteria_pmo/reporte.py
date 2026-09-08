@@ -24,7 +24,7 @@ from dataclasses import dataclass, field
 from datetime import date
 
 from .clickup import concluida as _concluida, status_normalizado
-from .periodo import de_ms, janela
+from .periodo import campo_objeto, de_ms, janela
 
 logger = logging.getLogger("pmo.reporte")
 
@@ -93,7 +93,7 @@ def montar(tarefas: list[dict], entradas: list[dict], projeto: str,
     faturaveis = nao_faturaveis = 0.0
     for e in entradas:
         h = int(e.get("duration") or 0) / 3_600_000
-        tid = str((e.get("task") or {}).get("id") or "")
+        tid = str(campo_objeto(e, "task").get("id") or "")
         if tid:
             horas_por_tarefa[tid] += h
         if e.get("billable"):

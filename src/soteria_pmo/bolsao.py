@@ -23,7 +23,7 @@ import logging
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from .periodo import BRT, de_ms, dias_uteis, janela
+from .periodo import BRT, campo_objeto, de_ms, dias_uteis, janela
 
 logger = logging.getLogger("pmo.bolsao")
 
@@ -111,7 +111,7 @@ class Bolsao:
 
     def pertence(self, entrada: dict) -> bool:
         """Se esta entrada de tempo consome este bolsao."""
-        onde = entrada.get("task_location") or {}
+        onde = campo_objeto(entrada, "task_location")
         if self.space_id:
             return str(onde.get("space_id") or "") == str(self.space_id)
         return str(onde.get("list_id") or "") == str(self.list_id)

@@ -31,7 +31,7 @@ from dataclasses import dataclass, field
 from datetime import date, timedelta
 
 from .clickup import bloqueada, concluida
-from .periodo import de_ms, dias_uteis
+from .periodo import campo_objeto, de_ms, dias_uteis
 
 logger = logging.getLogger("pmo.cronograma")
 
@@ -289,7 +289,7 @@ def acompanhar_projetos(cliente, projetos: list[dict], hoje: date,
             falhas.append(f"{nome}: {type(e).__name__}: {e}")
             continue
         do_projeto = [e for e in todas
-                      if (e.get("task_location") or {}).get("list_id") == list_id]
+                      if campo_objeto(e, "task_location").get("list_id") == list_id]
         d = avaliar_projeto(nome, list_id, tarefas, do_projeto,
                             tipo=tipo, hoje=hoje, feriados=feriados, inicio=inicio)
         if d:

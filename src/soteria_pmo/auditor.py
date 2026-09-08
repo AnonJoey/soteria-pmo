@@ -38,7 +38,8 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from .periodo import Intervalo, de_ms, fundir, horas as somar_horas
+from .periodo import (Intervalo, campo_objeto, de_ms, fundir,
+                       horas as somar_horas)
 
 logger = logging.getLogger("pmo.auditor")
 
@@ -47,7 +48,14 @@ logger = logging.getLogger("pmo.auditor")
 # would flag every entry and a loose one would flag none.
 TOLERANCIA = 0.25
 
-VEREDITOS = ("corroborada", "divergente", "sem lastro", "fora do formato")
+VEREDITOS = ("corroborada", "divergente", "sem lastro", "fora do formato",
+             "sem veredito de lastro")
+
+#: A observacao mais comum de longe, e por isso a unica que o relatorio agrega
+#: em vez de repetir. Medido sobre agosto fechado: 241 de 1506 entradas, o que
+#: renderizava um bloco identico 241 vezes e um relatorio de 1086 linhas. Uma
+#: auditoria que imprime tudo e lida por cima, e ler por cima e nao auditar.
+SEM_DESCRICAO = "sem descricao: a entrada some do relatorio de horas faturaveis"
 
 # Eight hours of one day on a single task is what made Andre stop and look, in
 # the cases he walked through on 04/09. It is his example, not a measurement, so
@@ -87,14 +95,24 @@ class Achado:
     horas_evidencia: float
     faturavel: bool
     veredito: str
+    #: Quem lancou. Vazio numa auditoria de uma pessoa so, onde a resposta e
+    #: obvia; preenchido quando o periodo cobre o time, para o relatorio poder
+    #: agrupar por pessoa em vez de listar mil entradas iguais.
+    pessoa: str = ""
     evidencias: list[str] = field(default_factory=list)
     observacoes: list[str] = field(default_factory=list)
+
+    #: Vereditos que por si so nao pedem atencao. "corroborada" e a entrada que
+    #: bateu com a evidencia; "sem veredito de lastro" e a de quem foi auditado
+    #: sem maquina para comparar, e transformar isso em excecao imprimiria a
+    #: lista inteira, que e o mesmo que nao auditar.
+    NEUTROS = ("corroborada", "sem veredito de lastro")
 
     @property
     def precisa_de_olho(self) -> bool:
         # An entry in a clock conflict corroborates against the day's evidence
         # like any other, so the verdict alone would hide it.
-        return self.veredito != "corroborada" or bool(self.observacoes)
+        return self.veredito not in self.NEUTROS or bool(self.observacoes)
 
     @property
     def diferenca(self) -> float:
@@ -156,6 +174,9 @@ class Auditoria:
 
     inicio: date
     fim: date
+    #: Falso quando se audita alguem que nao e o dono desta maquina: as
+    #: checagens entre entradas valem, a comparacao com evidencia nao existe.
+    com_evidencia: bool = True
     achados: list[Achado] = field(default_factory=list)
     orfas: list[Orfa] = field(default_factory=list)
     conflitos: list[Conflito] = field(default_factory=list)
@@ -193,8 +214,25 @@ class Auditoria:
 
 
 def _formato_ok(descricao: str) -> bool:
-    d = (descricao or "").strip()
-    return bool(d) and d.endswith(")")
+    """So uma regra, e ela tem consequencia medida: descricao vazia.
+
+    A descricao da entrada de tempo e o rotulo da linha no Relatorio de horas
+    faturaveis. Sem ela o trabalho existe, e cobrado, e e invisivel para quem le
+    o relatorio. Foi assim que os primeiros dias do piloto sumiram.
+
+    ANTES daqui a regra tambem exigia terminar em ")", o "cliente entre
+    parenteses" registrado como convencao da casa em 07/08. Medido sobre agosto
+    fechado em 08/09/2026, 1506 entradas de 14 pessoas: **7,6% terminam com
+    parenteses**. Nao e convencao da casa, e habito de uma pessoa, e mesmo o
+    Marcos Claudio, de quem a regra foi copiada, so faz isso em 36% das dele.
+    A regra reprovava 177 das 271 entradas do proprio autor do padrao.
+
+    Regra de estilo tratada como regra de formato produz uma auditoria que
+    acusa o time inteiro no primeiro uso, e uma auditoria assim e desligada na
+    primeira semana. O que sobrou e o que tem consequencia: 241 das 1506
+    entradas de agosto, 16%, estao sem descricao nenhuma.
+    """
+    return bool((descricao or "").strip())
 
 
 def _intervalo(ent: dict) -> Intervalo | None:
@@ -287,10 +325,22 @@ def concentracoes(entradas: list[dict]) -> list[Concentracao]:
         iv = _intervalo(ent)
         if iv is None or iv.horas <= 0:
             continue
-        task = str((ent.get("task") or {}).get("id") or "?")
-        por_dia[(iv.inicio.date(), task)] += iv.horas
-        por_tarefa[task] += iv.horas
-        descricao.setdefault(task, ent.get("description") or "")
+        task = str(campo_objeto(ent, "task").get("id") or "")
+        if not task:
+            # Entrada sem tarefa identificavel nao entra: com um "?" no lugar
+            # do id, todas elas viravam A MESMA tarefa e somavam entre si.
+            # Medido sobre agosto fechado do time: gerava um achado de "293,8h
+            # numa tarefa so" que era, na verdade, 240 entradas sem descricao
+            # de onze pessoas empilhadas num id inventado.
+            continue
+        # A chave inclui quem lancou quando o periodo cobre mais de uma pessoa.
+        # Os cortes do Andre descrevem UMA pessoa numa tarefa; somar o time
+        # inteiro transforma trabalho paralelo normal em alerta.
+        quem = str(campo_objeto(ent, "user").get("username") or "")
+        chave = f"{task}|{quem}" if quem else task
+        por_dia[(iv.inicio.date(), chave)] += iv.horas
+        por_tarefa[chave] += iv.horas
+        descricao.setdefault(chave, ent.get("description") or "")
 
     achados = [
         Concentracao(escopo="dia", dia=d, task_id=task, horas=round(h, 2),
@@ -333,13 +383,28 @@ def _marcar_data_trocada(aud: "Auditoria", tolerancia: float) -> None:
 
 
 def auditar(entradas: list[dict], evidencias: list, inicio: date, fim: date,
-            tolerancia: float = TOLERANCIA) -> Auditoria:
-    """Match logged entries against evidence, both directions."""
+            tolerancia: float = TOLERANCIA, com_evidencia: bool = True) -> Auditoria:
+    """Match logged entries against evidence, both directions.
+
+    `com_evidencia=False` audita quem NAO e o dono desta maquina. Metade das
+    checagens nao precisa de evidencia nenhuma: sobreposicao, contencao,
+    duplicidade, concentracao, dia sem relogio e formato da descricao comparam
+    as entradas entre si, e foi exatamente ali que viviam os dois primeiros
+    casos reais do Andre.
+
+    Sem isto, auditar outra pessoa marcava TODA entrada como "sem lastro", que
+    e verdade e e inutil: a maquina dela nao esta aqui. Com isto, o veredito de
+    lastro simplesmente nao e emitido, e o relatorio diz que nao foi procurado.
+
+    Existe porque a pendencia dos CSVs mensais partia da premissa de que o dado
+    de outras pessoas precisava vir por fora. Medido em 08/09/2026: a API
+    devolve 1393 entradas de 13 pessoas em 30 dias, entao o dado ja esta la.
+    """
     por_dia: dict[date, list] = defaultdict(list)
     for e in evidencias:
         por_dia[e.inicio.date()].append(e)
 
-    aud = Auditoria(inicio=inicio, fim=fim)
+    aud = Auditoria(inicio=inicio, fim=fim, com_evidencia=com_evidencia)
     dias_com_lancamento: set[date] = set()
 
     for ent in entradas:
@@ -357,9 +422,13 @@ def auditar(entradas: list[dict], evidencias: list, inicio: date, fim: date,
         if not _formato_ok(descricao):
             # An entry without the house format vanishes from the billable
             # hours report, which is how the pilot's first days went missing.
-            observacoes.append("fora do formato da casa: some do relatorio de horas")
+            observacoes.append(SEM_DESCRICAO)
 
-        if not do_dia:
+        if not com_evidencia:
+            # Auditoria de outra pessoa: nao ha maquina para comparar, entao o
+            # veredito de lastro nao e emitido nem para dizer que falta.
+            veredito = "fora do formato" if observacoes else "sem veredito de lastro"
+        elif not do_dia:
             veredito = "sem lastro"
             observacoes.append(
                 "nenhuma evidencia de maquina neste dia. Nao quer dizer que nao houve "
@@ -375,12 +444,13 @@ def auditar(entradas: list[dict], evidencias: list, inicio: date, fim: date,
         aud.achados.append(Achado(
             entry_id=str(ent.get("id") or "?"),
             dia=dia,
-            task_id=str((ent.get("task") or {}).get("id") or "?"),
+            task_id=str(campo_objeto(ent, "task").get("id") or "?"),
             descricao=descricao,
             horas_lancadas=lancadas,
             horas_evidencia=evid_horas,
             faturavel=bool(ent.get("billable")),
             veredito=veredito,
+            pessoa=str(campo_objeto(ent, "user").get("username") or ""),
             evidencias=[e.descricao for e in do_dia[:5]],
             observacoes=observacoes,
         ))
@@ -435,10 +505,16 @@ def relatorio(aud: Auditoria) -> str:
         "",
         f"Lancado no periodo: {aud.total_lancado:.1f}h "
         f"({aud.total_faturavel:.1f}h faturaveis) em {len(aud.achados)} entradas",
-        f"Corroboradas pela evidencia: {len(aud.corroboradas)} de {len(aud.achados)} "
-        f"({aud.taxa_de_corroboracao:.0%})",
-        f"Precisam de olho: {len(aud.excecoes)}",
     ]
+    if aud.com_evidencia:
+        linhas.append(
+            f"Corroboradas pela evidencia: {len(aud.corroboradas)} de {len(aud.achados)} "
+            f"({aud.taxa_de_corroboracao:.0%})")
+    else:
+        linhas.append("Evidencia de maquina nao foi procurada: esta e a auditoria "
+                      "de outra pessoa, entao valem as checagens das entradas "
+                      "entre si e o formato da descricao")
+    linhas.append(f"Precisam de olho: {len(aud.excecoes)}")
     if aud.orfas:
         linhas.append(f"Trabalho com evidencia e sem lancamento: "
                       f"{aud.horas_orfas:.1f}h em {len(aud.orfas)} dias")
@@ -447,9 +523,33 @@ def relatorio(aud: Auditoria) -> str:
                       f"({aud.horas_em_conflito:.1f}h em disputa)")
     linhas.append("")
 
-    if aud.excecoes:
+    # As entradas cujo unico problema e a descricao ausente saem agregadas: sao
+    # a maioria das excecoes num periodo de time inteiro, e mil blocos iguais
+    # afogam os poucos achados que pedem julgamento.
+    so_sem_descricao = [a for a in aud.excecoes
+                        if a.observacoes == [SEM_DESCRICAO]
+                        and a.veredito in ("fora do formato", "sem veredito de lastro")]
+    restantes = [a for a in aud.excecoes if a not in so_sem_descricao]
+
+    if so_sem_descricao:
+        horas = sum(a.horas_lancadas for a in so_sem_descricao)
+        linhas.append(f"## Entradas sem descricao: {len(so_sem_descricao)}, {horas:.1f}h")
+        linhas.append("")
+        linhas.append("  A descricao e o rotulo da linha no Relatorio de horas "
+                      "faturaveis. Sem ela a hora e cobrada e ninguem consegue "
+                      "dizer do que se tratou.")
+        por_pessoa: dict[str, list[float]] = defaultdict(lambda: [0, 0.0])
+        for a in so_sem_descricao:
+            alvo = por_pessoa[a.pessoa or "(sem nome)"]
+            alvo[0] += 1
+            alvo[1] += a.horas_lancadas
+        for quem, (n, h) in sorted(por_pessoa.items(), key=lambda x: -x[1][1]):
+            linhas.append(f"    {quem}: {n} entradas, {h:.1f}h")
+        linhas.append("")
+
+    if restantes:
         linhas.append("## Excecoes, com a evidencia ao lado")
-        for a in sorted(aud.excecoes, key=lambda x: (x.veredito, x.dia)):
+        for a in sorted(restantes, key=lambda x: (x.veredito, x.dia)):
             linhas.append(
                 f"\n### {a.dia:%d/%m} [{a.veredito}] {a.horas_lancadas:.1f}h "
                 f"{'faturavel' if a.faturavel else 'nao faturavel'}")

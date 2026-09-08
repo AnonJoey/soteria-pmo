@@ -27,6 +27,8 @@ from typing import Any, Iterable, Literal
 
 import httpx
 
+from .periodo import campo_objeto
+
 logger = logging.getLogger("pmo.clickup")
 
 API = "https://api.clickup.com/api/v2"
@@ -470,7 +472,7 @@ class ClickUp:
         except ClickUpError:
             return None
         for e in janela:
-            if (e.get("task") or {}).get("id") == l.task_id and \
+            if campo_objeto(e, "task").get("id") == l.task_id and \
                     abs(int(e.get("duration", 0)) - l.duracao_ms) < 1000:
                 logger.warning("chamada falhou mas a entrada %s existe", e.get("id"))
                 return str(e.get("id"))
