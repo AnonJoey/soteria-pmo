@@ -170,6 +170,11 @@ class Apuracao:
     propostas: list[Proposta] = field(default_factory=list)
     lacunas: list[Lacuna] = field(default_factory=list)
     horas_esperadas_por_dia: float = 8.0
+    #: Feriados da janela. Sem eles a expectativa conta um dia que ninguem
+    #: trabalhou, e como a cobertura e o proposto DIVIDIDO pelo esperado, um
+    #: denominador inflado faz o metodo parecer pior do que e e dispara
+    #: pergunta sobre um dia que nao existiu.
+    feriados: frozenset[date] = frozenset()
 
     @property
     def horas_propostas(self) -> float:
@@ -179,7 +184,7 @@ class Apuracao:
     def dias_uteis(self) -> int:
         d, total = self.inicio, 0
         while d <= self.fim:
-            if d.weekday() < 5:
+            if d.weekday() < 5 and d not in self.feriados:
                 total += 1
             d += timedelta(days=1)
         return total
@@ -409,19 +414,43 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
 
 def apurar(inicio: date, fim: date, evidencias: list[Evidencia], falas: list[Fala],
            task_id: str, cliente: str, tags: tuple[str, ...] = ("desenvolvimento",),
-           horas_esperadas_por_dia: float = 8.0) -> Apuracao:
-    """Walk a window day by day, proposing and questioning."""
+           horas_esperadas_por_dia: float = 8.0,
+           feriados: frozenset[date] = frozenset()) -> Apuracao:
+    """Walk a window day by day, proposing and questioning.
+
+    Feriado e fim de semana nao sao pulados: sao percorridos e o que aparecer
+    neles vira PERGUNTA em vez de proposta faturavel. Medido em 08/09/2026 na
+    primeira apuracao com dado proprio: o feriado de 07/09 rendeu uma proposta
+    de 6,6h faturaveis, e o trabalho daquele dia era pessoal. Pular o dia
+    esconderia a hora; propor calado a cobraria. Perguntar e a unica das tres
+    que nao erra sozinha.
+    """
     ap = Apuracao(inicio=inicio, fim=fim,
-                  horas_esperadas_por_dia=horas_esperadas_por_dia)
+                  horas_esperadas_por_dia=horas_esperadas_por_dia,
+                  feriados=frozenset(feriados))
     dias_percorridos: set[date] = set()
     d = inicio
     while d <= fim:
-        if d.weekday() < 5:
+        util = d.weekday() < 5 and d not in ap.feriados
+        if util:
             dias_percorridos.add(d)
             propostas, lacunas = apurar_dia(
                 d, evidencias, falas, task_id, cliente, tags, horas_esperadas_por_dia)
             ap.propostas.extend(propostas)
             ap.lacunas.extend(lacunas)
+        else:
+            fora = [e for e in evidencias if e.inicio.date() == d]
+            if fora:
+                que_dia = "feriado" if d in ap.feriados else "fim de semana"
+                horas_brutas = round(somar_horas(fundir([e.intervalo for e in fora])), 2)
+                ap.lacunas.append(Lacuna(
+                    dia=d,
+                    pergunta=(f"Ha evidencia de {horas_brutas:.1f}h em {d:%d/%m}, que e "
+                              f"{que_dia}. Isso foi trabalho de cliente, trabalho "
+                              f"interno ou pessoal?"),
+                    motivo=f"{que_dia} com evidencia: nada aqui e faturavel sem voce dizer",
+                    horas_em_aberto=horas_brutas,
+                ))
         d += timedelta(days=1)
 
     # Statements that landed on a day the walk never visits. This happens for

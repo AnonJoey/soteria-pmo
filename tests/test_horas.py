@@ -531,3 +531,35 @@ def test_nome_com_uma_data_so_continua_funcionando(tmp_path):
     f = tmp_path / "2026-09-02-Daily-Equipe-Dev-transcricao.md"
     f.write_text("---\ntitle: x\n---\n\n[0:10] Jordan Bernardes: falei alguma coisa aqui\n")
     assert ler_transcricao(f).dia == date(2026, 9, 2)
+
+
+# ── feriado e fim de semana, achados na primeira apuracao com dado proprio ───
+
+
+def test_feriado_nao_conta_como_dia_esperado():
+    """A cobertura e o proposto dividido pelo esperado. Um feriado no
+    denominador faz o metodo parecer pior do que e."""
+    ap = H.Apuracao(inicio=date(2026, 9, 1), fim=date(2026, 9, 8),
+                    feriados=frozenset({date(2026, 9, 7)}))
+    assert ap.dias_uteis == 5
+    sem = H.Apuracao(inicio=date(2026, 9, 1), fim=date(2026, 9, 8))
+    assert sem.dias_uteis == 6
+
+
+def test_evidencia_em_feriado_vira_pergunta_e_nao_proposta_faturavel():
+    """Medido em 08/09/2026: o feriado de 07/09 rendeu 6,6h faturaveis
+    propostas, e o trabalho daquele dia era pessoal."""
+    feriado = date(2026, 9, 7)
+    ap = H.apurar(feriado, feriado, [ev("commit", feriado, 9, 16)], [],
+                  "t1", "Soteria", feriados=frozenset({feriado}))
+    assert ap.propostas == []
+    (lacuna,) = ap.lacunas
+    assert "feriado" in lacuna.pergunta
+    assert "pessoal" in lacuna.pergunta
+
+
+def test_evidencia_em_fim_de_semana_tambem_pergunta():
+    sabado = date(2026, 9, 5)
+    ap = H.apurar(sabado, sabado, [ev("commit", sabado, 10, 14)], [], "t1", "Soteria")
+    assert ap.propostas == []
+    assert "fim de semana" in ap.lacunas[0].pergunta

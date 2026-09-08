@@ -47,6 +47,14 @@ def servidor(*, entry=None, post_status=200, put_status=200, delete_status=200,
 
     def handler(request: httpx.Request) -> httpx.Response:
         estado["chamadas"].append((request.method, request.url.path))
+        # Rota propria das etiquetas, e ela vem ANTES da criacao porque o
+        # caminho tambem contem "time_entries". Medido contra a API real em
+        # 08/09/2026: e por aqui que tag de entrada de tempo entra.
+        if request.method == "POST" and request.url.path.endswith("/time_entries/tags"):
+            corpo = json.loads(request.content)
+            if estado["entry"] is not None:
+                estado["entry"]["tags"] = corpo.get("tags") or []
+            return httpx.Response(200, json={"data": {}})
         if request.method == "POST" and "time_entries" in request.url.path:
             corpo = json.loads(request.content)
             estado["entry"] = {
@@ -57,12 +65,16 @@ def servidor(*, entry=None, post_status=200, put_status=200, delete_status=200,
             return httpx.Response(post_status, json={"data": {"id": "te_1"}})
         if request.method == "PUT":
             corpo = json.loads(request.content)
+            # O PUT IGNORA tags, e com tags sozinhas responde 400. Este duble
+            # aceitava, e por ser mais permissivo que a API deixou passar um
+            # defeito que so a primeira escrita real encontrou.
+            util = {k: v for k, v in corpo.items() if k in ("description", "billable")}
+            if not util:
+                return httpx.Response(400, json={"err": "At least one param is required",
+                                                 "ECODE": "TIMEENTRY_060"})
             if estado["entry"] is not None and put_status < 400:
-                if "tags" in corpo:
-                    estado["entry"]["tags"] = corpo["tags"]
-                for campo, chave in (("description", "description"), ("billable", "billable")):
-                    if campo in corpo:
-                        estado["entry"][chave] = corpo[campo]
+                for campo in util:
+                    estado["entry"][campo] = util[campo]
             return httpx.Response(put_status, json={"data": estado["entry"]})
         if request.method == "DELETE":
             if delete_status < 400:
@@ -195,24 +207,43 @@ def test_aprovacao_registra_quem_e_o_escopo():
 # ── controle 4: tags em etapa separada, no formato que grava ─────────────────
 
 
-def test_tags_vao_num_put_separado_como_objeto_nao_string():
-    """Strings are what made tags silently not stick on the pilot's 97 entries."""
+def test_tags_vao_numa_rota_propria_e_como_objeto_nao_string():
+    """Duas coisas medidas contra a API real, as duas em 08/09/2026.
+
+    String no lugar de objeto e o que fez as tags nao colarem nas 97 entradas
+    do piloto. E a rota nao e o PUT: com tags sozinhas ele responde 400
+    TIMEENTRY_060, ignorando o campo. O projeto carregava desde 02/09 que o PUT
+    aceitava tags, e isso era documentacao lida, nao medicao.
+    """
     handler, estado = servidor()
     c = cliente(handler)
     c.lancar(bom(tags=("desenvolvimento",)), APROVADO)
     assert estado["entry"]["tags"] == [
         {"name": "desenvolvimento", "tag_fg": "#FFFFFF", "tag_bg": "#BF55EC"}
     ]
-    assert ("PUT", "/api/v2/team/9007/time_entries/te_1") in estado["chamadas"]
+    assert ("POST", "/api/v2/team/9007/time_entries/tags") in estado["chamadas"]
+    assert ("PUT", "/api/v2/team/9007/time_entries/te_1") not in estado["chamadas"]
 
 
-def test_o_post_nao_leva_tags():
-    """The create call's accepted shape and the tags' shape are not the same."""
+def test_o_put_com_tags_sozinhas_e_recusado_pela_api():
+    """O duble reproduz o 400 real, para o defeito nao poder voltar em silencio."""
+    handler, _ = servidor(entry={"id": "te_1", "description": "x",
+                                 "billable": True, "tags": []})
+    c = cliente(handler)
+    r = c._c.put("https://api.clickup.com/api/v2/team/9007/time_entries/te_1",
+                 json={"tags": [{"name": "daily"}], "tag_action": "replace"})
+    assert r.status_code == 400
+    assert "TIMEENTRY_060" in r.text
+
+
+def test_o_post_de_criacao_nao_leva_tags():
+    """A forma que a criacao aceita e a das tags nao sao a mesma, e as tags tem
+    rota propria: espiar so a criacao, senao o POST de tags entra na conta."""
     enviado = {}
     handler, _ = servidor()
 
     def espiao(request: httpx.Request) -> httpx.Response:
-        if request.method == "POST":
+        if request.method == "POST" and not request.url.path.endswith("/time_entries/tags"):
             enviado.update(json.loads(request.content))
         return handler(request)
 

@@ -248,7 +248,8 @@ def cmd_horas(args) -> int:
     ap = horas.apurar(inicio, fim, evidencias, falas,
                       cfg.get("task_horas", ""),
                       (cfg.get("projetos") or [{}])[0].get("nome", "Cliente"),
-                      tuple(args.tags or ("desenvolvimento",)))
+                      tuple(args.tags or ("desenvolvimento",)),
+                      feriados=_feriados(cfg))
     print(horas.relatorio(ap))
     return 0 if ap.pronta_para_lancar else 2
 

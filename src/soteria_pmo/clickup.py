@@ -479,9 +479,24 @@ class ClickUp:
         return None
 
     def _aplicar_tags(self, entry_id: str, tags: Iterable[str]) -> None:
-        self._c.put(
-            f"{API}/team/{self.team_id}/time_entries/{entry_id}",
-            json={"tags": _tag_payload(tags), "tag_action": "replace"},
+        """Etiqueta de entrada de tempo tem rota propria, e nao e o PUT.
+
+        MEDIDO em 08/09/2026, na primeira escrita real deste pacote. O projeto
+        carregava desde 02/09 que "o PUT aceita description, billable e tags no
+        formato {name, tag_fg, tag_bg}". Aceita os dois primeiros. Com tags
+        sozinhas ele responde **400 TIMEENTRY_060, "At least one param is
+        required"**: o campo e ignorado e o corpo passa a valer vazio.
+
+        As tags entram por `POST /team/{id}/time_entries/tags`, que recebe a
+        lista de entradas e a lista de tags e devolve 200.
+
+        Essa era a ultima peca do pacote sustentada so por documentacao lida.
+        A conferencia pos-escrita foi o que a pegou: as quatro entradas de
+        01 a 04/09 gravaram certas e voltaram sem etiqueta nenhuma.
+        """
+        self._c.post(
+            f"{API}/team/{self.team_id}/time_entries/tags",
+            json={"time_entry_ids": [entry_id], "tags": _tag_payload(tags)},
         )
 
     def _conferir(self, entry_id: str, l: Lancamento) -> Resultado:
@@ -528,6 +543,7 @@ class ClickUp:
             corpo["description"] = descricao
         if faturavel is not None:
             corpo["billable"] = faturavel
+        aplicar_tags: tuple[str, ...] = ()
         if tags is not None:
             # Mesma razao de `lancar`: a recusa por tag invalida acontece sem
             # chamada nenhuma, entao o piso aqui e a fotografia local.
@@ -538,19 +554,29 @@ class ClickUp:
                                  divergencias=[
                                      f"fora do vocabulario deste espaco: {sorted(desconhecidas)}. "
                                      "Declare as tags do cliente em projetos[].tags no config"])
-            corpo["tags"] = _tag_payload(tags)
-            corpo["tag_action"] = acao_tags
-        if not corpo:
+            # NAO entram no corpo do PUT: ele ignora o campo e responde 400 se
+            # nao houver mais nada junto. Rota propria, depois.
+            aplicar_tags = tuple(tags)
+        if not corpo and not aplicar_tags:
             return Resultado(entry_id, False, False, detalhe="nada a corrigir")
 
         if self.dry_run:
             return Resultado(entry_id, False, False,
                              detalhe=f"dry_run: corrigiria {entry_id} com {sorted(corpo)}")
 
-        r = self._c.put(f"{API}/team/{self.team_id}/time_entries/{entry_id}", json=corpo)
-        if r.status_code >= 400:
-            return Resultado(entry_id, False, False,
-                             detalhe=f"PUT devolveu {r.status_code}: {r.text[:200]}")
+        if corpo:
+            r = self._c.put(f"{API}/team/{self.team_id}/time_entries/{entry_id}", json=corpo)
+            if r.status_code >= 400:
+                return Resultado(entry_id, False, False,
+                                 detalhe=f"PUT devolveu {r.status_code}: {r.text[:200]}")
+        if aplicar_tags:
+            # Etapa separada porque a rota e outra. Falhar aqui nao desfaz o
+            # PUT acima, e por isso a conferencia abaixo olha as tres coisas.
+            try:
+                self._aplicar_tags(entry_id, aplicar_tags)
+            except Exception as e:
+                logger.warning("tags de %s nao aplicadas: %s", entry_id, e)
+
         lido = self.entrada(entry_id)
         if lido is None:
             raise ConferenciaFalhou(f"entrada {entry_id} sumiu depois da correcao", entry_id)
@@ -559,6 +585,11 @@ class ClickUp:
             divergencias.append("descricao nao gravou")
         if faturavel is not None and bool(lido.get("billable")) != faturavel:
             divergencias.append("faturavel nao gravou")
+        if aplicar_tags:
+            gravadas = {t.get("name") for t in (lido.get("tags") or []) if isinstance(t, dict)}
+            faltando = sorted(set(aplicar_tags) - gravadas)
+            if faltando:
+                divergencias.append(f"tags nao gravadas: {faltando}")
         return Resultado(entry_id, True, not divergencias,
                          detalhe="corrigido", divergencias=divergencias)
 
