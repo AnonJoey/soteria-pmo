@@ -1,5 +1,10 @@
 """What runs when: the seven items on their four cadences.
 
+Eight entries for seven items: the audit appears twice, because it answers two
+different questions on two different clocks. Daily it looks at the days a dev
+can still fix, and that is who reads it. Monthly it looks at the month that
+closed, and that one is Andre's. Same module, same rules, different window.
+
 The planning up to 28/08 treated the six items as one delivery, and the gap
 that surfaced on 30/08 was that they do not share a frequency. Cadence is what
 decides infrastructure, and once the budget watch left real time behind, no
@@ -29,11 +34,14 @@ logger = logging.getLogger("pmo.rotina")
 DIARIA, SEMANAL, MENSAL, CONTINUA = "diaria", "semanal", "mensal", "continua"
 
 # Item to cadence. Taken from the cadence map of 30/08, with the budget watch
-# already moved off real time by the 31/08 meeting.
+# already moved off real time by the 31/08 meeting, and the audit moved off the
+# monthly closing by Andre on 04/09: a discrepancy found while the invoice is
+# being cut is too late for the dev to fix, so it gets billed as it stands.
 CADENCIAS: dict[str, str] = {
     "reporte": SEMANAL,        # item 1, mais disparo manual
     "cronograma": CONTINUA,    # item 2, alerta escalonado
-    "auditor": MENSAL,         # item 3, no fechamento
+    "auditor": DIARIA,         # item 3, diario desde 04/09, na janela ainda corrigivel
+    "fechamento": MENSAL,      # item 3 de novo, o mes fechado, para o Andre
     "horas": DIARIA,           # item 4, sempre com aprovacao humana
     "bolsao": DIARIA,          # item 5, era tempo real ate 31/08
     "rh": DIARIA,              # item 6, regra de calendario

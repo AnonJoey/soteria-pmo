@@ -16,6 +16,7 @@ hours is a separate, deliberate act.
 from __future__ import annotations
 
 import json
+import logging
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -23,7 +24,14 @@ from pathlib import Path
 from . import auditor, bolsao, coletor, cronograma, daily, datas, horas, periodo, reporte, rh, rotina
 from .clickup import ClickUp
 
+logger = logging.getLogger("pmo.cli")
+
 CONFIG_PADRAO = Path.home() / ".delegation_core" / "pmo.json"
+
+# How many days back the daily audit looks. Long enough that an entry logged on
+# Friday is still checked on Monday, short enough that the same exception is not
+# repeated for weeks after everyone has decided to leave it alone.
+JANELA_DA_AUDITORIA = 7
 
 EXEMPLO = {
     "token": "pk_...",
@@ -66,6 +74,41 @@ def _cadencias(cfg: dict) -> dict[str, cronograma.Cadencia]:
             for nome, dias in (cfg.get("cadencias") or {}).items()}
 
 
+def fontes_de_evidencia(cfg: dict) -> "coletor.Fontes":
+    """The evidence sources as the config describes them, in one place.
+
+    Both `pmo horas` and the daily audit need the same wiring, and having it
+    written twice is how the audit ended up running against an empty evidence
+    list while the hours engine collected properly.
+    """
+    ev = cfg.get("evidencia") or {}
+    return coletor.Fontes(
+        repos=tuple(ev.get("repos", ())),
+        autor_git=ev.get("autor_git", ""),
+        sessoes_ia=ev.get("sessoes_ia", ""),
+        vault=ev.get("vault", ""),
+        historico_navegador=ev.get("historico_navegador", ""),
+    )
+
+
+def evidencia_do_periodo(cfg: dict, inicio: date, fim: date) -> list:
+    """Machine evidence for the audit, or nothing at all if it cannot be had.
+
+    A collector that fails must not take the audit down with it: the entries
+    are still worth checking against each other, and an audit with no evidence
+    reports every entry as having no trail, which is true and says so.
+    """
+    if not (cfg.get("evidencia") or {}):
+        return []
+    try:
+        evidencias, _falhas = coletor.coletar(fontes_de_evidencia(cfg), inicio, fim)
+    except Exception:
+        logger.exception("coleta de evidencia falhou; auditoria segue sem lastro")
+        return []
+    uteis, _pessoais = coletor.separar_pessoal(evidencias)
+    return uteis
+
+
 def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
     """Wire each item to its data. Kept out of rotina.py so that module stays
     free of any client and can be tested without a network."""
@@ -79,6 +122,11 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
     fim_semana = inicio_semana + timedelta(days=6)
     inicio_mes = (hoje.replace(day=1) - timedelta(days=1)).replace(day=1)
     fim_mes = hoje.replace(day=1) - timedelta(days=1)
+    # The audit runs daily since 04/09, so its window is the stretch a dev can
+    # still correct, not the month that already closed. The closing view is the
+    # same module over another window: `--forcar auditor --dia` on day one.
+    inicio_aud = hoje - timedelta(days=JANELA_DA_AUDITORIA)
+    fim_aud = hoje - timedelta(days=1)
 
     tarefas: dict[str, callable] = {
         "bolsao": lambda: bolsao.digest(
@@ -96,11 +144,13 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
         tarefas["reporte"] = lambda: reporte.gerar(
             cliente, primeiro["list_id"], primeiro["nome"], inicio_semana, fim_semana)
         tarefas["auditor"] = lambda: auditor.relatorio(auditor.auditar(
+            cliente.entradas(*periodo.janela(inicio_aud, fim_aud)),
+            evidencia_do_periodo(cfg, inicio_aud, fim_aud),
+            inicio_aud, fim_aud))
+        tarefas["fechamento"] = lambda: auditor.relatorio(auditor.auditar(
             cliente.entradas(*periodo.janela(inicio_mes, fim_mes)),
-            # Sem evidencia de maquina por enquanto: o auditor reporta as
-            # entradas como sem lastro, que e verdade e nao acusacao. Ligar o
-            # coletor aqui e o passo seguinte.
-            [], inicio_mes, fim_mes))
+            evidencia_do_periodo(cfg, inicio_mes, fim_mes),
+            inicio_mes, fim_mes))
 
     # Item 4 is absent on purpose. Hours need evidence this command does not
     # collect and an approval it must not fabricate, so it has its own path.
@@ -147,14 +197,7 @@ def cmd_horas(args) -> int:
     ev_cfg = cfg.get("evidencia") or {}
     pessoa = args.pessoa or cfg.get("pessoa", "")
 
-    fontes = coletor.Fontes(
-        repos=tuple(ev_cfg.get("repos", ())),
-        autor_git=ev_cfg.get("autor_git", ""),
-        sessoes_ia=ev_cfg.get("sessoes_ia", ""),
-        vault=ev_cfg.get("vault", ""),
-        historico_navegador=ev_cfg.get("historico_navegador", ""),
-    )
-    evidencias, falhas = coletor.coletar(fontes, inicio, fim)
+    evidencias, falhas = coletor.coletar(fontes_de_evidencia(cfg), inicio, fim)
     print(coletor.resumo(evidencias, falhas))
     print()
     # Personal evidence is dropped from the apuracao, not from the report: the

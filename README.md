@@ -8,12 +8,16 @@ texto para uma pessoa ler. Escopo fechado em 31/08/2026, marco de entrega 08/09.
 **O que ja chega estruturado nao passa pelo modelo.** Coleta com script,
 interpretacao com o modelo, confirmacao com a pessoa.
 
-Cinco dos sete itens nao tocam num LLM em momento nenhum: reporte, bolsao, RH,
-guardiao das datas e cronograma leem campos e fazem contas. O modelo aparece em
-dois lugares, ambos lendo texto que so um humano escreveu: o motor de horas
-interpretando transcricao de daily, e o auditor comparando o que foi dito com o
-que foi lancado. Nos dois casos ele entra por um `Protocol`, entao teste e dry
-run nunca precisam de GPU.
+Seis dos sete itens nao tocam num LLM em momento nenhum: reporte, bolsao, RH,
+guardiao das datas, cronograma e o auditor leem campos e fazem contas. O modelo
+aparece num lugar so, lendo texto que so um humano escreveu: `daily.py`
+interpretando transcricao de daily para o motor de horas. Ele entra por um
+`Protocol`, entao teste e dry run nunca precisam de GPU.
+
+A contagem estava errada nos artefatos de 03 e 04/09, que diziam cinco de sete e
+dois pontos de chamada. `auditor.py` nunca chamou modelo nenhum: ele consome a
+evidencia que o `daily.py` produziu, o que e outra coisa. A conferencia foi feita
+em 04/09, depois da validacao com o Andre.
 
 O criterio nao e estetico. O ClickUp AI foi descartado na casa por custo, 9,1k
 creditos, o que ja torna custo por execucao um criterio de decisao aqui. Um
@@ -26,7 +30,7 @@ muito diferente de um agente caro fazendo a mesma coisa.
 |---|---|---|---|
 | 1 | `reporte.py` | Relatorio do periodo, preenchendo template com dado estruturado | semanal + disparo manual |
 | 2 | `cronograma.py` | Log de divergencias entre ritmo esperado e observado | continua |
-| 3 | `auditor.py` | Confere o que foi lancado contra a evidencia, nos dois sentidos | mensal, no fechamento |
+| 3 | `auditor.py` | Confere o que foi lancado contra a evidencia e as entradas entre si | diaria, mais o mes fechado |
 | 4 | `horas.py` | Propoe lancamentos a partir de evidencia, e pergunta pelo resto | diaria |
 | 5 | `bolsao.py` | Consumo do bolsao e projecao de estouro | diaria |
 | 6 | `rh.py` | Datas de aniversario, tempo de casa, experiencia, contrato e ferias | diaria |
@@ -39,6 +43,25 @@ Apoio: `clickup.py` (cliente com os controles de escrita), `periodo.py`
 tudo como uma entrega so escondeu, ate 30/08, que so um item exigia
 infraestrutura dedicada. Quando o bolsao saiu do tempo real em 31/08, nenhum
 passou a exigir.
+
+## Onde os itens viram skill e agente
+
+A fronteira validada com o Andre em 04/09, empacotada:
+
+| Item | Entrega | Arquivo |
+|---|---|---|
+| 1 reporte | skill `pmo-reporte` | `skills/pmo-reporte/SKILL.md` |
+| 2 cronograma | skill `pmo-cronograma` | `skills/pmo-cronograma/SKILL.md` |
+| 3 auditor | skill `pmo-auditor` | `skills/pmo-auditor/SKILL.md` |
+| 4 horas | agente `pmo-horas` | `agents/pmo-horas.md` |
+| 5 bolsao | skill `pmo-bolsao` | `skills/pmo-bolsao/SKILL.md` |
+| 6 RH | skill `pmo-rh` | `skills/pmo-rh/SKILL.md` |
+| 7 datas | skill `pmo-datas` | `skills/pmo-datas/SKILL.md` |
+
+Um agente so, com varias capacidades, que e como o Andre desmontou a contagem de
+sete: sete e numero de funcionalidade, nao de processo. `post_install` copia as
+skills para `~/.claude/skills` e os agentes para `~/.claude/agents`, sem nunca
+sobrescrever o que a pessoa ja tem com aquele nome.
 
 ## O que nada aqui faz
 
