@@ -14,7 +14,7 @@ exigencia de servidor dedicado do pacote inteiro: nenhum item precisa mais de
 infraestrutura propria.
 
 ```bash
-delegation-core pmo rodar --forcar bolsao
+soteria-pmo rodar --forcar bolsao
 ```
 
 ## As faixas
@@ -37,4 +37,4 @@ projeto, esse valor ganha do default. Sempre diga qual dos dois esta em uso.
 
 ## Codigo
 
-`src/delegation_core/pmo/bolsao.py`, testes em `tests/pmo/test_periodo_bolsao_datas.py`.
+`src/soteria_pmo/bolsao.py`, testes em `tests/test_periodo_bolsao_datas.py`.

@@ -13,7 +13,7 @@ cronograma. Nao usa modelo.
 Cadencia continua, todo dia util.
 
 ```bash
-delegation-core pmo rodar --forcar datas
+soteria-pmo rodar --forcar datas
 ```
 
 ## O que vigia
@@ -28,4 +28,4 @@ delegation-core pmo rodar --forcar datas
 
 ## Codigo
 
-`src/delegation_core/pmo/datas.py`, testes em `tests/pmo/test_periodo_bolsao_datas.py`.
+`src/soteria_pmo/datas.py`, testes em `tests/test_periodo_bolsao_datas.py`.

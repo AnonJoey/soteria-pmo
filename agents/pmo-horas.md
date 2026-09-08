@@ -25,8 +25,8 @@ carrega duas ou tres capacidades.
 **1. Apurar um periodo.**
 
 ```bash
-delegation-core pmo horas --de AAAA-MM-DD --ate AAAA-MM-DD
-delegation-core pmo horas --de ... --ate ... --sem-modelo   # so evidencia de maquina
+soteria-pmo horas --de AAAA-MM-DD --ate AAAA-MM-DD
+soteria-pmo horas --de ... --ate ... --sem-modelo   # so evidencia de maquina
 ```
 
 Coleta commits, sessoes de IA, notas do vault e historico de navegador, separa a
@@ -71,5 +71,5 @@ permissao: o agente propoe, a pessoa confirma, so entao escreve.
 
 ## Codigo
 
-`src/delegation_core/pmo/horas.py`, `coletor.py`, `daily.py`, `clickup.py`.
-Testes em `tests/pmo/test_horas.py` e `tests/pmo/test_clickup.py`.
+`src/soteria_pmo/horas.py`, `coletor.py`, `daily.py`, `clickup.py`.
+Testes em `tests/test_horas.py` e `tests/test_clickup.py`.

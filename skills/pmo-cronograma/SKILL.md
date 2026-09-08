@@ -12,7 +12,7 @@ Item 2 dos sete. Nao usa modelo: compara ritmo esperado com observado.
 Cadencia continua, todo dia util.
 
 ```bash
-delegation-core pmo rodar --forcar cronograma
+soteria-pmo rodar --forcar cronograma
 ```
 
 ## A regua, acertada com o Abner em 03/09
@@ -39,4 +39,4 @@ julgar o tamanho.
 
 ## Codigo
 
-`src/delegation_core/pmo/cronograma.py`, testes em `tests/pmo/test_auditor_cronograma.py`.
+`src/soteria_pmo/cronograma.py`, testes em `tests/test_auditor_cronograma.py`.

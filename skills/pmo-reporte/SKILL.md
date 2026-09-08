@@ -13,7 +13,7 @@ Semanalmente, na segunda-feira, sobre a semana que fechou, mais disparo manual
 quando alguem pedir.
 
 ```bash
-delegation-core pmo rodar --forcar reporte
+soteria-pmo rodar --forcar reporte
 ```
 
 ## A regra que nao se negocia
@@ -40,4 +40,4 @@ pedir a pre-analise, diga que ela esta pendente de decisao do Max.
 
 ## Codigo
 
-`src/delegation_core/pmo/reporte.py`, testes em `tests/pmo/test_rh_reporte.py`.
+`src/soteria_pmo/reporte.py`, testes em `tests/test_rh_reporte.py`.

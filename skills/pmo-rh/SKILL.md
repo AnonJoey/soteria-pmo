@@ -13,7 +13,7 @@ LLM gasta credito para receber uma subtracao de datas.
 Diariamente.
 
 ```bash
-delegation-core pmo rodar --forcar rh
+soteria-pmo rodar --forcar rh
 ```
 
 ## Antecedencias
@@ -35,4 +35,4 @@ fonte.
 
 ## Codigo
 
-`src/delegation_core/pmo/rh.py`, testes em `tests/pmo/test_rh_reporte.py`.
+`src/soteria_pmo/rh.py`, testes em `tests/test_rh_reporte.py`.

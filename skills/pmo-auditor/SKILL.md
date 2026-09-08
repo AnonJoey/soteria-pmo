@@ -20,10 +20,10 @@ Andre no faturamento, sobre o que sobrou depois de um mes de correcao diaria.
 ## Como rodar
 
 ```bash
-delegation-core pmo rodar                      # roda o que e devido hoje
-delegation-core pmo rodar --forcar auditor     # so o auditor, fora da cadencia
-delegation-core pmo rodar --forcar fechamento  # o mes fechado, visao do Andre
-delegation-core pmo cadencias                  # o que roda hoje e o que nao
+soteria-pmo rodar                      # roda o que e devido hoje
+soteria-pmo rodar --forcar auditor     # so o auditor, fora da cadencia
+soteria-pmo rodar --forcar fechamento  # o mes fechado, visao do Andre
+soteria-pmo cadencias                  # o que roda hoje e o que nao
 ```
 
 Nao escreve no ClickUp. Produz texto para uma pessoa ler.
@@ -83,4 +83,4 @@ confirmacao a cada alteracao. `clickup.corrigir` exige `Aprovacao` explicita e
 
 ## Codigo
 
-`src/delegation_core/pmo/auditor.py`, testes em `tests/pmo/test_auditor_cronograma.py`.
+`src/soteria_pmo/auditor.py`, testes em `tests/test_auditor_cronograma.py`.
