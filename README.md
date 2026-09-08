@@ -61,16 +61,28 @@ aprovacao.
 **O que ja chega estruturado nao passa pelo modelo.** Coleta com script,
 interpretacao com o modelo, confirmacao com a pessoa.
 
-Seis dos sete itens nao tocam num LLM em momento nenhum: reporte, bolsao, RH,
-guardiao das datas, cronograma e o auditor leem campos e fazem contas. O modelo
-aparece num lugar so, lendo texto que so um humano escreveu: `daily.py`
-interpretando transcricao de daily para o motor de horas. Ele entra por um
-`Protocol`, entao teste e dry run nunca precisam de GPU.
+**Nenhum dos sete modulos chama modelo.** `reporte.py`, `bolsao.py`, `rh.py`,
+`datas.py`, `cronograma.py`, `auditor.py` e a parte deterministica de `horas.py`
+leem campo e fazem conta. O que existe de modelo no pacote sao dois pontos, os
+dois lendo texto que so uma pessoa escreve:
 
-A contagem estava errada nos artefatos de 03 e 04/09, que diziam cinco de sete e
-dois pontos de chamada. `auditor.py` nunca chamou modelo nenhum: ele consome a
-evidencia que o `daily.py` produziu, o que e outra coisa. A conferencia foi feita
-em 04/09, depois da validacao com o Andre.
+- `daily.InterpreteLocal`, interpretando transcricao de daily para o motor de
+  horas. Entra por um `Protocol`, entao teste e dry run nunca precisam de GPU.
+- a **leitura do periodo** no reporte, escrita pelo agente atraves da skill
+  `pmo-reporte` e montada por `reporte.com_pre_analise`. Autorizada pelo Max em
+  08/09, depois da sugestao do Andre em 04/09.
+
+A separacao entre os dois planos e o que sustenta os dois: o corpo do relatorio
+continua auditavel numero a numero, e a leitura chega assinada como leitura,
+entre um cabecalho e um rodape fixos. Validar o reporte nunca vira reconferir
+aritmetica misturada com opiniao.
+
+A contagem ja esteve errada duas vezes nos artefatos, e por motivos opostos. Os
+de 03 e 04/09 diziam cinco de sete e dois pontos de chamada, contando o
+`auditor.py`, que nunca chamou modelo nenhum: ele consome a evidencia que o
+`daily.py` produziu, o que e outra coisa. Corrigido em 04/09 para seis de sete e
+um ponto. Com a leitura do periodo sao dois pontos de novo, e nenhum deles
+dentro de modulo.
 
 O criterio nao e estetico. O ClickUp AI foi descartado na casa por custo, 9,1k
 creditos, o que ja torna custo por execucao um criterio de decisao aqui. Um
@@ -81,7 +93,7 @@ muito diferente de um agente caro fazendo a mesma coisa.
 
 | # | Modulo | O que faz | Cadencia |
 |---|---|---|---|
-| 1 | `reporte.py` | Relatorio do periodo, preenchendo template com dado estruturado | semanal + disparo manual |
+| 1 | `reporte.py` | Relatorio do periodo com dado estruturado, mais a leitura escrita pelo agente | semanal + disparo manual |
 | 2 | `cronograma.py` | Log de projetos sem horas apontadas, na regua por tipo de trabalho | continua |
 | 3 | `auditor.py` | Confere o que foi lancado contra a evidencia e as entradas entre si | diaria, mais o mes fechado |
 | 4 | `horas.py` | Propoe lancamentos a partir de evidencia, e pergunta pelo resto | diaria |

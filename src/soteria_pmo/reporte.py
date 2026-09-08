@@ -10,10 +10,17 @@ is produced and handed to Max, who validates and sends. Level 3, sending
 straight to the client, was refused. `Reporte.destino` records that so the
 boundary is visible in the artifact and not only in a meeting transcript.
 
-What the report does NOT do is judge. It says a task moved or did not, and how
+What this MODULE does not do is judge. It says a task moved or did not, and how
 many hours went where. It does not say whether that is good, because that
-judgement needs context the card does not hold and it is the part Max is
-validating.
+judgement needs context the card does not hold.
+
+The pre-analysis exists as of 08/09/2026, and it lives one layer up. Andre
+suggested it on 04/09 and Max said yes. It is written by the agent through the
+`pmo-reporte` skill, from this report and nothing else, and it arrives as a
+clearly labelled block on top of a body that stays deterministic. Keeping the
+two apart is the point: the numbers are auditable and the reading is signed as
+a reading, so validating the report never means re-checking arithmetic mixed
+with opinion.
 """
 
 from __future__ import annotations
@@ -155,6 +162,34 @@ def markdown(r: Reporte) -> str:
         "nao apontada.\n"
     )
     return cabecalho + corpo + rodape
+
+
+#: Cabecalho do bloco de leitura. Fixo, para que quem le saiba, sempre no mesmo
+#: lugar e com as mesmas palavras, onde termina o numero e comeca a opiniao.
+CABECALHO_PRE_ANALISE = "## Leitura do periodo"
+
+RODAPE_PRE_ANALISE = (
+    "Esta leitura foi escrita a partir dos numeros acima e de mais nada. "
+    "E uma proposta de interpretacao para o Max validar, nao um fato apurado."
+)
+
+
+def com_pre_analise(corpo: str, analise: str) -> str:
+    """Monta o reporte com a leitura por cima, marcada como leitura.
+
+    A analise entra ANTES do corpo porque e o que uma pessoa le primeiro, e sai
+    entre um cabecalho e um rodape fixos porque a fronteira entre o que foi
+    contado e o que foi interpretado nao pode depender de como o texto ficou
+    redigido naquele dia.
+
+    Sem analise, devolve o corpo intacto: o reporte continua valendo sozinho, e
+    uma falha na etapa de escrita nao pode tirar do ar o item inteiro.
+    """
+    texto = (analise or "").strip()
+    if not texto:
+        return corpo
+    return (f"{CABECALHO_PRE_ANALISE}\n\n{texto}\n\n"
+            f"_{RODAPE_PRE_ANALISE}_\n\n---\n\n{corpo}")
 
 
 def gerar(cliente, list_id: str, projeto: str, inicio: date, fim: date) -> str:

@@ -281,3 +281,19 @@ def test_reporte_executivo_cliente_consolida_implantacao_e_sustentacao():
     assert "Ajuste de Permissoes" in md
     assert "Max valida e envia (nivel 2)" in md
 
+
+
+# ── pre-analise do reporte, autorizada pelo Max em 08/09/2026 ────────────────
+
+
+def test_a_leitura_entra_por_cima_e_marcada_como_leitura():
+    saida = R.com_pre_analise("# Soteria\ncorpo com numeros", "O projeto avancou.")
+    assert saida.index("Leitura do periodo") < saida.index("corpo com numeros")
+    assert "nao um fato apurado" in saida
+
+
+def test_sem_leitura_o_reporte_continua_inteiro():
+    """Falha na etapa de escrita nao pode tirar do ar o item inteiro."""
+    corpo = "# Soteria\ncorpo com numeros"
+    assert R.com_pre_analise(corpo, "") == corpo
+    assert R.com_pre_analise(corpo, "   ") == corpo
