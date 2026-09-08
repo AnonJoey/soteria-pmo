@@ -25,7 +25,8 @@ import sys
 from datetime import date, timedelta
 from pathlib import Path
 
-from . import auditor, bolsao, coletor, cronograma, daily, datas, horas, periodo, reporte, rh, rotina
+from . import (auditor, bolsao, checagem, coletor, cronograma, daily, datas, horas,
+               periodo, reporte, rh, rotina)
 from .clickup import ClickUp
 
 logger = logging.getLogger("pmo.cli")
@@ -298,6 +299,29 @@ def _subcomandos(pmo_sub) -> None:
     p_cad.add_argument("--dia", default=None)
     p_cad.add_argument("--config", default=str(CONFIG_PADRAO))
     p_cad.set_defaults(func=cmd_cadencias)
+
+    p_chk = pmo_sub.add_parser(
+        "checar", help="O que e obrigatorio, o que e opcional, e o que falta agora")
+    p_chk.add_argument("--config", default=str(CONFIG_PADRAO))
+    p_chk.set_defaults(func=cmd_checar)
+
+
+def cmd_checar(args) -> int:
+    """Diz o que este pacote precisa, o que ele so aproveita, e o que falta.
+
+    Sai com 0 mesmo faltando fonte opcional: ausencia de fonte nao e falha do
+    ambiente, e menos evidencia. So o obrigatorio ausente sai com 1.
+    """
+    try:
+        cfg = carregar_config(Path(args.config).expanduser())
+    except ConfigAusente as e:
+        print(f"Sem configuracao do PMO em {e}.\n\nCrie o arquivo com esta forma:\n",
+              file=sys.stderr)
+        print(json.dumps(EXEMPLO, indent=2, ensure_ascii=False), file=sys.stderr)
+        return 2
+    c = checagem.checar(cfg)
+    print(checagem.relatorio(c))
+    return 0 if c.pronto else 1
 
 
 def registrar(sub) -> None:

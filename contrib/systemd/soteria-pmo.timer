@@ -1,0 +1,13 @@
+[Unit]
+Description=Dispara a leitura diaria dos Agentes PMO
+
+[Timer]
+# Toda manha util, recolhendo o que aconteceu ate aqui. A hora vem do combinado
+# com o Abner em 03/09: a rotina roda de manha e olha o dia anterior.
+OnCalendar=Mon..Fri 08:30
+# Se a maquina estava desligada na hora, roda ao ligar em vez de pular o dia.
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

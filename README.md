@@ -43,6 +43,26 @@ Quem tinha o arquivo em `~/.delegation_core/pmo.json`, de antes da separacao,
 continua funcionando: a cli le esse caminho como segunda opcao e diz de onde
 leu. E compatibilidade de transicao, nao um segundo lugar oficial.
 
+## O que e obrigatorio, e o que e so aproveitado
+
+```
+soteria-pmo checar
+```
+
+**Obrigatorio: o ClickUp**, token e team. Seis dos sete itens leem campo e fazem
+conta, e funcionam com isso e mais nada.
+
+**Opcional: tudo que vem da maquina.** Repositorios git, sessoes de IA em disco,
+historico do navegador, o vault com as transcricoes de daily, e o modelo local
+em `127.0.0.1:8181`. Essas fontes nasceram do delegation-core, onde o pacote foi
+construido, e nenhuma delas e requisito: sem elas o motor de horas continua
+rodando e simplesmente **pergunta mais**. Faltar fonte nao e erro, e menos
+evidencia, e menos evidencia sai declarada como pergunta em vez de virar numero.
+
+O `checar` diz o que esta la, o que falta, e **o que cada ausencia custa**. Uma
+checagem que so lista verde e vermelho transfere para quem le o trabalho de
+saber o que cada vermelho significa.
+
 ## Usar
 
 ```
@@ -55,6 +75,19 @@ soteria-pmo horas --de 2026-09-01 --ate 2026-09-05
 Nenhum deles escreve no ClickUp. `dry_run` e o padrao do cliente e `rotina.py`
 nao tem caminho de escrita; lancar hora e um ato separado e deliberado, com
 aprovacao.
+
+### A leitura diaria, rodando sozinha
+
+```
+systemctl --user enable --now soteria-pmo.timer
+```
+
+Segunda a sexta as 08:30, o horario que o Abner acordou em 03/09: de manha,
+recolhendo o que aconteceu ate ali. `Persistent=true` faz a maquina que estava
+desligada na hora rodar ao ligar, em vez de pular o dia. A saida vai para
+`~/.local/share/soteria-pmo/leitura-diaria.log`.
+
+O timer chama `rodar`, que so le. A escrita continua fora dele.
 
 ## A regra que organiza tudo
 

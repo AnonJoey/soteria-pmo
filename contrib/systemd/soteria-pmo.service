@@ -1,0 +1,11 @@
+[Unit]
+Description=Agentes PMO: a leitura diaria dos itens devidos hoje
+Documentation=https://github.com/AnonJoey/soteria-pmo
+After=network-online.target
+
+[Service]
+Type=oneshot
+# So leitura. `rodar` nao tem caminho de escrita: o cliente do ClickUp entra em
+# dry_run e a rotina nunca lanca hora. Lancar continua sendo um ato separado e
+# deliberado, com aprovacao nominal.
+ExecStart=/bin/sh -c '%h/.local/bin/soteria-pmo rodar >> %h/.local/share/soteria-pmo/leitura-diaria.log 2>&1'
