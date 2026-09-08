@@ -493,3 +493,30 @@ def test_sem_espaco_o_bolsao_ainda_vigia_uma_lista_so():
 def test_bolsao_sem_lista_nem_espaco_e_recusado_na_construcao():
     with pytest.raises(ValueError):
         B.Bolsao(projeto="Nenhum lugar", list_id="", horas_contratadas=10.0)
+
+
+def test_fim_do_mes_inclusive_dezembro():
+    from soteria_pmo.periodo import fim_do_mes
+    assert fim_do_mes(date(2026, 9, 8)) == date(2026, 9, 30)
+    assert fim_do_mes(date(2026, 2, 3)) == date(2026, 2, 28)
+    assert fim_do_mes(date(2026, 12, 1)) == date(2026, 12, 31)
+
+
+def test_projecao_que_cai_depois_da_virada_nao_e_estouro():
+    """Teto mensal reseta. Uma data de estouro em outubro nao quer dizer que
+    estoura: quer dizer que nao estoura em setembro."""
+    s = B.Situacao(projeto="China Gate", horas_contratadas=100.0, horas_gastas=32.8,
+                   faturaveis=32.8, nao_faturaveis=0.0, nivel="ok",
+                   dias_uteis_observados=6, ritmo_diario=5.5,
+                   data_estouro=date(2026, 10, 14), dias_ate_estourar=12,
+                   fim_do_ciclo=date(2026, 9, 30))
+    assert "nao estoura ate o fim do mes" in s.linha()
+
+
+def test_estouro_dentro_do_ciclo_continua_datado():
+    s = B.Situacao(projeto="Grupo Dimas", horas_contratadas=30.0, horas_gastas=28.0,
+                   faturaveis=28.0, nao_faturaveis=0.0, nivel="critico",
+                   dias_uteis_observados=6, ritmo_diario=4.6,
+                   data_estouro=date(2026, 9, 10), dias_ate_estourar=2,
+                   fim_do_ciclo=date(2026, 9, 30))
+    assert "estoura em 10/09" in s.linha()

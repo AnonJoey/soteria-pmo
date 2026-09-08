@@ -50,6 +50,18 @@ def dia(d: date) -> tuple[int, int]:
     return ms(inicio), ms(inicio + timedelta(days=1)) - 1
 
 
+def fim_do_mes(d: date) -> date:
+    """O ultimo dia do mes de `d`.
+
+    Existe para o bolsao: teto mensal reseta na virada, entao uma projecao que
+    cai em outubro nao quer dizer estouro, quer dizer que nao estoura em
+    setembro.
+    """
+    if d.month == 12:
+        return d.replace(day=31)
+    return d.replace(month=d.month + 1, day=1) - timedelta(days=1)
+
+
 def janela(inicio: date, fim: date) -> tuple[int, int]:
     """Millisecond bounds covering both endpoint days, inclusive."""
     return dia(inicio)[0], dia(fim)[1]

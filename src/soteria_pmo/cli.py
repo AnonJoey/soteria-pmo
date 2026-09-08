@@ -152,9 +152,13 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
     fim_aud = hoje - timedelta(days=1)
 
     tarefas: dict[str, callable] = {
+        # A janela do bolsao e o MES CORRENTE, nao trinta dias corridos: o teto
+        # e mensal e reseta na virada. Com a janela movel, dois clientes
+        # apareceram estourados em 08/09 sem estarem.
         "bolsao": lambda: bolsao.digest(
-            bolsao.vigiar(cliente, bolsoes, hoje - timedelta(days=30), hoje,
-                          feriados, sem_teto=bolsoes_sem_teto)),
+            bolsao.vigiar(cliente, bolsoes, hoje.replace(day=1), hoje,
+                          feriados, sem_teto=bolsoes_sem_teto,
+                          fim_do_ciclo=periodo.fim_do_mes(hoje))),
         "datas": lambda: datas.vigiar(cliente, primeiro["list_id"], hoje) if primeiro else "",
         # Item 2 le TODOS os projetos, nao so o primeiro: a regua de 03/09 e
         # por projeto, e avaliar um de uma lista de nove nao e acompanhar

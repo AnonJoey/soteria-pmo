@@ -150,6 +150,11 @@ class Situacao:
     ritmo_diario: float | None
     data_estouro: date | None
     dias_ate_estourar: int | None
+    #: Ultimo dia do ciclo a que o teto se refere. Os tetos que o Abner passou
+    #: em 03/09 sao MENSAIS, e um teto mensal so quer dizer alguma coisa
+    #: comparado com o consumo do proprio mes. Sem isto, uma projecao pode
+    #: apontar estouro para depois da virada, quando o bolsao ja resetou.
+    fim_do_ciclo: date | None = None
 
     @property
     def percentual(self) -> float:
@@ -172,6 +177,8 @@ class Situacao:
         base = (f"{self.projeto}: {self.horas_gastas:.1f}h de "
                 f"{self.horas_contratadas:.0f}h ({self.percentual:.0%}) [{self.nivel}]")
         if self.data_estouro is not None:
+            if self.fim_do_ciclo and self.data_estouro > self.fim_do_ciclo:
+                return f"{base}, no ritmo atual nao estoura ate o fim do mes"
             return f"{base}, no ritmo atual estoura em {self.data_estouro:%d/%m}"
         if self.ritmo_diario is None:
             return f"{base}, sem ritmo medido ainda"
@@ -187,12 +194,20 @@ def _nivel(percentual: float) -> str:
 
 def apurar(entradas: list[dict], bolsao: Bolsao, inicio: date, fim: date,
            feriados: frozenset[date] = frozenset(),
-           minimo_para_projetar: int = 5) -> Situacao:
+           minimo_para_projetar: int = 5,
+           fim_do_ciclo: date | None = None) -> Situacao:
     """Turn raw time entries into a budget position.
 
     `minimo_para_projetar` is the number of observed business days below which
     no exhaustion date is produced. Five is one working week: projecting from
     less than that turns a slow Monday into a deadline.
+
+    **A janela tem que ser a do proprio teto.** Os tetos passados pelo Abner em
+    03/09 sao mensais, e a rotina media trinta dias corridos, que atravessam a
+    virada do mes. Medido em 08/09/2026: o China Gate saiu como 206,4h de 100h,
+    "estourado", quando no proprio mes tinha usado 32,8h de 100h. Dois clientes
+    apareceram estourados sem estarem, que e o alarme falso que este modulo
+    inteiro argumenta contra.
     """
     faturaveis = nao_faturaveis = 0.0
     for e in entradas:
@@ -225,6 +240,7 @@ def apurar(entradas: list[dict], bolsao: Bolsao, inicio: date, fim: date,
             data_estouro = fim
 
     return Situacao(
+        fim_do_ciclo=fim_do_ciclo,
         projeto=bolsao.projeto,
         horas_contratadas=bolsao.horas_contratadas,
         horas_gastas=gastas,
@@ -240,7 +256,8 @@ def apurar(entradas: list[dict], bolsao: Bolsao, inicio: date, fim: date,
 
 def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
            feriados: frozenset[date] = frozenset(),
-           sem_teto: list[str] | None = None) -> Vigilancia:
+           sem_teto: list[str] | None = None,
+           fim_do_ciclo: date | None = None) -> Vigilancia:
     """Read the window once per project and report each position.
 
     Entries are fetched per project list rather than for the whole workspace
@@ -266,7 +283,8 @@ def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
             v.falhas.append(f"{b.projeto}: {type(e).__name__}: {e}")
             continue
         do_projeto = [e for e in todas if b.pertence(e)]
-        v.situacoes.append(apurar(do_projeto, b, inicio, fim, feriados))
+        v.situacoes.append(apurar(do_projeto, b, inicio, fim, feriados,
+                                  fim_do_ciclo=fim_do_ciclo))
     return v
 
 
