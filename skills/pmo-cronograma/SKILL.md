@@ -21,9 +21,14 @@ soteria-pmo rodar --forcar cronograma
 - **2 dias uteis** para chamado e sustentacao.
 - O alerta e **por projeto**, nao por dev. Cobrar pessoa foi descartado de
   proposito: e o jeito mais rapido de o sistema inteiro ser desligado.
-- Cadencia de trabalho nao e uniforme entre os devs. Quem tem calibragem propria
-  no config e medido por ela; quem nao tem sai marcado como nao calibrado, e o
-  alerta diz isso.
+- **Calibragem por pessoa foi descartada nessa mesma conversa.** Perguntado
+  quantos dias cada dev costuma passar sem tocar numa tarefa, o Abner respondeu
+  que nao consegue precisar isso e que individualizar daria problema. O modulo
+  ainda carrega o caminho antigo, por pessoa, e e ele que a rotina chama hoje:
+  `avaliar_projeto` implementa a regua acima e ainda nao foi ligada no lugar de
+  `acompanhar`. Ate isso mudar, o log fala em ritmo nao calibrado e pede ao
+  Abner uma calibragem que ele ja respondeu que nao existe. Nao repita esse
+  pedido para quem perguntar.
 
 ## A ambiguidade que todo alerta declara
 

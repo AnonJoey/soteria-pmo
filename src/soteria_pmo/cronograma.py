@@ -3,13 +3,18 @@
 Watches whether work is moving and raises escalating alerts when it is not.
 Two constraints from the meetings shape it, and both are about not crying wolf.
 
-The first is that **cadence is not uniform across developers**. Each one has
-their own rhythm, and with a single ruler the agent marks as abandoned a task
-that is simply following another pace. So a Cadencia is per person, and a
-person with no calibration yet gets alerts labelled as uncalibrated rather than
-a default ruler applied silently. Confirming the calibration with Abner is
-still open, so `CADENCIA_PADRAO` is a placeholder that says so in its own
-docstring rather than a number pretending to be measured.
+The first was that **cadence is not uniform across developers**, which produced
+the per-person `Cadencia` path below. That premise was ANSWERED AND DISCARDED on
+03/09/2026: asked how many days each dev usually goes without touching a task,
+Abner said he cannot pin that down and that individualising it would cause
+trouble. What replaced it is the work-type ruler in `avaliar_projeto`, four days
+for a project and two for support, alerting per project rather than per task.
+
+Both paths live here, and the wiring still points at the old one: `acompanhar`
+runs `avaliar`, so a real run still labels alerts as uncalibrated and asks Abner
+for a calibration he has already declined to give. Pointing `cli.montar_tarefas`
+at `avaliar_projeto` is what closes this, and it needs the project's time
+entries plus its type in the config.
 
 The second is that this agent cannot tell "the task stopped" from "the task
 moved and nobody logged it". Both look like silence in ClickUp. Every alert
