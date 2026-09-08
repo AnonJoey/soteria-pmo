@@ -10,9 +10,9 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from delegation_core.pmo import bolsao as B
-from delegation_core.pmo import datas as D
-from delegation_core.pmo.periodo import (
+from soteria_pmo import bolsao as B
+from soteria_pmo import datas as D
+from soteria_pmo.periodo import (
     BRT, Intervalo, data_da_fala, de_ms, dia, dias_uteis, fundir, horas, janela, ms,
 )
 
@@ -329,8 +329,8 @@ def test_evidencia_pessoal_e_separada_da_de_cliente():
     ClickUp, e o historico tem Discord e SharePoint. Cobrar a primeira e a
     mesma classe das 16h indevidas."""
     from datetime import datetime
-    from delegation_core.pmo import coletor as C
-    from delegation_core.pmo.horas import Evidencia
+    from soteria_pmo import coletor as C
+    from soteria_pmo.horas import Evidencia
 
     def e(desc):
         d = datetime(2026, 9, 2, 9, tzinfo=BRT)
@@ -348,8 +348,8 @@ def test_evidencia_pessoal_e_separada_da_de_cliente():
 
 def test_o_resumo_diz_quanto_foi_separado_como_pessoal():
     from datetime import datetime
-    from delegation_core.pmo import coletor as C
-    from delegation_core.pmo.horas import Evidencia
+    from soteria_pmo import coletor as C
+    from soteria_pmo.horas import Evidencia
     d = datetime(2026, 9, 2, 9, tzinfo=BRT)
     ev = [Evidencia("nota_vault", d, d.replace(hour=11), "nota: Palworld crash")]
     texto = C.resumo(ev, [])
@@ -376,7 +376,7 @@ def test_git_e_consultado_com_hora_explicita(tmp_path, monkeypatch):
     um --since de hoje descarta tudo que foi commitado antes das 16:11 de hoje.
     Medido: 0 commits com a data nua contra 18 com T00:00:00, no mesmo repo."""
     import subprocess
-    from delegation_core.pmo import coletor as C
+    from soteria_pmo import coletor as C
 
     (tmp_path / ".git").mkdir()
     visto = {}

@@ -14,7 +14,7 @@ import json
 import httpx
 import pytest
 
-from delegation_core.pmo.clickup import (
+from soteria_pmo.clickup import (
     Aprovacao,
     AprovacaoAusente,
     ClickUp,

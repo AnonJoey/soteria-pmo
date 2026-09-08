@@ -11,10 +11,10 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from delegation_core.pmo import auditor as A
-from delegation_core.pmo import cronograma as C
-from delegation_core.pmo.horas import Evidencia
-from delegation_core.pmo.periodo import BRT, ms
+from soteria_pmo import auditor as A
+from soteria_pmo import cronograma as C
+from soteria_pmo.horas import Evidencia
+from soteria_pmo.periodo import BRT, ms
 
 DIA = date(2026, 9, 2)
 INI, FIM = date(2026, 9, 1), date(2026, 9, 30)

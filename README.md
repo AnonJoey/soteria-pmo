@@ -3,6 +3,59 @@
 Os sete itens de gestao pedidos pelo Max, construidos como modulos que produzem
 texto para uma pessoa ler. Escopo fechado em 31/08/2026, marco de entrega 08/09.
 
+Este repo saiu do `delegation-core` em 08/09/2026, onde o pacote nasceu por
+conveniencia: o vault, o coletor de evidencia e o modelo local ja estavam la.
+A separacao custou pouco porque o acoplamento tinha sido medido antes: o pacote
+nao importa nada do `delegation_core`, so stdlib mais `httpx`. O historico dos
+commits veio junto, e e onde estao os porques de cada constante.
+
+## Instalar
+
+```
+python3 -m venv .venv
+.venv/bin/pip install httpx pytest
+.venv/bin/pip install --no-deps -e .
+```
+
+O `--no-deps` no ultimo passo e por habito herdado da base de origem, onde um
+`pip install -e .` direto puxava a pilha de embeddings inteira. Aqui a unica
+dependencia de runtime e `httpx`, entao instalar sem ele tambem funciona.
+
+Depois, para deixar as skills e o agente visiveis em toda sessao do Claude Code:
+
+```
+.venv/bin/soteria-pmo-instalar
+```
+
+Ele copia `skills/pmo-*` para `~/.claude/skills` e `agents/pmo-horas.md` para
+`~/.claude/agents`, **sem nunca sobrescrever** o que voce ja tem com aquele
+nome: o que ja existe e mantido e reportado como mantido.
+
+## Configurar
+
+O workspace vive em `~/.soteria-pmo/pmo.json`, e nenhum comando roda sem ele.
+Sao as coisas que codigo nenhum deve trazer embutidas: qual lista e qual
+projeto, quantas horas cada bolsao tem, quem esta no time e qual o ritmo de
+cada pessoa. Rodar qualquer subcomando sem o arquivo imprime o exemplo completo
+com os campos esperados, em vez de um traceback.
+
+Quem tinha o arquivo em `~/.delegation_core/pmo.json`, de antes da separacao,
+continua funcionando: a cli le esse caminho como segunda opcao e diz de onde
+leu. E compatibilidade de transicao, nao um segundo lugar oficial.
+
+## Usar
+
+```
+soteria-pmo cadencias              # o que roda hoje e o que nao, e por que
+soteria-pmo rodar                  # roda os itens devidos hoje e imprime
+soteria-pmo rodar --forcar reporte # roda um item fora da cadencia dele
+soteria-pmo horas --de 2026-09-01 --ate 2026-09-05
+```
+
+Nenhum deles escreve no ClickUp. `dry_run` e o padrao do cliente e `rotina.py`
+nao tem caminho de escrita; lancar hora e um ato separado e deliberado, com
+aprovacao.
+
 ## A regra que organiza tudo
 
 **O que ja chega estruturado nao passa pelo modelo.** Coleta com script,
@@ -59,9 +112,9 @@ A fronteira validada com o Andre em 04/09, empacotada:
 | 7 datas | skill `pmo-datas` | `skills/pmo-datas/SKILL.md` |
 
 Um agente so, com varias capacidades, que e como o Andre desmontou a contagem de
-sete: sete e numero de funcionalidade, nao de processo. `post_install` copia as
-skills para `~/.claude/skills` e os agentes para `~/.claude/agents`, sem nunca
-sobrescrever o que a pessoa ja tem com aquele nome.
+sete: sete e numero de funcionalidade, nao de processo. `soteria-pmo-instalar`
+copia as skills para `~/.claude/skills` e os agentes para `~/.claude/agents`,
+sem nunca sobrescrever o que a pessoa ja tem com aquele nome.
 
 ## O que nada aqui faz
 
@@ -142,10 +195,10 @@ descartavel.
 ## Testes
 
 ```
-python -m pytest tests/pmo/ -q
+python -m pytest -q
 ```
 
-252 testes, nenhum toca a rede: `httpx.MockTransport` responde por todas as
+269 testes, nenhum toca a rede: `httpx.MockTransport` responde por todas as
 chamadas e o interprete do modelo entra por `Protocol`.
 
 Os comportamentos criticos foram conferidos por mutacao, e um deles expos um
@@ -162,7 +215,7 @@ mutacao ao mexer nestes pontos:
 - inversao de datas entre tarefa-mae e subtarefas
 - ciclo bimestral de feedback de RH
 
-`docs/agentes-pmo/fumaca_dado_real.py` roda os modulos sobre as doze tarefas
+`docs/fumaca_dado_real.py` roda os modulos sobre as doze tarefas
 reais da lista, congeladas como a API as devolveu, porque teste com payload
 proprio prova a logica e nao prova as formas que chegam de verdade.
 

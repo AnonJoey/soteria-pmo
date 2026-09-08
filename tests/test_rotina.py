@@ -9,7 +9,7 @@ from datetime import date
 
 import pytest
 
-from delegation_core.pmo import rotina as R
+from soteria_pmo import rotina as R
 
 SEG = date(2026, 9, 7)    # segunda
 TER = date(2026, 9, 1)    # terca, e o primeiro dia util de setembro

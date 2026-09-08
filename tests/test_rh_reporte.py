@@ -10,9 +10,9 @@ from datetime import date
 
 import pytest
 
-from delegation_core.pmo import reporte as R
-from delegation_core.pmo import rh
-from delegation_core.pmo.periodo import BRT, ms
+from soteria_pmo import reporte as R
+from soteria_pmo import rh
+from soteria_pmo.periodo import BRT, ms
 
 HOJE = date(2026, 9, 2)
 

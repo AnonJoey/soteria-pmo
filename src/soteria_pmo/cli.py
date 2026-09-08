@@ -1,7 +1,10 @@
-"""The door to the seven items: `delegation-core pmo`.
+"""The door to the seven items: `soteria-pmo`.
 
-Kept in the package rather than in the repo's cli.py so the whole PMO surface
-sits in one directory and can be lifted out or handed over as a unit.
+Kept in the package rather than in a top-level script so the whole PMO surface
+sits in one directory. That is what made lifting it out of delegation-core, in
+08/09/2026, a move of two directories instead of an excavation; `registrar` is
+still here so a host CLI can hang the same three subcommands off its own
+subparsers.
 
 The command reads a config file describing this workspace, because the seven
 items need things no code should hardcode: which list is which project, how
@@ -15,6 +18,7 @@ hours is a separate, deliberate act.
 
 from __future__ import annotations
 
+import argparse
 import json
 import logging
 import sys
@@ -26,7 +30,14 @@ from .clickup import ClickUp
 
 logger = logging.getLogger("pmo.cli")
 
-CONFIG_PADRAO = Path.home() / ".delegation_core" / "pmo.json"
+CONFIG_HOME = Path.home() / ".soteria-pmo"
+CONFIG_PADRAO = CONFIG_HOME / "pmo.json"
+
+#: Onde o config morava enquanto o pacote vivia dentro do delegation-core. Lido
+#: como segunda opcao, e so quando o novo nao existe, porque quem ja tinha o
+#: arquivo la nao deve descobrir a mudanca por um erro de config ausente. Some
+#: quando ninguem mais tiver essa instalacao.
+CONFIG_ANTIGO = Path.home() / ".delegation_core" / "pmo.json"
 
 # How many days back the daily audit looks. Long enough that an entry logged on
 # Friday is still checked on Monday, short enough that the same exception is not
@@ -38,7 +49,7 @@ EXEMPLO = {
     "team_id": "9007...",
     "pessoa": "Jordan Bernardes",
     "evidencia": {
-        "repos": ["~/Projects/delegation-core"],
+        "repos": ["~/Projects/algum-repo"],
         "autor_git": "",
         "sessoes_ia": "~/.claude/projects",
         "vault": "~/Documents/Projects_Archive/Claude Vault",
@@ -48,7 +59,7 @@ EXEMPLO = {
     "projetos": [
         {"nome": "Soteria", "list_id": "901716443542", "horas_contratadas": 1800}
     ],
-    "roster_rh": "~/.delegation_core/rh.csv",
+    "roster_rh": "~/.soteria-pmo/rh.csv",
     "cadencias": {"Jordan Bernardes": 2, "Abner Ben de Morais": 5},
     "feriados": ["2026-09-07"],
 }
@@ -61,7 +72,14 @@ class ConfigAusente(RuntimeError):
 
 def carregar_config(caminho: Path) -> dict:
     if not caminho.exists():
-        raise ConfigAusente(str(caminho))
+        # So vale para o caminho padrao: quem passou --config apontando para um
+        # arquivo que nao existe quer saber disso, e nao ser desviado em
+        # silencio para outro workspace.
+        if caminho == CONFIG_PADRAO and CONFIG_ANTIGO.exists():
+            logger.info("config lido de %s; mova para %s", CONFIG_ANTIGO, CONFIG_PADRAO)
+            caminho = CONFIG_ANTIGO
+        else:
+            raise ConfigAusente(str(caminho))
     return json.loads(caminho.read_text(encoding="utf-8"))
 
 
@@ -238,11 +256,12 @@ def cmd_cadencias(args) -> int:
     return 0
 
 
-def registrar(sub) -> None:
-    """Hang `pmo` off the main CLI's subparsers."""
-    p = sub.add_parser("pmo", help="Agentes PMO: rodar os itens de gestao do dia")
-    pmo_sub = p.add_subparsers(dest="pmo_command", metavar="pmo-command")
+def _subcomandos(pmo_sub) -> None:
+    """Os tres subcomandos, pendurados no objeto de subparsers que vier.
 
+    Existe separado de `registrar` para que a mesma arvore sirva ao comando
+    proprio e a um CLI hospedeiro, sem a definicao ser escrita duas vezes.
+    """
     p_rodar = pmo_sub.add_parser("rodar", help="Roda os itens devidos hoje e imprime")
     p_rodar.add_argument("--config", default=str(CONFIG_PADRAO))
     p_rodar.add_argument("--dia", default=None, help="AAAA-MM-DD, para testar outro dia")
@@ -265,3 +284,36 @@ def registrar(sub) -> None:
     p_cad.add_argument("--dia", default=None)
     p_cad.add_argument("--config", default=str(CONFIG_PADRAO))
     p_cad.set_defaults(func=cmd_cadencias)
+
+
+def registrar(sub) -> None:
+    """Hang `pmo` off a host CLI's subparsers, as delegation-core did."""
+    p = sub.add_parser("pmo", help="Agentes PMO: rodar os itens de gestao do dia")
+    _subcomandos(p.add_subparsers(dest="pmo_command", metavar="pmo-command"))
+
+
+def main(argv: list[str] | None = None) -> int:
+    """O comando `soteria-pmo`."""
+    parser = argparse.ArgumentParser(
+        prog="soteria-pmo",
+        description="Agentes PMO: os sete itens de gestao, rodando sobre o ClickUp.")
+    sub = parser.add_subparsers(dest="command", metavar="command")
+    _subcomandos(sub)
+    args = parser.parse_args(argv)
+    if not getattr(args, "func", None):
+        parser.print_help()
+        return 2
+    try:
+        return args.func(args)
+    except ConfigAusente as e:
+        # Rede para o subcomando que nao trata por conta propria. Mesma frase
+        # dos outros dois, porque duas mensagens para a mesma falta so fazem
+        # quem le procurar diferenca onde nao ha.
+        print(f"Sem configuracao do PMO em {e}.\n\nCrie o arquivo com esta forma:\n",
+              file=sys.stderr)
+        print(json.dumps(EXEMPLO, indent=2, ensure_ascii=False), file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

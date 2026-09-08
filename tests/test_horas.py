@@ -10,9 +10,9 @@ from datetime import date, datetime, timedelta
 
 import pytest
 
-from delegation_core.pmo import horas as H
-from delegation_core.pmo.clickup import Aprovacao
-from delegation_core.pmo.periodo import BRT
+from soteria_pmo import horas as H
+from soteria_pmo.clickup import Aprovacao
+from soteria_pmo.periodo import BRT
 
 SEG = date(2026, 8, 31)   # segunda
 TER = date(2026, 9, 1)
@@ -280,7 +280,7 @@ def test_o_lancamento_de_horas_nao_e_faturavel_apesar_da_tag_planejamento():
 
 
 def test_as_13_tags_da_casa_sao_as_reais():
-    from delegation_core.pmo.clickup import TAGS_DA_CASA
+    from soteria_pmo.clickup import TAGS_DA_CASA
     assert TAGS_DA_CASA == {
         "desenvolvimento", "ajustes em qas", "análise", "atividade de qas",
         "apoio técnico", "alinhamento técnico", "planejamento", "reunião interna",
@@ -380,7 +380,7 @@ def test_fala_dentro_da_janela_nao_gera_lacuna_de_orfa():
 def test_atividade_repetida_na_mesma_daily_vira_uma_so():
     """Visto na daily real de 25/08: o modelo devolveu a mesma atividade
     datada em dois dias, o que viraria duas propostas para um trabalho so."""
-    from delegation_core.pmo.daily import InterpreteLocal
+    from soteria_pmo.daily import InterpreteLocal
     resposta = (
         "ATIVIDADE: Finalizacao do documento\nQUANDO: ontem\nHORAS: ?\n---\n"
         "ATIVIDADE: Finalizacao do documento\nQUANDO: hoje\nHORAS: ?\n")
@@ -391,14 +391,14 @@ def test_atividade_repetida_na_mesma_daily_vira_uma_so():
 
 
 def test_sem_trabalho_devolve_lista_vazia():
-    from delegation_core.pmo.daily import InterpreteLocal
+    from soteria_pmo.daily import InterpreteLocal
     i = InterpreteLocal("Jordan", chamar=lambda *a: "SEM TRABALHO")
     assert i.falas_de_trabalho("bom dia galera", QUA) == []
 
 
 def test_modelo_fora_do_ar_nao_vira_dia_sem_trabalho():
     """Tem que cair no protocolo de lacunas, nao virar silencio."""
-    from delegation_core.pmo.daily import InterpreteLocal
+    from soteria_pmo.daily import InterpreteLocal
 
     def explode(*a):
         raise RuntimeError("llama fora")
@@ -410,7 +410,7 @@ def test_modelo_fora_do_ar_nao_vira_dia_sem_trabalho():
 
 
 def test_hora_declarada_absurda_e_descartada():
-    from delegation_core.pmo.daily import InterpreteLocal
+    from soteria_pmo.daily import InterpreteLocal
     r = "ATIVIDADE: Maratona\nQUANDO: hoje\nHORAS: 40\n"
     i = InterpreteLocal("Jordan", chamar=lambda *a: r)
     assert i.falas_de_trabalho("x", QUA)[0].horas_declaradas is None
@@ -463,7 +463,7 @@ def test_com_fala_a_atividade_vem_dela():
 
 def test_expressao_de_periodo_vira_horas():
     """Medido nos transcritos: 21 das 280 falas do Jordan trazem uma dessas."""
-    from delegation_core.pmo.daily import duracao_no_texto as d
+    from soteria_pmo.daily import duracao_no_texto as d
     assert d("passei a manha preparando o ambiente") == 3.5
     assert d("passei a tarde inteira com o Luan") == 3.5
     assert d("passei grande parte do dia alinhando") == 3.0
@@ -472,14 +472,14 @@ def test_expressao_de_periodo_vira_horas():
 
 def test_plano_no_futuro_nao_vira_hora():
     """"hoje de tarde eu vou ver isso" e plano, e plano nao e hora trabalhada."""
-    from delegation_core.pmo.daily import duracao_no_texto as d
+    from soteria_pmo.daily import duracao_no_texto as d
     assert d("eu vou ter que ver isso hoje de tarde") is None
     assert d("Hoje de tarde.") is None
     assert d("hoje de tarde a gente vai comecar a produzir") is None
 
 
 def test_numero_explicito_vence_a_expressao():
-    from delegation_core.pmo.daily import InterpreteLocal
+    from soteria_pmo.daily import InterpreteLocal
     r = "ATIVIDADE: Coletor\nQUANDO: hoje\nHORAS: 2\n"
     i = InterpreteLocal("Jordan", chamar=lambda *a: r)
     f = i.falas_de_trabalho("passei a manha inteira no coletor", QUA)
@@ -489,7 +489,7 @@ def test_numero_explicito_vence_a_expressao():
 def test_falha_do_interprete_e_reportada_e_nao_confundida_com_dia_sem_trabalho():
     """Uma rodada inteira de medicao deste modulo foi corrompida por isso:
     o llama caiu, todo dia voltou vazio, e o resultado parecia completo."""
-    from delegation_core.pmo.daily import InterpreteLocal
+    from soteria_pmo.daily import InterpreteLocal
 
     def explode(*a):
         raise RuntimeError("connection refused")
@@ -507,7 +507,7 @@ def test_a_data_da_transcricao_vem_da_ultima_do_nome(tmp_path):
     """O vault nomeia "<data em que foi escrita>-<titulo>.md", e o titulo de uma
     transcricao costuma carregar a data da propria reuniao. Ler a primeira
     atribuiu 67 falas de uma pessoa ao dia errado."""
-    from delegation_core.pmo.daily import ler_transcricao
+    from soteria_pmo.daily import ler_transcricao
     f = tmp_path / "2026-09-01-Cronograma Agentes de Gestao - 2026-08-31.md"
     f.write_text("---\ntitle: x\n---\n\n[0:10] Jordan Bernardes: falei alguma coisa aqui\n")
     t = ler_transcricao(f)
@@ -515,7 +515,7 @@ def test_a_data_da_transcricao_vem_da_ultima_do_nome(tmp_path):
 
 
 def test_nome_com_uma_data_so_continua_funcionando(tmp_path):
-    from delegation_core.pmo.daily import ler_transcricao
+    from soteria_pmo.daily import ler_transcricao
     f = tmp_path / "2026-09-02-Daily-Equipe-Dev-transcricao.md"
     f.write_text("---\ntitle: x\n---\n\n[0:10] Jordan Bernardes: falei alguma coisa aqui\n")
     assert ler_transcricao(f).dia == date(2026, 9, 2)
