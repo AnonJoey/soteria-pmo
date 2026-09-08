@@ -18,8 +18,8 @@ SAB = date(2026, 9, 5)
 DOM = date(2026, 9, 6)
 
 
-def test_os_sete_itens_tem_cadencia_declarada():
-    assert set(R.CADENCIAS) == {"reporte", "cronograma", "auditor",
+def test_cada_item_tem_cadencia_declarada():
+    assert set(R.CADENCIAS) == {"reporte", "cronograma", "auditor", "fechamento",
                                 "horas", "bolsao", "rh", "datas"}
     assert set(R.CADENCIAS.values()) == {R.DIARIA, R.SEMANAL, R.MENSAL, R.CONTINUA}
 
@@ -40,14 +40,14 @@ def test_semanal_so_na_segunda():
 
 
 def test_mensal_no_primeiro_dia_util_do_mes():
-    assert R.devido("auditor", TER), "01/09/2026 e terca, primeiro dia util"
-    assert not R.devido("auditor", QUA)
+    assert R.devido("fechamento", TER), "01/09/2026 e terca, primeiro dia util"
+    assert not R.devido("fechamento", QUA)
 
 
 def test_mensal_nao_repete_no_mesmo_mes():
     """Rodar a rotina duas vezes no mesmo dia nao audita o mes duas vezes."""
-    assert not R.devido("auditor", TER, ultimo_mensal=date(2026, 9, 1))
-    assert R.devido("auditor", TER, ultimo_mensal=date(2026, 8, 3))
+    assert not R.devido("fechamento", TER, ultimo_mensal=date(2026, 9, 1))
+    assert R.devido("fechamento", TER, ultimo_mensal=date(2026, 8, 3))
 
 
 def test_item_desconhecido_nunca_e_devido():
@@ -148,8 +148,8 @@ def test_mensal_pula_para_o_proximo_dia_util_se_o_primeiro_for_feriado():
     jan1 = date(2027, 1, 1)      # sexta, feriado
     jan4 = date(2027, 1, 4)      # segunda
     feriados = frozenset({jan1})
-    assert not R.devido("auditor", jan1, feriados=feriados)
-    assert R.devido("auditor", jan4, feriados=feriados)
+    assert not R.devido("fechamento", jan1, feriados=feriados)
+    assert R.devido("fechamento", jan4, feriados=feriados)
 
 
 def test_rodar_respeita_feriado():

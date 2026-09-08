@@ -36,6 +36,14 @@ def entrada(dia, horas, desc="Desenvolvimento do coletor (Soteria)",
             "billable": faturavel, "task": {"id": "t1"}}
 
 
+def em(dia, hora, horas, desc="Ajuste no objeto vendedor (Soteria)",
+       eid="te_1", task="t1"):
+    """An entry that starts at a given hour, which is what the clock checks read."""
+    comeco = datetime.combine(dia, datetime.min.time(), tzinfo=BRT).replace(hour=hora)
+    return {"id": eid, "start": ms(comeco), "duration": int(horas * 3_600_000),
+            "description": desc, "billable": True, "task": {"id": task}}
+
+
 # ── auditor ──────────────────────────────────────────────────────────────────
 
 
@@ -109,6 +117,12 @@ def test_corroboradas_nao_sao_listadas_so_contadas():
     Precisa de pelo menos uma excecao junto: com tudo corroborado o bloco de
     excecoes nem chega a ser renderizado, e o teste passaria mesmo se o
     relatorio listasse todo mundo dentro dele.
+
+    A assercao olha o bloco de excecoes, e nao o documento inteiro, desde 04/09:
+    a secao de concentracao nomeia a tarefa pela descricao de proposito, porque
+    a pergunta do Andre e "que tarefa e essa que tem 35 horas". O volume dela e
+    limitado pelo numero de tarefas acima do corte, nao pelo de entradas, que e
+    o que este teste existe para proteger.
     """
     outro = date(2026, 9, 3)
     entradas = [entrada(DIA, 8, desc=f"Desenvolvimento passo {i} (Soteria)", eid=f"te_{i}")
@@ -119,8 +133,31 @@ def test_corroboradas_nao_sao_listadas_so_contadas():
     assert "20 de 21" in texto
     assert "## Excecoes" in texto, "o bloco tem que existir para o teste valer"
     assert "Excecao sem lastro" in texto
+    excecoes = texto.split("## Excecoes", 1)[1].split("\n## ", 1)[0]
     for i in range(20):
-        assert f"Desenvolvimento passo {i} (Soteria)" not in texto
+        assert f"Desenvolvimento passo {i} (Soteria)" not in excecoes
+
+
+def test_dia_de_lancamentos_empilhados_nao_vira_uma_enxurrada_de_conflitos():
+    """Vinte entradas no mesmo instante dao 190 pares, e nenhum deles e achado.
+
+    O ClickUp carimba o inicio quando a pessoa clica, entao lancamento manual
+    empilha no mesmo horario. O relatorio diz que a checagem nao rodou naquele
+    dia, em vez de acusar cada par.
+    """
+    entradas = [entrada(DIA, 8, desc=f"Passo {i} (Soteria)", eid=f"te_{i}")
+                for i in range(20)]
+    aud = A.auditar(entradas, [], INI, FIM)
+    assert aud.conflitos == []
+    assert aud.sem_relogio == [DIA]
+    assert "checagem de horario nao rodou" in A.relatorio(aud)
+
+
+def test_dois_lancamentos_no_mesmo_instante_ainda_sao_duplicidade():
+    # O corte e tres: um par continua sendo um par, nao um dia sem relogio.
+    aud = A.auditar([em(DIA, 14, 2, eid="a"), em(DIA, 14, 2, eid="b")], [], INI, FIM)
+    assert aud.sem_relogio == []
+    assert [c.tipo for c in aud.conflitos] == ["duplicidade"]
 
 
 def test_excecoes_aparecem_com_a_evidencia_ao_lado():
@@ -142,6 +179,127 @@ def test_taxa_de_corroboracao_com_periodo_vazio_e_zero():
 def test_entrada_sem_start_e_pulada_em_vez_de_explodir():
     aud = A.auditar([{"id": "x", "duration": 100, "start": None}], [], INI, FIM)
     assert aud.achados == []
+
+
+# ── auditor: as entradas contra elas mesmas (04/09) ──────────────────────────
+#
+# Os dois primeiros casos que o Andre abriu na tela em 04/09 nao sao visiveis
+# para uma checagem que so compara entrada contra evidencia do dia: 3h que
+# engolem outra tarefa, e 40 minutos contidos dentro de outro bloco.
+
+
+def test_bloco_lancado_duas_vezes_vira_duplicidade():
+    entradas = [em(DIA, 18, 3, eid="a"), em(DIA, 18, 3, eid="b")]
+    (c,) = A.conflitos(entradas)
+    assert c.tipo == "duplicidade"
+    assert c.horas == 3.0
+    assert set(c.entradas) == {"a", "b"}
+
+
+def test_entrada_contida_em_outra_e_contencao():
+    # Os 40 minutos do caso do Andre, dentro de um bloco de tres horas.
+    entradas = [em(DIA, 18, 3, eid="grande"), em(DIA, 19, 40 / 60, eid="dentro")]
+    (c,) = A.conflitos(entradas)
+    assert c.tipo == "contencao"
+    assert c.horas == pytest.approx(0.67, abs=0.01)
+
+
+def test_sobreposicao_parcial_conta_so_o_trecho_disputado():
+    entradas = [em(DIA, 18, 3, eid="a"), em(DIA, 20, 2, eid="b")]
+    (c,) = A.conflitos(entradas)
+    assert c.tipo == "sobreposicao"
+    assert c.horas == 1.0, "das 20h as 21h, nao as cinco horas somadas"
+
+
+def test_entradas_encostadas_sem_cruzar_nao_geram_conflito():
+    assert A.conflitos([em(DIA, 9, 2, eid="a"), em(DIA, 11, 2, eid="b")]) == []
+
+
+def test_conflito_e_achado_sem_nenhuma_evidencia_de_maquina():
+    # A auditoria diaria roda em maquina sem coletor configurado, e o cruzamento
+    # de horario e aritmetica de relogio: nao depende de lastro.
+    aud = A.auditar([em(DIA, 18, 3, eid="a"), em(DIA, 19, 1, eid="b")], [], INI, FIM)
+    assert len(aud.conflitos) == 1
+    assert aud.horas_em_conflito == 1.0
+
+
+def test_entrada_em_conflito_aparece_nas_excecoes_mesmo_corroborada():
+    # As horas batem com a evidencia do dia; sem a marcacao, o bloco cobrado em
+    # dobro seria contado como corroborado e nunca listado.
+    entradas = [em(DIA, 9, 4, eid="a"), em(DIA, 9, 4, eid="b")]
+    aud = A.auditar(entradas, [ev("commit", DIA, 9, 13)], INI, FIM)
+    assert all(a.precisa_de_olho for a in aud.achados)
+    assert any("duplicidade" in o for a in aud.achados for o in a.observacoes)
+
+
+def test_o_relatorio_lista_o_horario_cruzado_e_nao_le_intencao():
+    aud = A.auditar([em(DIA, 18, 3, eid="a"), em(DIA, 19, 1, eid="b")], [], INI, FIM)
+    texto = A.relatorio(aud)
+    assert "Horarios que se cruzam" in texto
+    assert "aritmetica de relogio" in texto
+    assert "fraude" not in texto.lower() and "erro de lancamento" not in texto.lower()
+
+
+# ── auditor: concentracao ────────────────────────────────────────────────────
+
+
+def test_oito_horas_numa_tarefa_so_no_mesmo_dia_e_apontada():
+    (c,) = A.concentracoes([em(DIA, 9, 8, task="t9")])
+    assert c.escopo == "dia" and c.horas == 8.0 and c.task_id == "t9"
+
+
+def test_dia_normal_nao_vira_concentracao():
+    assert A.concentracoes([em(DIA, 9, 6, task="t9")]) == []
+
+
+def test_tarefa_que_soma_muito_no_periodo_e_apontada():
+    dias = [date(2026, 9, d) for d in range(1, 8)]
+    entradas = [em(d, 9, 5, eid=f"e{i}", task="generica") for i, d in enumerate(dias)]
+    periodo = [c for c in A.concentracoes(entradas) if c.escopo == "periodo"]
+    assert len(periodo) == 1 and periodo[0].horas == 35.0
+
+
+def test_concentracao_nao_muda_o_veredito_da_entrada():
+    # E um tamanho declarado, nao um julgamento: oito horas legitimas num dia
+    # continuam corroboradas pela evidencia.
+    aud = A.auditar([em(DIA, 9, 8)], [ev("commit", DIA, 9, 17)], INI, FIM)
+    assert aud.achados[0].veredito == "corroborada"
+    assert aud.concentracoes
+
+
+# ── auditor: data provavel trocada ───────────────────────────────────────────
+
+
+def test_sem_lastro_ao_lado_de_orfa_do_mesmo_tamanho_sugere_data_trocada():
+    ontem = DIA - timedelta(days=1)
+    aud = A.auditar([em(DIA, 9, 4)], [ev("commit", ontem, 9, 13)], INI, FIM)
+    (a,) = aud.achados
+    assert a.veredito == "sem lastro", "o veredito nao muda: continua sendo o que se viu"
+    assert any("possivel data trocada" in o for o in a.observacoes)
+    assert f"{ontem:%d/%m}" in " ".join(a.observacoes)
+
+
+def test_orfa_de_outro_tamanho_nao_vira_sugestao_de_data_trocada():
+    ontem = DIA - timedelta(days=1)
+    aud = A.auditar([em(DIA, 9, 4)], [ev("commit", ontem, 9, 20)], INI, FIM)
+    assert not any("data trocada" in o for o in aud.achados[0].observacoes)
+
+
+def test_orfa_distante_nao_vira_sugestao_de_data_trocada():
+    longe = DIA - timedelta(days=5)
+    aud = A.auditar([em(DIA, 9, 4)], [ev("commit", longe, 9, 13)], INI, FIM)
+    assert not any("data trocada" in o for o in aud.achados[0].observacoes)
+
+
+def test_cada_entrada_sem_lastro_recebe_sua_propria_sugestao():
+    # A primeira versao devolvia da funcao inteira no primeiro par encontrado,
+    # o que silenciava todas as entradas seguintes.
+    d1, d2 = date(2026, 9, 10), date(2026, 9, 20)
+    entradas = [em(d1, 9, 4, eid="a"), em(d2, 9, 4, eid="b")]
+    evid = [ev("commit", d1 - timedelta(days=1), 9, 13),
+            ev("commit", d2 - timedelta(days=1), 9, 13)]
+    aud = A.auditar(entradas, evid, INI, FIM)
+    assert all(any("data trocada" in o for o in a.observacoes) for a in aud.achados)
 
 
 # ── cronograma ───────────────────────────────────────────────────────────────
