@@ -61,6 +61,16 @@ da redacao daquele dia.
 Se o corpo do relatorio sair vazio, nao escreva leitura nenhuma: nao ha o que
 ler, e uma leitura sobre nada e a forma mais rapida de inventar.
 
+## Quem usa
+
+Qualquer pessoa da Soteria que precise do status de um cliente. A skill nao
+assume um operador especifico: ela le o ClickUp do workspace, nao a maquina de
+ninguem.
+
+O destinatario do relatorio, esse sim e nomeado: **o Max valida e envia**. Nada
+sai daqui direto para o cliente. Confirmado de novo em 08/09, quando ficou em
+aberto com ele se o agente entrega ao cliente ou gera o conteudo para ele mandar.
+
 ## Codigo
 
 `src/soteria_pmo/reporte.py`, testes em `tests/test_rh_reporte.py`.

@@ -81,6 +81,22 @@ O Andre autorizou em 04/09 que o auditor **proponha** a correcao de escrita com
 confirmacao a cada alteracao. `clickup.corrigir` exige `Aprovacao` explicita e
 `dry_run` e o padrao. Nunca escreva sem mostrar antes o que vai mudar e ouvir sim.
 
+## Quem usa
+
+Duas audiencias, e a distincao mudou o desenho depois da conversa com o Andre em
+04/09.
+
+**O dev que lanca**, diariamente e no dia seguinte, com tom de lembrete e nao de
+cobranca. O valor nao esta no faturamento: hoje a divergencia so aparece no
+fechamento do mes, tarde demais para corrigir, e acaba faturada assim mesmo.
+
+**Quem fecha o mes**, hoje o Andre, com a visao consolidada. O objetivo declarado
+por ele e que o fechamento chegue quase limpo, nao que o auditor faca o
+fechamento.
+
+Qualquer pessoa da Soteria pode rodar: a skill le o workspace, e a evidencia de
+maquina que ela cruza e a de quem esta rodando. Nao ha operador unico.
+
 ## Codigo
 
 `src/soteria_pmo/auditor.py`, testes em `tests/test_auditor_cronograma.py`.

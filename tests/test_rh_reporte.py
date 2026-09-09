@@ -73,13 +73,13 @@ def test_29_de_fevereiro_em_ano_comum_cai_para_1_de_marco():
 
 
 def test_tempo_de_casa_conta_anos_e_ignora_o_primeiro_dia():
-    p = rh.Pessoa("Ana", admissao=date(2023, 9, 4))
+    p = rh.Pessoa("Ana", inicio_contrato=date(2023, 9, 4))
     (e,) = [x for x in rh.eventos([p], HOJE) if x.tipo == "tempo de casa"]
     assert "3 anos" in e.detalhe
 
 
-def test_admissao_no_mesmo_ano_nao_vira_tempo_de_casa():
-    p = rh.Pessoa("Ana", admissao=date(2026, 9, 4))
+def test_inicio_de_contrato_no_mesmo_ano_nao_vira_tempo_de_casa():
+    p = rh.Pessoa("Ana", inicio_contrato=date(2026, 9, 4))
     assert [x for x in rh.eventos([p], HOJE) if x.tipo == "tempo de casa"] == []
 
 
@@ -92,14 +92,14 @@ def test_fim_de_contrato_avisa_com_30_dias():
 
 
 def test_data_que_ja_passou_sem_ninguem_ver_ainda_aparece():
-    """Uma experiencia que venceu semana passada e o caso que vale pegar."""
-    p = rh.Pessoa("Ana", fim_experiencia=date(2026, 8, 26))
-    (e,) = [x for x in rh.eventos([p], HOJE) if x.tipo == "fim de experiencia"]
+    """Uma interrupcao que comecou semana passada e o caso que vale pegar."""
+    p = rh.Pessoa("Ana", interrupcao_inicio=date(2026, 8, 26))
+    (e,) = [x for x in rh.eventos([p], HOJE) if x.tipo == "interrupcao temporaria"]
     assert e.dias == -7
 
 
 def test_evento_muito_antigo_para_de_aparecer():
-    p = rh.Pessoa("Ana", fim_experiencia=date(2026, 6, 1))
+    p = rh.Pessoa("Ana", interrupcao_inicio=date(2026, 6, 1))
     assert rh.eventos([p], HOJE) == []
 
 
@@ -110,7 +110,7 @@ def test_eventos_saem_do_mais_urgente_para_o_menos():
 
 
 def test_digest_separa_o_que_passou_do_que_vem():
-    pessoas = [rh.Pessoa("Ana", fim_experiencia=date(2026, 8, 26)),
+    pessoas = [rh.Pessoa("Ana", interrupcao_inicio=date(2026, 8, 26)),
                rh.Pessoa("Bia", fim_contrato=date(2026, 9, 20))]
     saida = rh.digest(pessoas, HOJE)
     assert "Passaram sem aviso" in saida and "Chegando" in saida
@@ -229,24 +229,48 @@ def test_gerar_sobrevive_a_falha_de_leitura():
     assert R.gerar(Quebrado(), "1", "Soteria", INI, FIM) == ""
 
 
-# ── feedback bimestral e reporte executivo consolidado ──────────────────────
+# ── os dois feedbacks do primeiro ano e reporte executivo consolidado ───────
+#
+# Regra definida pelo Max em 08/09/2026: primeiro feedback aos 45 dias de
+# contrato, segundo aos 90, com 5 dias de antecedencia. Substitui o ciclo
+# bimestral de 60 dias contado do ultimo feedback, que era o que estes testes
+# assertavam antes e que nunca correspondeu ao contrato real.
 
 
-def test_ciclo_de_feedback_bimestral_dispara_aviso_quando_proximo():
-    # Ultimo feedback ha 50 dias: em 10 dias fecha 60 dias (dentro dos 15 dias de antecedencia)
-    p = rh.Pessoa("Carlos", ultimo_feedback=HOJE - rh.timedelta(days=50))
-    eventos = [e for e in rh.eventos([p], HOJE) if e.tipo == "ciclo de feedback"]
+def test_primeiro_feedback_dispara_com_5_dias_de_antecedencia():
+    # Contrato comecou ha 42 dias: os 45 caem em 3 dias, dentro da antecedencia
+    p = rh.Pessoa("Carlos", inicio_contrato=HOJE - rh.timedelta(days=42))
+    eventos = [e for e in rh.eventos([p], HOJE) if e.tipo == "primeiro feedback"]
     assert len(eventos) == 1
-    assert eventos[0].dias == 10
-    assert "ultimo em" in eventos[0].detalhe
+    assert eventos[0].dias == 3
+    assert "45 dias de contrato" in eventos[0].detalhe
 
 
-def test_ciclo_de_feedback_atrasado_ainda_aparece():
-    # Ultimo feedback ha 70 dias: ciclo de 60 dias venceu ha 10 dias
-    p = rh.Pessoa("Carlos", ultimo_feedback=HOJE - rh.timedelta(days=70))
-    eventos = [e for e in rh.eventos([p], HOJE) if e.tipo == "ciclo de feedback"]
+def test_segundo_feedback_sai_dos_90_dias():
+    p = rh.Pessoa("Carlos", inicio_contrato=HOJE - rh.timedelta(days=88))
+    eventos = [e for e in rh.eventos([p], HOJE) if e.tipo == "segundo feedback"]
+    assert len(eventos) == 1
+    assert eventos[0].dias == 2
+
+
+def test_feedback_atrasado_ainda_aparece():
+    p = rh.Pessoa("Carlos", inicio_contrato=HOJE - rh.timedelta(days=55))
+    eventos = [e for e in rh.eventos([p], HOJE) if e.tipo == "primeiro feedback"]
     assert len(eventos) == 1
     assert eventos[0].dias == -10
+
+
+def test_feedback_nao_depende_de_alguem_preencher_ultimo_feedback():
+    """A regra antiga nao disparava nada sem `ultimo_feedback` preenchido."""
+    p = rh.Pessoa("Carlos", inicio_contrato=HOJE - rh.timedelta(days=42))
+    assert p.ultimo_feedback is None
+    assert [e for e in rh.eventos([p], HOJE) if "feedback" in e.tipo]
+
+
+def test_11_dias_antes_do_feedback_ainda_nao_avisa():
+    """A antecedencia caiu de 15 para 5 dias."""
+    p = rh.Pessoa("Carlos", inicio_contrato=HOJE - rh.timedelta(days=34))
+    assert [e for e in rh.eventos([p], HOJE) if "feedback" in e.tipo] == []
 
 
 def test_reporte_executivo_cliente_consolida_implantacao_e_sustentacao():

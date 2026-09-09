@@ -396,25 +396,55 @@ def test_git_e_consultado_com_hora_explicita(tmp_path, monkeypatch):
     assert "--until=2026-09-02T23:59:59" in cmd
 
 
-def test_teto_sugerido_traz_so_os_tetos_ditos_com_firmeza():
+def test_teto_sugerido_traz_os_tetos_que_o_max_confirmou_em_08_09():
     assert B.teto_sugerido("China Gate Sustentacao") == 100.0
     assert B.teto_sugerido("Yoshii Imoveis") == 160.0
     assert B.teto_sugerido("Grupo Dimas") == 30.0
+    assert B.teto_sugerido("Grupo Angelus") == 160.0
+    assert B.teto_sugerido("APET") == 60.0
+    assert B.teto_sugerido("Gazin") == 40.0
+    assert B.teto_sugerido("Grupo BM2") == 100.0
+    assert B.teto_sugerido("IoX") == 160.0
     assert B.teto_sugerido("Cliente Desconhecido") is None
 
 
+def test_chave_curta_nao_casa_dentro_de_outra_palavra():
+    """Busca por substring daria teto a quem nunca teve. O cliente e APET."""
+    assert B.teto_sugerido("Analise de Competencia") is None
+    assert B.teto_sugerido("Carpetes do Sul") is None
+    assert B.teto_sugerido("APET Sustentacao") == 60.0
+    assert B.teto_sugerido("PET") is None, "nao existe cliente chamado PET"
+
+
+def test_total_de_projeto_nao_se_mistura_com_teto_mensal():
+    """390h da Unimed e o total do projeto, nao um teto que reseta todo mes."""
+    assert B.total_de_projeto("Unimed Londrina") == 390.0
+    assert B.teto_sugerido("Unimed Londrina") is None
+
+
+def test_cliente_encerrado_e_reconhecido_como_encerrado():
+    assert B.encerrado("Conta Azul") is True
+    assert B.encerrado("China Gate") is False
+
+
 def test_cliente_sem_teto_fixado_nao_ganha_um_numero_inventado():
-    """O Grupo Angelus foi dito como "sem limite rigido, algo em torno de 150,
-    75", e o codigo carregava 100.0, o meio-termo que ninguem falou."""
-    assert B.teto_sugerido("Grupo Angelus") is None
-    assert "75" in B.teto_a_confirmar("Grupo Angelus")
+    """A Concessionaria Reviver e projeto, sem media de bolsao. O Max ficou de
+    mandar a previsao mensal, e ate la nao se inventa numero para ela."""
+    assert B.teto_sugerido("Concessionaria Reviver") is None
+    assert "previsao mensal" in B.teto_a_confirmar("Concessionaria Reviver")
 
 
 def test_o_cliente_se_chama_angelus_e_nao_anjos():
-    """A transcricao automatica moeu o nome, e a chave antiga nunca casaria:
-    os 12 espacos foram lidos do workspace em 08/09 e nenhum e "Grupo Anjos"."""
+    """A transcricao automatica moeu o nome. "Grupo Anjos" nao existe nos 12
+    espacos lidos em 08/09, entao a chave errada nao pode casar com nada."""
+    assert B.teto_sugerido("Grupo Anjos") is None
     assert B.teto_a_confirmar("Grupo Anjos") is None
-    assert B.teto_a_confirmar("Grupo Angelus") is not None
+
+
+def test_o_teto_do_angelus_e_160_e_nao_o_meio_termo_de_100():
+    """Ate 08/09 o codigo carregou 100.0, um meio-termo entre 75 e 150 que
+    ninguem disse. Na reuniao o Max disse 100 e o Andre corrigiu para 160."""
+    assert B.teto_sugerido("Grupo Angelus") == 160.0
 
 
 def test_o_que_e_incerto_e_dito_como_incerto_e_nao_calado():
@@ -453,12 +483,13 @@ def test_projeto_sem_teto_sai_nomeado_em_vez_de_sumir_do_digest():
     """Ausencia do digest e indistinguivel de projeto saudavel. Ate 08/09 um
     projeto sem teto era descartado calado em carregar_bolsoes."""
     bolsoes, sem_teto = B.carregar_bolsoes([
-        {"nome": "Grupo Angelus", "space_id": "1"},
+        {"nome": "Concessionaria Reviver", "space_id": "1"},
         {"nome": "Yoshii", "space_id": "2"},
     ])
     assert [b.projeto for b in bolsoes] == ["Yoshii"]
-    assert any("Grupo Angelus" in t and "sem teto configurado" in t for t in sem_teto)
-    assert any("75" in t for t in sem_teto), "diz o que se sabe, mesmo incerto"
+    assert any("Concessionaria Reviver" in t and "sem teto configurado" in t
+               for t in sem_teto)
+    assert any("previsao mensal" in t for t in sem_teto), "diz o que se sabe"
 
 
 def test_o_digest_conta_quem_ficou_fora_da_projecao():

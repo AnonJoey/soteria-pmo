@@ -54,6 +54,16 @@ nao de dias soltos. A regua tem fonte, o Abner em 03/09; a escalada e escolha de
 desenho, e amarrar uma na outra evita um numero de dias que ninguem sabe de onde
 veio.
 
+## Quem usa
+
+Qualquer pessoa da Soteria que acompanhe entrega. A skill le tarefas e horas do
+workspace, nao a maquina de ninguem, entao nao ha operador privilegiado.
+
+O alerta e **por projeto**, nao por pessoa, e isso foi decisao do Abner em 03/09:
+um dev pode largar uma tarefa e ir para a proxima do mesmo projeto sem que o
+projeto tenha parado. Quem recebe o alerta e quem faz gestao, hoje o Abner e o
+Max.
+
 ## Codigo
 
 `src/soteria_pmo/cronograma.py`, testes em `tests/test_auditor_cronograma.py`.

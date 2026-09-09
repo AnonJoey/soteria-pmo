@@ -45,18 +45,25 @@ CONFIG_ANTIGO = Path.home() / ".delegation_core" / "pmo.json"
 # repeated for weeks after everyone has decided to leave it alone.
 JANELA_DA_AUDITORIA = 7
 
+# O exemplo que a CLI imprime quando nao ha config. Tudo aqui e placeholder de
+# proposito: e a primeira coisa que uma pessoa nova da Soteria ve, e um valor
+# real de outra pessoa copiado daqui vira apuracao no nome errado, evidencia
+# lida da maquina errada e hora lancada na tarefa errada.
+#
+# "pessoa" e por operador: cada um aponta para o proprio nome como aparece nas
+# transcricoes e no ClickUp. O pacote nao assume um dono unico.
 EXEMPLO = {
     "token": "pk_...",
     "team_id": "9007...",
-    "pessoa": "Jordan Bernardes",
+    "pessoa": "Nome Sobrenome, como aparece na daily e no ClickUp",
     "evidencia": {
         "repos": ["~/Projects/algum-repo"],
         "autor_git": "",
         "sessoes_ia": "~/.claude/projects",
-        "vault": "~/Documents/Projects_Archive/Claude Vault",
+        "vault": "~/caminho/para/o/vault",
         "historico_navegador": "~/.config/google-chrome/Default/History",
     },
-    "task_horas": "86e31gx8v",
+    "task_horas": "id da tarefa guarda-chuva de horas desta pessoa",
     "projetos": [
         # "space_id" e a unidade do bolsao: o trabalho de um cliente se espalha
         # por dezenas de listas do espaco dele, entao medir consumo por uma

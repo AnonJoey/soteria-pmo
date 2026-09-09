@@ -20,6 +20,7 @@ measurement and gets forwarded as one.
 from __future__ import annotations
 
 import logging
+import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
@@ -31,33 +32,83 @@ logger = logging.getLogger("pmo.bolsao")
 # an alert on every run is an alert nobody reads.
 FAIXAS = ((1.00, "estourado"), (0.90, "critico"), (0.75, "atencao"))
 
-# Tetos mensais levantados de viva voz com o Abner em 03/09/2026, e o texto
-# escrito que ele ficou de mandar ainda nao chegou. So entram aqui os que ele
-# disse com firmeza; os que ele mesmo marcou como a conferir ficam de fora.
+# Tetos mensais de sustentacao, confirmados pelo cliente interno na reuniao de
+# homologacao de 08/09/2026. Substituem a lista parcial de 03/09, que vinha de
+# uma conversa e trazia so os numeros ditos com firmeza.
 #
-# O Grupo Anjos foi removido em 08/09. A transcricao registra "sem limite
-# rigido, algo em torno de 150, 75", e o codigo carregava 100.0: um meio-termo
-# entre dois numeros incertos que ninguem disse. Um teto errado nao levanta
-# erro, so move a faixa de alerta, e a projecao de estouro sai confiante sobre
-# um numero inventado. Sem teto o vigia diz que nao tem teto, que e verdade.
+# So entra aqui numero dito de forma inequivoca. O que ficou incerto vai para
+# TETOS_A_CONFIRMAR e nao vira teto: um teto errado nao levanta erro, so move a
+# faixa de alerta, e a projecao de estouro sai confiante sobre um numero
+# inventado. Sem teto o vigia diz que nao tem teto, que e verdade.
 TETOS_DE_REFERENCIA: dict[str, float] = {
     "china gate": 100.0,
     "chinagate": 100.0,
     "yoshii": 160.0,
     "yoshi": 160.0,
+    "iox": 160.0,
+    "apet": 60.0,
     "grupo dimas": 30.0,
     "dimas": 30.0,
+    "angelus": 160.0,
+    "gazin": 40.0,
+    "bm2": 100.0,
+    "grupo bm2": 100.0,
 }
 
-# Ditos na mesma conversa e marcados pelo proprio Abner como a conferir. Nao
-# viram numero: existem para que o vigia possa dizer "ha uma referencia nao
-# confirmada" em vez de calar sobre um cliente que foi citado.
-# "Grupo Anjos" nao existe no workspace. Os 12 espacos de cliente foram lidos em
-# 08/09/2026 e o nome e **Grupo Angelus**: a transcricao automatica da reuniao
-# moeu "Angelus" em "Anjos", e a chave antiga nunca casaria com projeto nenhum.
-TETOS_A_CONFIRMAR: dict[str, str] = {
-    "angelus": "sem limite rigido; a transcricao registra algo entre 75 e 150",
+# Tetos mensais de sustentacao, confirmados pelo Max na reuniao de homologacao
+# de 08/09/2026. Substituem a lista parcial que vinha da conversa de 03/09.
+#
+# O Angelus entrou aqui por correcao ao vivo: o Max disse 100 e o Andre corrigiu
+# para 160 de sustentacao, "o resto e projeto". O valor de 100.0 que este arquivo
+# carregou ate 08/09 sob a chave errada "grupo anjos" era um meio-termo entre 75
+# e 150 que ninguem disse, e "Grupo Anjos" nao existe no workspace: a transcricao
+# automatica moeu "Angelus".
+#
+# O Max falou "a PET" em 08/09 e o cliente do workspace se chama APET. Nao ha
+# cliente chamado PET: sao o mesmo, confirmado em 09/09. A chave e "apet", e a
+# busca por palavra inteira e o que impede "pet" de casar dentro de outro nome.
+#
+# BM2 nao tem bolsao contratado. Os 100.0 sao o numero base que o Max pediu para
+# usar como gatilho, porque "se passar de 100 horas e poucas, certamente o
+# William vai chiar". Um gatilho sem contrato ainda e melhor que silencio.
+
+# Totais de PROJETO, nao mensais. Ficam separados de proposito: somar um total
+# de implantacao junto com um teto mensal de sustentacao daria um alerta que
+# dispara no mes errado.
+TOTAIS_DE_PROJETO: dict[str, float] = {
+    "unimed londrina": 390.0,
+    "unimed": 390.0,
 }
+
+# Clientes que sairam. Guardado em vez de apagado: um projeto que reaparece num
+# extrato antigo deve ser reconhecido como encerrado, nao como desconhecido.
+NAO_MAIS_CLIENTE: frozenset[str] = frozenset({"conta azul", "contaazul"})
+
+# Citados sem numero fechado. Nao viram teto: existem para que o vigia diga
+# "ha uma referencia nao confirmada" em vez de calar sobre um cliente citado.
+#
+# O Angelus saiu daqui em 08/09: o Max e o Andre fecharam 160h de sustentacao
+# na reuniao, e o valor foi para TETOS_DE_REFERENCIA.
+TETOS_A_CONFIRMAR: dict[str, str] = {
+    "reviver": ("projeto, sem media de bolsao; o Max tem uma previsao mensal de "
+                "horas e ficou de mandar o cronograma"),
+}
+
+
+#: Chaves curtas casariam dentro de outra palavra num nome de projeto. "pet"
+#: dentro de "competencia" daria um teto de 60h a um cliente que nunca teve um.
+#: Por isso a busca e por palavra inteira, e nao por substring.
+_SEPARADOR = re.compile(r"[^a-z0-9]+")
+
+
+def _palavras(texto: str) -> set[str]:
+    return {t for t in _SEPARADOR.split((texto or "").strip().lower()) if t}
+
+
+def _casa(chave: str, projeto: str) -> bool:
+    """Se a chave aparece no nome do projeto como palavra (ou sequencia delas)."""
+    alvo = _palavras(projeto)
+    return _palavras(chave).issubset(alvo) if alvo else False
 
 
 def teto_sugerido(projeto: str) -> float | None:
@@ -67,18 +118,34 @@ def teto_sugerido(projeto: str) -> float | None:
     the caller turns it into "no ceiling configured" instead of a projection
     against a number nobody gave.
     """
-    p = (projeto or "").strip().lower()
     for k, v in TETOS_DE_REFERENCIA.items():
-        if k in p:
+        if _casa(k, projeto):
             return v
     return None
 
 
+def total_de_projeto(projeto: str) -> float | None:
+    """Total de horas de um projeto de implantacao, quando ha um.
+
+    Separado de `teto_sugerido` porque a unidade e outra: um total de projeto
+    nao reseta na virada do mes, e compara-lo com o consumo mensal produziria
+    um alerta que nunca dispara ou que dispara sempre.
+    """
+    for k, v in TOTAIS_DE_PROJETO.items():
+        if _casa(k, projeto):
+            return v
+    return None
+
+
+def encerrado(projeto: str) -> bool:
+    """Se este projeto e de um cliente que nao e mais cliente."""
+    return any(_casa(k, projeto) for k in NAO_MAIS_CLIENTE)
+
+
 def teto_a_confirmar(projeto: str) -> str | None:
     """What is known but unconfirmed about this client's ceiling, if anything."""
-    p = (projeto or "").strip().lower()
     for k, v in TETOS_A_CONFIRMAR.items():
-        if k in p:
+        if _casa(k, projeto):
             return v
     return None
 

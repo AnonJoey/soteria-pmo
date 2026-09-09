@@ -27,19 +27,34 @@ from pathlib import Path
 
 logger = logging.getLogger("pmo.rh")
 
-# How many days ahead each kind of date starts being announced. The contract
-# end leads by a month because acting on it means a conversation, not a card.
+# How many days ahead each kind of date starts being announced.
+#
+# Revisto em 08/09/2026 na reuniao de homologacao com o Max, que corrigiu os
+# termos e os prazos. A versao anterior vinha de 24/06 e nao batia com o
+# contrato real da Soteria.
 ANTECEDENCIA = {
     "aniversario": 7,
     "tempo de casa": 7,
-    "fim de experiencia": 15,
     "fim de contrato": 30,
-    "ferias": 10,
-    "feedback": 15,
+    "interrupcao temporaria": 20,
+    "feedback": 5,
 }
 
-# Ciclo padrao bimestral acordado com Max em 24/06
-CICLO_FEEDBACK_DIAS = 60
+# Os dois feedbacks do primeiro ano, contados do INICIO DO CONTRATO.
+#
+# Substitui o ciclo bimestral de 60 dias contado a partir do ultimo feedback.
+# O Max, em 08/09: "primeiro feedback 45 dias, segundo feedback 90 dias, da
+# para colocar 2 colunas assim, ja automatizando da data de inicio do contrato".
+#
+# A diferenca nao e so o numero: o ciclo antigo se ancorava numa data que
+# alguem tinha de preencher a cada rodada, e sem ela nao disparava nada. Estes
+# dois derivam de uma data que ja existe no cadastro.
+FEEDBACKS_DIAS = (45, 90)
+
+# Saldo de interrupcao temporaria por ano de contrato. Nao ha ferias CLT: o
+# contrato preve uma interrupcao temporaria negociada, sem prejuizo do
+# pagamento, de 20 dias a cada ano completo.
+INTERRUPCAO_DIAS_POR_ANO = 20
 
 
 class RosterAusente(RuntimeError):
@@ -56,11 +71,20 @@ class Pessoa:
 
     nome: str
     nascimento: date | None = None
-    admissao: date | None = None
-    fim_experiencia: date | None = None
+    #: Data de inicio de contrato. Nao e admissao: nao ha vinculo CLT com
+    #: ninguem, e o Max pediu explicitamente que o termo mudasse.
+    inicio_contrato: date | None = None
     fim_contrato: date | None = None
-    ferias_inicio: date | None = None
+    #: Inicio da interrupcao temporaria negociada. Nao e ferias.
+    interrupcao_inicio: date | None = None
+    #: Mantido para roster que ja registrava feedback avulso. Os dois feedbacks
+    #: do primeiro ano saem de `inicio_contrato` e nao dependem deste campo.
     ultimo_feedback: date | None = None
+
+    @property
+    def admissao(self) -> date | None:
+        """Nome antigo de `inicio_contrato`, mantido para nao quebrar chamador."""
+        return self.inicio_contrato
 
 
 @dataclass(frozen=True)
@@ -115,13 +139,15 @@ def carregar(caminho: str | Path) -> list[Pessoa]:
         nome = (linha.get("nome") or "").strip()
         if not nome:
             continue
+        # Os nomes antigos continuam aceitos: o roster que o Max mandar pode vir
+        # com qualquer um dos dois, e recusar a coluna antiga transformaria uma
+        # planilha valida em silencio.
         pessoas.append(Pessoa(
             nome=nome,
             nascimento=_data(linha.get("nascimento")),
-            admissao=_data(linha.get("admissao")),
-            fim_experiencia=_data(linha.get("fim_experiencia")),
+            inicio_contrato=_data(linha.get("inicio_contrato") or linha.get("admissao")),
             fim_contrato=_data(linha.get("fim_contrato")),
-            ferias_inicio=_data(linha.get("ferias_inicio")),
+            interrupcao_inicio=_data(linha.get("interrupcao_inicio") or linha.get("ferias_inicio")),
             ultimo_feedback=_data(linha.get("ultimo_feedback") or linha.get("data_ultimo_feedback")),
         ))
     return pessoas
@@ -154,28 +180,28 @@ def eventos(pessoas: list[Pessoa], hoje: date) -> list[Evento]:
             d = (q - hoje).days
             if d <= ANTECEDENCIA["aniversario"]:
                 achados.append(Evento(p.nome, "aniversario", q, d))
-        if p.admissao:
-            q = _proxima_ocorrencia(p.admissao, hoje)
+        if p.inicio_contrato:
+            q = _proxima_ocorrencia(p.inicio_contrato, hoje)
             d = (q - hoje).days
             if d <= ANTECEDENCIA["tempo de casa"]:
-                anos = q.year - p.admissao.year
+                anos = q.year - p.inicio_contrato.year
                 if anos >= 1:
                     achados.append(Evento(p.nome, "tempo de casa", q, d,
-                                          f"{anos} ano{'s' if anos > 1 else ''}"))
+                                          f"{anos} ano{'s' if anos > 1 else ''}, "
+                                          f"{anos * INTERRUPCAO_DIAS_POR_ANO} dias de interrupcao acumulados"))
 
-        # Feedback cycle: 60 days after last feedback date
-        if p.ultimo_feedback:
-            prox_fb = p.ultimo_feedback + timedelta(days=CICLO_FEEDBACK_DIAS)
-            d = (prox_fb - hoje).days
-            if -30 <= d <= ANTECEDENCIA["feedback"]:
-                achados.append(Evento(p.nome, "ciclo de feedback", prox_fb, d,
-                                      f"ultimo em {p.ultimo_feedback:%d/%m}"))
+            # Os dois feedbacks do primeiro ano, derivados do inicio do contrato.
+            for ordinal, dias in zip(("primeiro", "segundo"), FEEDBACKS_DIAS):
+                quando = p.inicio_contrato + timedelta(days=dias)
+                d = (quando - hoje).days
+                if -30 <= d <= ANTECEDENCIA["feedback"]:
+                    achados.append(Evento(p.nome, f"{ordinal} feedback", quando, d,
+                                          f"{dias} dias de contrato"))
 
-        # One-off dates. Past ones still surface: a probation period that ended
+        # One-off dates. Past ones still surface: a contract end that passed
         # last week without anyone noticing is the case worth catching.
-        for campo, tipo in (("fim_experiencia", "fim de experiencia"),
-                            ("fim_contrato", "fim de contrato"),
-                            ("ferias_inicio", "ferias")):
+        for campo, tipo in (("fim_contrato", "fim de contrato"),
+                            ("interrupcao_inicio", "interrupcao temporaria")):
             quando = getattr(p, campo)
             if quando is None:
                 continue

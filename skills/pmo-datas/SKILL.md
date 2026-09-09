@@ -26,6 +26,11 @@ soteria-pmo rodar --forcar datas
   invertida. E defeito estrutural do card, nao atraso de ninguem, e a mensagem
   precisa deixar isso claro.
 
+## Quem usa
+
+Qualquer pessoa da Soteria. A skill le os prazos do workspace inteiro, e nao a
+agenda de ninguem em particular: quem roda ve o que vence para o time.
+
 ## Codigo
 
 `src/soteria_pmo/datas.py`, testes em `tests/test_periodo_bolsao_datas.py`.

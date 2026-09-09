@@ -1,6 +1,6 @@
 ---
 name: pmo-rh
-description: Avisa das datas da equipe: aniversario, tempo de casa, fim de experiencia, fim de contrato, ferias e o ciclo bimestral de feedback. Use quando perguntarem quem faz aniversario, quem esta perto de fechar contrato ou experiencia, quem esta atrasado no feedback, ou pedirem os lembretes de RH da semana. Item 6 dos Agentes PMO da Soteria.
+description: Avisa das datas da equipe da Soteria: aniversario, tempo de casa, inicio e fim de contrato, interrupcao temporaria e os dois feedbacks do primeiro ano. Use quando perguntarem quem faz aniversario, quem esta perto de fechar contrato, quem esta com feedback vencendo, ou pedirem os lembretes de RH da semana. Item 6 dos Agentes PMO da Soteria.
 ---
 
 # RH e datas da equipe
@@ -16,22 +16,61 @@ Diariamente.
 soteria-pmo rodar --forcar rh
 ```
 
-## Antecedencias
+## As regras, definidas pelo Max em 08/09/2026
 
-- **Aniversario**: 7 dias.
-- **Fim de experiencia e fim de contrato**: 30 dias.
-- **Ciclo de feedback**: bimestral, 60 dias, com alerta 15 dias antes de vencer.
-- **Tempo de casa**: marcos anuais.
+Os termos importam, e o Max pediu explicitamente que mudassem. O contrato da
+Soteria nao e CLT, e a versao anterior desta skill usava vocabulario que nao
+corresponde a nada no contrato real.
+
+| Evento | Regra | Aviso |
+|---|---|---|
+| Aniversario | data de nascimento | 7 dias antes **e de novo no dia** |
+| Tempo de casa | marcos anuais do inicio de contrato | 7 dias |
+| Primeiro feedback | **45 dias** de contrato | 5 dias |
+| Segundo feedback | **90 dias** de contrato | 5 dias |
+| Interrupcao temporaria | data de inicio negociada | 20 dias |
+| Fim de contrato | data de encerramento | 30 dias |
+
+**Nao existe admissao**: o termo e *data de inicio de contrato*.
+
+**Nao existe fim de experiencia**: o contrato nao preve periodo de experiencia.
+
+**Nao existe ferias**: existe *interrupcao temporaria*, negociada, sem prejuizo
+do pagamento, com saldo de **20 dias por ano completo de contrato**. O saldo
+acumulado aparece junto do evento de tempo de casa.
+
+O aviso de aniversario sai duas vezes por pedido do Max: com 7 dias ele consegue
+programar o day off da pessoa, e no dia ele lembra.
+
+### O que mudou e por que
+
+Ate 08/09 a regra era um ciclo bimestral de 60 dias contado a partir do *ultimo
+feedback registrado*, com aviso de 15 dias. Isso tinha um defeito estrutural
+alem do numero errado: dependia de alguem preencher a data a cada rodada, e sem
+ela nao disparava nada. Os dois feedbacks do primeiro ano derivam do inicio do
+contrato, que e uma data que ja existe no cadastro.
 
 ## A base
 
-Um roster em CSV ou JSON apontado por `roster_rh` no config, com as mesmas colunas
-nos dois formatos. O carregador e resiliente de proposito: linha sem nome e
-ignorada, data ilegivel vira vazio e nao derruba a pessoa inteira do relatorio.
+Um roster em CSV ou JSON apontado por `roster_rh` no config, com as mesmas
+colunas nos dois formatos. O carregador e resiliente de proposito: linha sem nome
+e ignorada, data ilegivel vira vazio e nao derruba a pessoa inteira do relatorio.
 
-Pendente com o Max desde 04/09: se inicio de contrato e ultimo feedback ficam como
-campo no ClickUp ou seguem na planilha. Enquanto nao decidirem, a planilha e a
-fonte.
+Colunas aceitas: `nome`, `nascimento`, `inicio_contrato`, `fim_contrato`,
+`interrupcao_inicio`. Os nomes antigos `admissao` e `ferias_inicio` continuam
+sendo lidos, porque recusar uma planilha valida por causa do cabecalho
+transformaria dado bom em silencio.
+
+Pendente com o Max desde 04/09, reafirmado em 08/09: se as datas ficam como campo
+no ClickUp ou seguem na planilha. O aniversario **ja existe** no ClickUp e e lido
+de la; os demais campos o Abner nao tem, e ele ficou de confirmar com o Max e o
+Marcos se sao sequer desejados. Enquanto nao decidirem, a planilha e a fonte.
+
+## Quem usa
+
+Qualquer pessoa da Soteria com acesso ao roster. A skill nao assume um operador
+especifico: quem roda ve as datas de toda a equipe do arquivo apontado no config.
+Na pratica o destinatario dos avisos e quem faz gestao de pessoas, hoje o Max.
 
 ## Codigo
 
