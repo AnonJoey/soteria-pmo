@@ -53,6 +53,55 @@ def test_entrada_com_evidencia_batendo_e_corroborada():
     assert not aud.achados[0].precisa_de_olho
 
 
+def test_o_lastro_e_do_dia_e_nao_da_entrada():
+    """Um dia bem lancado em pedacos nao pode sair todo divergente.
+
+    Medido em 10/09/2026 contra o proprio workspace: 0 de 66 entradas
+    corroboradas numa semana inteira, porque cada entrada de 0,2h era comparada
+    contra as 7,8h que a maquina viu no dia. A evidencia testemunha o dia; ela
+    nao sabe a qual lancamento cada janela pertence.
+    """
+    entradas = [entrada(DIA, 2.0, desc=f"Bloco {i} (Soteria)", eid=f"te_{i}")
+                for i in range(4)]
+    aud = A.auditar(entradas, [ev("commit", DIA, 9, 17)], INI, FIM)
+    assert [a.veredito for a in aud.achados] == ["corroborada"] * 4
+    assert aud.achados[0].horas_lancadas == 2.0, "a entrada continua sendo a entrada"
+    assert aud.achados[0].horas_lancadas_no_dia == 8.0
+
+
+def test_dia_que_cobra_mais_do_que_o_relogio_permite_e_pego():
+    """O reverso, e o que a regra antiga nao via: cada entrada do tamanho da
+    evidencia, e o dia somando tres vezes o que houve."""
+    entradas = [entrada(DIA, 8.0, desc=f"Bloco {i} (Soteria)", eid=f"te_{i}")
+                for i in range(3)]
+    aud = A.auditar(entradas, [ev("commit", DIA, 9, 17)], INI, FIM)
+    assert all(a.veredito == "divergente" for a in aud.achados)
+    assert aud.achados[0].diferenca == 16.0
+
+
+def test_o_dia_de_cada_pessoa_e_comparado_separado():
+    """Treze agendas no mesmo dia nao se somam contra a evidencia de UMA maquina."""
+    a1 = entrada(DIA, 4.0, eid="te_1"); a1["user"] = {"username": "Jordan"}
+    a2 = entrada(DIA, 4.0, eid="te_2"); a2["user"] = {"username": "Jordan"}
+    b1 = entrada(DIA, 3.0, eid="te_3"); b1["user"] = {"username": "Outra pessoa"}
+    aud = A.auditar([a1, a2, b1], [ev("commit", DIA, 9, 17)], INI, FIM)
+    por_id = {a.entry_id: a for a in aud.achados}
+    # Somadas as tres dariam 11h contra 8h de evidencia, e o dia do Jordan,
+    # que fecha exato, sairia divergente por causa da agenda de outra pessoa.
+    assert por_id["te_1"].veredito == "corroborada"
+    assert por_id["te_1"].horas_lancadas_no_dia == 8.0
+    assert por_id["te_3"].horas_lancadas_no_dia == 3.0
+
+
+def test_a_divergencia_do_dia_sai_uma_vez_e_nao_uma_por_entrada():
+    entradas = [entrada(DIA, 3.0, desc=f"Bloco {i} (Soteria)", eid=f"te_{i}")
+                for i in range(6)]
+    texto = A.relatorio(A.auditar(entradas, [ev("commit", DIA, 9, 17)], INI, FIM))
+    assert texto.count("[divergente]") == 1
+    assert "em 6 entradas" in texto
+    assert "e mais 1 entrada(s) deste dia" in texto
+
+
 def test_entrada_sem_evidencia_e_sem_lastro_e_nao_erro():
     aud = A.auditar([entrada(DIA, 8)], [], INI, FIM)
     a = aud.achados[0]
@@ -129,8 +178,13 @@ def test_corroboradas_nao_sao_listadas_so_contadas():
     o que este teste existe para proteger.
     """
     outro = date(2026, 9, 3)
-    entradas = [entrada(DIA, 8, desc=f"Desenvolvimento passo {i} (Soteria)", eid=f"te_{i}")
-                for i in range(20)]
+    # Vinte entradas de 0,4h somando as 8h do dia, que e a forma do lancamento
+    # granular. A versao anterior deste teste usava vinte entradas de 8h no
+    # MESMO dia, ou seja, 160h em 24 horas, e o relatorio as chamava de
+    # corroboradas: a comparacao era entrada contra dia, entao cada uma batia
+    # com a evidencia sozinha e o dia impossivel passava.
+    entradas = [entrada(DIA, 0.4, desc=f"Desenvolvimento passo {i} (Soteria)",
+                        eid=f"te_{i}") for i in range(20)]
     entradas.append(entrada(outro, 8, desc="Excecao sem lastro (Soteria)", eid="te_x"))
     texto = A.relatorio(A.auditar(entradas, [ev("commit", DIA, 9, 17)], INI, FIM))
 

@@ -25,11 +25,23 @@ campo no artefato. Nunca ofereca enviar, nunca redija como se fosse sair assim.
 
 ## O que o relatorio traz
 
+Um reporte por cliente configurado, e nao um do workspace inteiro. A unidade de
+um cliente e o **espaco** do ClickUp, nao uma lista: o trabalho dele se espalha
+por dezenas de listas dentro do espaco, e medir por uma lista mede uma fatia.
+
 - Bloco de **projetos de implantacao** separado do bloco de **chamados e
   sustentacao**. Sao conversas diferentes e misturar as duas foi o defeito da
-  primeira versao.
+  primeira versao. A separacao sai do nome da lista e da pasta, e o `tipo` do
+  cliente no config decide quando o nome nao entrega.
 - Tarefas concluidas, em andamento, e as que passaram o periodo sem apontamento.
 - Horas faturaveis e nao faturaveis consolidadas, sempre separadas.
+- Lista sem hora e sem tarefa concluida no periodo nao aparece: o documento e
+  executivo, e listar o backlog inteiro do cliente foi como o que aconteceu na
+  semana sumiu no meio do que so existe.
+
+Um cliente cujo espaco nao puder ser lido aparece dizendo isso, e nao some: os
+outros dez continuam saindo, pela mesma razao que um item quebrado nao pode
+virar semana quieta.
 
 ## A leitura do periodo, e como escrever
 
@@ -74,3 +86,5 @@ aberto com ele se o agente entrega ao cliente ou gera o conteudo para ele mandar
 ## Codigo
 
 `src/soteria_pmo/reporte.py`, testes em `tests/test_rh_reporte.py`.
+`gerar_todos` percorre os clientes do config, `gerar_consolidado` faz um, e
+`gerar` continua servindo o caso de uma lista so.

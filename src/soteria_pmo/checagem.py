@@ -33,6 +33,10 @@ from urllib.parse import urlparse
 #: ele esta de pe, e nada aqui sobe modelo nenhum.
 MODELO_PADRAO = "http://127.0.0.1:8181"
 
+#: Planilha de exemplo com as colunas que `rh.carregar` le. Caminho dentro do
+#: repositorio, e nao um arquivo gerado: e material para copiar e preencher.
+MODELO_DE_ROSTER = "contrib/rh-modelo.csv"
+
 
 @dataclass
 class Item:
@@ -168,7 +172,11 @@ def checar(cfg: dict, modelo: str = MODELO_PADRAO) -> Checagem:
     c.itens.append(Item(
         nome="Roster de RH", obrigatorio=False,
         presente=bool(roster and roster.exists()), detalhe=str(roster or ""),
-        custo="o item 6 nao roda, e diz que nao roda em vez de sair vazio"))
+        # A ausencia vem com o caminho da saida: as colunas do roster estavam
+        # so no codigo, entao quem quisesse ligar o item 6 tinha que ler o
+        # `carregar` para descobrir como e a planilha.
+        custo="o item 6 nao roda, e diz que nao roda em vez de sair vazio; "
+              f"as colunas estao em {MODELO_DE_ROSTER}"))
 
     return c
 

@@ -62,6 +62,9 @@ EXEMPLO = {
         "sessoes_ia": "~/.claude/projects",
         "vault": "~/caminho/para/o/vault",
         "historico_navegador": "~/.config/google-chrome/Default/History",
+        # Projetos pessoais desta maquina, por caminho ou por nome. O que cair
+        # aqui sai da apuracao em vez de virar hora de cliente.
+        "pessoais": ["~/Projects/algum-projeto-pessoal"],
     },
     "task_horas": "id da tarefa guarda-chuva de horas desta pessoa",
     "projetos": [
@@ -117,6 +120,7 @@ def fontes_de_evidencia(cfg: dict) -> "coletor.Fontes":
         sessoes_ia=ev.get("sessoes_ia", ""),
         vault=ev.get("vault", ""),
         historico_navegador=ev.get("historico_navegador", ""),
+        pessoais=tuple(ev.get("pessoais", ())),
     )
 
 
@@ -130,11 +134,12 @@ def evidencia_do_periodo(cfg: dict, inicio: date, fim: date) -> list:
     if not (cfg.get("evidencia") or {}):
         return []
     try:
-        evidencias, _falhas = coletor.coletar(fontes_de_evidencia(cfg), inicio, fim)
+        fontes = fontes_de_evidencia(cfg)
+        evidencias, _falhas = coletor.coletar(fontes, inicio, fim)
     except Exception:
         logger.exception("coleta de evidencia falhou; auditoria segue sem lastro")
         return []
-    uteis, _pessoais = coletor.separar_pessoal(evidencias)
+    uteis, _pessoais = coletor.separar_pessoal(evidencias, fontes.pessoais)
     return uteis
 
 
@@ -179,9 +184,16 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
         caminho = Path(cfg["roster_rh"]).expanduser()
         tarefas["rh"] = lambda: rh.rodar(caminho, hoje)
 
+    # Item 1 sobre TODOS os clientes, consolidado por espaco e separando
+    # implantacao de sustentacao, que e o que o Max especificou em 24/06. Ate
+    # 10/09/2026 isto lia um `list_id` unico, o do primeiro projeto do config,
+    # que nesta maquina e a lista interna dos proprios Agentes PMO: o reporte ao
+    # cliente nao passava por cliente nenhum.
+    if projetos:
+        tarefas["reporte"] = lambda: reporte.gerar_todos(
+            cliente, projetos, inicio_semana, fim_semana)
+
     if primeiro:
-        tarefas["reporte"] = lambda: reporte.gerar(
-            cliente, primeiro["list_id"], primeiro["nome"], inicio_semana, fim_semana)
         tarefas["auditor"] = lambda: auditor.relatorio(auditor.auditar(
             cliente.entradas(*periodo.janela(inicio_aud, fim_aud)),
             evidencia_do_periodo(cfg, inicio_aud, fim_aud),
@@ -236,12 +248,13 @@ def cmd_horas(args) -> int:
     ev_cfg = cfg.get("evidencia") or {}
     pessoa = args.pessoa or cfg.get("pessoa", "")
 
-    evidencias, falhas = coletor.coletar(fontes_de_evidencia(cfg), inicio, fim)
-    print(coletor.resumo(evidencias, falhas))
+    fontes = fontes_de_evidencia(cfg)
+    evidencias, falhas = coletor.coletar(fontes, inicio, fim)
+    print(coletor.resumo(evidencias, falhas, fontes.pessoais))
     print()
     # Personal evidence is dropped from the apuracao, not from the report: the
     # resumo above says how much was separated so a wrong split is visible.
-    evidencias, _pessoais = coletor.separar_pessoal(evidencias)
+    evidencias, _pessoais = coletor.separar_pessoal(evidencias, fontes.pessoais)
 
     falas = []
     if pessoa and ev_cfg.get("vault"):

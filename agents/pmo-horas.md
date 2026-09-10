@@ -32,6 +32,23 @@ soteria-pmo horas --de ... --ate ... --sem-modelo   # so evidencia de maquina
 Coleta commits, sessoes de IA, notas do vault e historico de navegador, separa a
 evidencia pessoal da de cliente, le as dailies da pessoa, e propoe o bloco.
 
+**Uma proposta por janela medida, com a hora em que o trabalho aconteceu.** Nao
+uma por dia. Ate 09/09/2026 o dia inteiro virava uma entrada so, posicionada as
+09:00 porque a proposta nao carregava horario nenhum: os dias 01 a 04/09 estavam
+no ClickUp como quatro entradas monoliticas e, refeitos pelas janelas, viraram
+79 com o total de cada dia igual ao minuto. Uma entrada de 11h as 09:00 diz que
+a pessoa trabalhou direto das 9 as 20, e nao bate com trilha nenhuma.
+
+A declaracao da daily diz QUANTO e nao QUANDO, entao ela nao e espalhada por
+cima das janelas: quando a pessoa declara mais do que a maquina viu, a diferenca
+vira pergunta como qualquer outra hora sem lastro. So quando nao ha janela
+nenhuma a declaracao vira proposta sozinha, e ai ela sai sem horario, dito com
+essas palavras no relatorio.
+
+Projeto pessoal de nome proprio nao e adivinhado: liste os seus em
+`evidencia.pessoais` no config. A lista fixa do pacote cobre jogo, streaming e
+distro, e nao alcanca um repositorio pessoal cujo nome parece nome de cliente.
+
 **2. Perguntar pelo que ficou de fora.** Dia sem evidencia **nao vira zero, vira
 pergunta**. Reconstruir uma jornada a partir de rastro de maquina capturou 39,1h
 de 130,1h no primeiro ciclo e 54h de 89,5h no segundo. Zero e pergunta tem a

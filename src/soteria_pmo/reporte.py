@@ -270,6 +270,145 @@ class ReporteCliente:
         return round(sum(r.horas_nao_faturaveis for r in self.implantacao + self.sustentacao), 2)
 
 
+#: Marcas de fila de sustentacao no nome da lista ou da pasta. Heuristica, e
+#: nomeada como uma: erra para o lado de chamar de implantacao o que nao
+#: reconhece, porque uma lista de projeto listada como chamado inverte a leitura
+#: executiva, e o `tipo` do config corrige por cliente quando a marca falta.
+MARCAS_DE_SUSTENTACAO = (
+    "sustenta", "chamado", "suporte", "atendimento", "incidente", "ticket",
+    "sla", "manutencao", "manutenção",
+)
+
+#: Quantas tarefas cada lista mostra no consolidado antes de resumir o resto.
+#: Mesma razao do TETO_DE_PARADAS: um espaco de cliente inteiro cabe aqui, e
+#: sem teto o que aconteceu na semana some no meio do que so existe.
+TETO_POR_LISTA = 10
+
+
+def _e_sustentacao(nome_lista: str, nome_pasta: str = "", tipo: str = "") -> bool:
+    """Se esta lista e fila de sustentacao, e nao projeto de implantacao."""
+    alvo = f"{nome_lista} {nome_pasta}".lower()
+    if any(m in alvo for m in MARCAS_DE_SUSTENTACAO):
+        return True
+    return str(tipo).strip().lower() == "chamado"
+
+
+def montar_consolidado(tarefas: list[dict], entradas: list[dict], cliente: str,
+                       inicio: date, fim: date, tipo: str = "") -> ReporteCliente:
+    """Agrupa o espaco de um cliente por lista e separa as duas naturezas.
+
+    Lista sem hora e sem tarefa concluida no periodo fica de fora: ela nao tem
+    nada a dizer sobre a semana, e o consolidado e um documento executivo, nao
+    um inventario do cliente.
+    """
+    por_lista: dict[str, list[dict]] = defaultdict(list)
+    nomes: dict[str, tuple[str, str]] = {}
+    for t in tarefas:
+        lista = campo_objeto(t, "list")
+        lid = str(lista.get("id") or "")
+        if not lid:
+            continue
+        por_lista[lid].append(t)
+        nomes[lid] = (str(lista.get("name") or "(sem nome)"),
+                      str(campo_objeto(t, "folder").get("name") or ""))
+
+    entradas_por_lista: dict[str, list[dict]] = defaultdict(list)
+    for e in entradas:
+        lid = str(campo_objeto(e, "task_location").get("list_id") or "")
+        if lid:
+            entradas_por_lista[lid].append(e)
+
+    rc = ReporteCliente(cliente=cliente, inicio=inicio, fim=fim)
+    for lid, tarefas_da_lista in por_lista.items():
+        nome_lista, nome_pasta = nomes[lid]
+        r = montar(tarefas_da_lista, entradas_por_lista.get(lid, []),
+                   nome_lista, inicio, fim)
+        if not r.horas_totais and not r.concluidas:
+            continue
+        (rc.sustentacao if _e_sustentacao(nome_lista, nome_pasta, tipo)
+         else rc.implantacao).append(r)
+
+    rc.implantacao.sort(key=lambda r: -r.horas_totais)
+    rc.sustentacao.sort(key=lambda r: -r.horas_totais)
+    return rc
+
+
+def gerar_consolidado(cliente, projeto: dict, inicio: date, fim: date,
+                      entradas: list[dict] | None = None) -> str:
+    """O reporte executivo de um cliente, do jeito que o Max pediu em 24/06.
+
+    Sem `space_id` no config nao ha cliente a consolidar, so uma lista, e o
+    reporte por lista continua sendo a resposta certa para esse caso.
+
+    `entradas` entra pronto quando quem chama ja leu a janela: a rotina roda
+    isso para onze clientes e reler a mesma janela onze vezes gasta onze
+    chamadas para receber a mesma resposta.
+    """
+    space_id = str(projeto.get("space_id") or "")
+    nome = str(projeto.get("nome") or "Cliente")
+    if not space_id:
+        if projeto.get("list_id"):
+            return gerar(cliente, str(projeto["list_id"]), nome, inicio, fim)
+        logger.warning("projeto %s sem space_id e sem list_id: nada a reportar", nome)
+        return ""
+
+    ini_ms, fim_ms = janela(inicio, fim)
+    if entradas is None:
+        try:
+            equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
+        except Exception as e:
+            logger.warning("nao foi possivel listar a equipe para %s: %s", nome, e)
+            equipe = None
+        try:
+            entradas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
+        except Exception as e:
+            logger.warning("nao foi possivel ler as horas de %s: %s", nome, e)
+            return ""
+
+    minhas = [e for e in entradas
+              if str(campo_objeto(e, "task_location").get("space_id") or "") == space_id]
+    tarefas = cliente.tarefas_do_espaco(space_id, desde_ms=ini_ms)
+    if not tarefas and not minhas:
+        return ""
+    return markdown_consolidado(montar_consolidado(
+        tarefas, minhas, nome, inicio, fim, str(projeto.get("tipo") or "")))
+
+
+def gerar_todos(cliente, projetos: list[dict], inicio: date, fim: date) -> str:
+    """Item 1 sobre todos os clientes configurados, numa leitura de janela so.
+
+    O item 1 lia um `list_id` unico ate 10/09/2026, que era a lista interna da
+    Soteria: o reporte AO CLIENTE nao passava por cliente nenhum.
+    """
+    if not projetos:
+        return ""
+    ini_ms, fim_ms = janela(inicio, fim)
+    try:
+        equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
+    except Exception as e:
+        logger.warning("nao foi possivel listar a equipe: %s", e)
+        equipe = None
+    try:
+        entradas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
+    except Exception as e:
+        logger.warning("nao foi possivel ler as horas do periodo: %s", e)
+        entradas = []
+
+    partes = []
+    for p in projetos:
+        try:
+            texto = gerar_consolidado(cliente, p, inicio, fim, entradas)
+        except Exception as e:
+            # Um cliente que falha nao pode calar os outros dez, pela mesma
+            # razao que um item que falha nao cala a rotina.
+            logger.warning("reporte de %s falhou: %s", p.get("nome"), e)
+            texto = (f"# {p.get('nome')}\n\nNao foi possivel montar este "
+                     f"reporte: {type(e).__name__}.\n")
+        if texto.strip():
+            partes.append(texto.strip())
+    return "\n\n---\n\n".join(partes)
+
+
 def markdown_consolidado(rc: ReporteCliente) -> str:
     """Render the executive consolidated client report."""
     linhas = [
@@ -281,26 +420,37 @@ def markdown_consolidado(rc: ReporteCliente) -> str:
         "",
     ]
 
+    def itens(rotulo_feito: str, rotulo_aberto: str, rep: Reporte,
+              com_vencimento: bool = False) -> list[str]:
+        """As tarefas de uma lista, das que mais consumiram para as demais."""
+        saida, restantes = [], 0
+        for rotulo, conjunto in ((rotulo_feito, rep.concluidas),
+                                 (rotulo_aberto, rep.em_andamento)):
+            ordenadas = sorted(conjunto, key=lambda x: -x.horas)
+            for t in ordenadas[:TETO_POR_LISTA]:
+                v = (f", vence {t.vence_em:%d/%m}"
+                     if com_vencimento and t.vence_em else "")
+                saida.append(f"  * [{rotulo}] {t.nome} ({t.horas:.1f}h){v} "
+                             f"[{t.responsavel}]")
+            restantes += max(len(ordenadas) - TETO_POR_LISTA, 0)
+        if restantes:
+            saida.append(f"  * e mais {restantes} tarefa(s) desta lista, nao "
+                         f"listadas uma a uma")
+        return saida
+
     if rc.implantacao:
         linhas.append("## Projetos de Implantacao")
         for rep in rc.implantacao:
             linhas.append(f"\n### {rep.projeto} ({rep.horas_totais:.1f}h)")
             linhas.append(f"- Concluidas: {len(rep.concluidas)} | Em andamento: {len(rep.em_andamento)} | Sem horas no periodo: {len(rep.paradas)}")
-            for t in rep.concluidas:
-                linhas.append(f"  * [Concluida] {t.nome} ({t.horas:.1f}h) [{t.responsavel}]")
-            for t in rep.em_andamento:
-                v = f", vence {t.vence_em:%d/%m}" if t.vence_em else ""
-                linhas.append(f"  * [Andamento] {t.nome} ({t.horas:.1f}h){v} [{t.responsavel}]")
+            linhas.extend(itens("Concluida", "Andamento", rep, com_vencimento=True))
 
     if rc.sustentacao:
         linhas.append("\n## Chamados e Sustentacao")
         for rep in rc.sustentacao:
             linhas.append(f"\n### {rep.projeto} ({rep.horas_totais:.1f}h)")
             linhas.append(f"- Concluidos: {len(rep.concluidas)} | Em atendimento: {len(rep.em_andamento)} | Sem horas: {len(rep.paradas)}")
-            for t in rep.concluidas:
-                linhas.append(f"  * [Resolvido] {t.nome} ({t.horas:.1f}h) [{t.responsavel}]")
-            for t in rep.em_andamento:
-                linhas.append(f"  * [Aberto] {t.nome} ({t.horas:.1f}h) [{t.responsavel}]")
+            linhas.extend(itens("Resolvido", "Aberto", rep))
 
     linhas.append(f"\n---\n{rc.destino}. Documento executivo para aprovacao previa.")
     return "\n".join(linhas) + "\n"

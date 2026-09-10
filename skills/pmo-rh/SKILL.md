@@ -57,9 +57,13 @@ colunas nos dois formatos. O carregador e resiliente de proposito: linha sem nom
 e ignorada, data ilegivel vira vazio e nao derruba a pessoa inteira do relatorio.
 
 Colunas aceitas: `nome`, `nascimento`, `inicio_contrato`, `fim_contrato`,
-`interrupcao_inicio`. Os nomes antigos `admissao` e `ferias_inicio` continuam
-sendo lidos, porque recusar uma planilha valida por causa do cabecalho
-transformaria dado bom em silencio.
+`interrupcao_inicio`, `ultimo_feedback`. Os nomes antigos `admissao` e
+`ferias_inicio` continuam sendo lidos, porque recusar uma planilha valida por
+causa do cabecalho transformaria dado bom em silencio.
+
+`contrib/rh-modelo.csv` e a planilha vazia para copiar e preencher, com as
+colunas na ordem certa. Um teste le esse arquivo pelo proprio carregador, entao
+ele nao pode divergir do codigo em silencio.
 
 Pendente com o Max desde 04/09, reafirmado em 08/09: se as datas ficam como campo
 no ClickUp ou seguem na planilha. O aniversario **ja existe** no ClickUp e e lido

@@ -207,11 +207,75 @@ def test_janelas_sobrepostas_de_duas_fontes_contam_uma_vez():
     assert p[0].horas == 4.0
 
 
-def test_hora_declarada_na_fala_vence_a_janela_de_evidencia():
-    """A pessoa estava la; a maquina so viu parte."""
-    p, _ = H.apurar_dia(QUA, [ev("commit", QUA, 9, 10)], [fala(QUA, hs=7.5)],
+def test_hora_declarada_acima_da_janela_medida_vira_pergunta():
+    """A pessoa estava la, e a maquina so viu uma hora dessas 7,5.
+
+    Ate 09/09/2026 a declaracao simplesmente substituia a janela: a proposta
+    saia com 7,5h e o lancamento a colocava as 09:00, dizendo que a pessoa
+    trabalhou das 9 as 16:30 com uma hora de evidencia para sustentar. A
+    declaracao diz QUANTO e nao QUANDO, entao o que ela sustenta e a pergunta.
+    """
+    p, l = H.apurar_dia(QUA, [ev("commit", QUA, 9, 10)], [fala(QUA, hs=7.5)],
                         "t1", "Soteria", ("desenvolvimento",))
-    assert p[0].horas == 7.5
+    assert [x.horas for x in p] == [1.0]
+    assert p[0].inicio.hour == 9 and p[0].fim.hour == 10
+    (pergunta,) = [x for x in l if "nao tem hora" in x.motivo]
+    assert pergunta.horas_em_aberto == 6.5
+
+
+def test_declaracao_que_bate_com_a_janela_nao_pergunta_nada():
+    """Meia hora de folga: ninguem declara daily com precisao de minuto."""
+    _, l = H.apurar_dia(QUA, [ev("commit", QUA, 9, 17)], [fala(QUA, hs=7.8)],
+                        "t1", "Soteria", ("desenvolvimento",))
+    assert not [x for x in l if "declaracao" in x.motivo]
+
+
+def test_dia_de_varias_janelas_vira_varias_propostas_ancoradas():
+    """O defeito medido em 09/09/2026: 4 entradas monoliticas para 4 dias.
+
+    O total do dia e o mesmo dos dois jeitos. O que muda e que cada entrada
+    passa a dizer a hora em que aquele trabalho aconteceu, que e o que um
+    auditor confere e o que o lancamento de setembro nao tinha.
+    """
+    p, _ = H.apurar_dia(QUA, [ev("commit", QUA, 9, 12), ev("sessao_ia", QUA, 14, 18)],
+                        [fala(QUA)], "t1", "Soteria", ("desenvolvimento",))
+    assert [x.horas for x in p] == [3.0, 4.0]
+    assert [x.inicio.hour for x in p] == [9, 14]
+    assert all(x.ancorada for x in p)
+    assert "parte 1 de 2" in p[0].descricao and "parte 2 de 2" in p[1].descricao
+
+
+def test_proposta_ancorada_ignora_a_hora_que_o_chamador_oferece():
+    p, _ = H.apurar_dia(QUA, [ev("commit", QUA, 14, 16)], [fala(QUA)],
+                        "t1", "Soteria", ("desenvolvimento",))
+    lanc = p[0].para_lancamento(
+        datetime.combine(QUA, datetime.min.time(), tzinfo=BRT).replace(hour=9))
+    assert lanc.inicio_ms == H.ms(p[0].inicio)
+
+
+def test_proposta_sem_ancora_recusa_ser_lancada_sem_hora():
+    """So a declaracao de daily chega aqui, e ela nao diz quando."""
+    p = H.Proposta(QUA, "t1", "X (Soteria)", 2.0, True, 0.9, ("desenvolvimento",))
+    with pytest.raises(ValueError, match="sem janela medida"):
+        p.para_lancamento()
+
+
+def test_duas_propostas_sem_ancora_no_mesmo_dia_nao_se_sobrepoem():
+    """Sobreposicao e defeito que o item 3 aponta; nao se cria uma de fabrica."""
+    escritos = []
+
+    class FalsoClickUp:
+        def lancar(self, lanc, aprov):
+            escritos.append((lanc.inicio_ms, lanc.duracao_ms))
+            return "ok"
+
+    ap = H.Apuracao(inicio=QUA, fim=QUA, propostas=[
+        H.Proposta(QUA, "t1", "A (Soteria)", 2.0, True, 0.9, ()),
+        H.Proposta(QUA, "t1", "B (Soteria)", 3.0, True, 0.9, ()),
+    ])
+    H.lancar(FalsoClickUp(), ap, Aprovacao.de("jordan", "02/09"))
+    (i1, d1), (i2, _) = escritos
+    assert i2 == i1 + d1
 
 
 def test_evidencia_de_outro_dia_nao_entra():

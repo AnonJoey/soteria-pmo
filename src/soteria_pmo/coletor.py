@@ -77,14 +77,37 @@ MARCAS_PESSOAIS = (
 )
 
 
-def parece_pessoal(texto: str) -> bool:
+def _encurtar(caminho: str | None) -> str:
+    """`/home/alguem/Projects/x` como `~/Projects/x`, para caber na descricao.
+
+    A descricao e o que `parece_pessoal` le e o que uma pessoa confere no
+    relatorio, entao o caminho precisa ser reconhecivel e curto. Nao existe
+    para ser bonito: caminho absoluto de home vaza o nome de usuario para
+    dentro de uma nota que pode ir para o vault ou para um card.
+    """
+    if not caminho:
+        return ""
+    texto = str(caminho)
+    casa = str(Path.home())
+    return f"~{texto[len(casa):]}" if texto.startswith(casa) else texto
+
+
+def parece_pessoal(texto: str, marcas: tuple[str, ...] = ()) -> bool:
     """Whether this evidence looks like personal work rather than client work.
 
     A heuristic and named as one. It errs toward flagging: a false flag costs a
     question, and a miss costs a wrongly billed hour.
+
+    `marcas` vem do config (`evidencia.pessoais`) e existe porque a lista fixa
+    aqui so alcanca o que era previsivel escrever: jogo, streaming, distro. O
+    que passou por ela em agosto de 2026 foi um projeto pessoal de nome proprio,
+    `palweave`, indistinguivel de nome de cliente para quem le a palavra. Quem
+    sabe quais sao os proprios projetos pessoais e o dono da maquina, entao ele
+    diz, em vez de o pacote adivinhar ou carregar nome de ninguem.
     """
     t = texto.lower()
-    return any(m in t for m in MARCAS_PESSOAIS)
+    return any(m in t for m in MARCAS_PESSOAIS) or any(
+        m.strip().lower() in t for m in marcas if m.strip())
 
 
 @dataclass(frozen=True)
@@ -196,6 +219,16 @@ def sessoes_ia(raiz: str | Path, inicio: date, fim: date) -> list[Evidencia]:
 
     So every message timestamp is a point and the same clustering applies. A
     session with a long pause becomes two windows, which is what happened.
+
+    O QUE a sessao estava fazendo vem do `cwd` de cada mensagem, e nao do nome
+    da pasta. Medido nesta maquina em 10/09/2026: as 60 sessoes estao todas sob
+    duas pastas, `-home-joey` e outra, porque a pasta e o diretorio de onde o
+    Claude Code foi aberto, quase sempre a home. O `cwd` das mensagens dentro
+    delas aponta para 20 lugares diferentes, entre eles 1035 mensagens em
+    `~/Projects/palweave` e 144 em `~/fototriagem`, que sao pessoais. Enquanto a
+    descricao dizia so "sessao a1b2c3d4 em -home-joey", `parece_pessoal` nao
+    tinha o que ler e 10,53h de trabalho pessoal entraram como evidencia de
+    cliente no lancamento de agosto.
     """
     raiz = Path(raiz).expanduser()
     if not raiz.exists():
@@ -207,30 +240,43 @@ def sessoes_ia(raiz: str | Path, inicio: date, fim: date) -> list[Evidencia]:
     evidencias = []
 
     for arquivo in raiz.rglob("*.jsonl"):
-        marcas: list[datetime] = []
+        marcas: list[tuple[datetime, str]] = []
+        titulo = ""
+        onde = arquivo.parent.name
         try:
             with arquivo.open(encoding="utf-8") as fh:
                 for linha in fh:
                     try:
-                        t = json.loads(linha).get("timestamp")
+                        registro = json.loads(linha)
+                        t = registro.get("timestamp")
                     except (json.JSONDecodeError, AttributeError):
                         continue
+                    # O titulo pode vir em qualquer ponto do arquivo e vale para
+                    # a sessao inteira, entao e lido mesmo em linha sem carimbo.
+                    titulo = titulo or str(registro.get("aiTitle") or "")
+                    # Uma linha sem `cwd` herda a anterior: o diretorio da
+                    # sessao so muda quando alguem o muda, e zerar aqui trocaria
+                    # um caminho conhecido por um desconhecido.
+                    onde = _encurtar(registro.get("cwd")) or onde
                     if not t:
                         continue
                     try:
-                        marcas.append(
-                            datetime.fromisoformat(t.replace("Z", "+00:00")).astimezone(BRT))
+                        quando = datetime.fromisoformat(
+                            t.replace("Z", "+00:00")).astimezone(BRT)
                     except ValueError:
                         continue
+                    marcas.append((quando, onde))
         except OSError as e:
             logger.warning("nao foi possivel ler %s: %s", arquivo.name, e)
             continue
         if not marcas:
             continue
-        if max(marcas) < ini_dt or min(marcas) > fim_dt:
+        quandos = [m for m, _ in marcas]
+        if max(quandos) < ini_dt or min(quandos) > fim_dt:
             continue
-        pontos = [Ponto(m, f"sessao {arquivo.stem[:8]} em {arquivo.parent.name}")
-                  for m in marcas if ini_dt <= m <= fim_dt]
+        sufixo = f": {titulo[:60]}" if titulo else ""
+        pontos = [Ponto(m, f"sessao {arquivo.stem[:8]} em {lugar}{sufixo}")
+                  for m, lugar in marcas if ini_dt <= m <= fim_dt]
         evidencias.extend(_agrupar(pontos, "sessao_ia"))
     return evidencias
 
@@ -399,13 +445,17 @@ class Fontes:
     sessoes_ia: str = ""
     vault: str = ""
     historico_navegador: str = ""
+    #: Pedacos de caminho ou de nome que marcam trabalho pessoal nesta maquina,
+    #: alem das palavras que `MARCAS_PESSOAIS` ja cobre. Vem do config.
+    pessoais: tuple[str, ...] = ()
 
 
-def separar_pessoal(evidencias: list[Evidencia]) -> tuple[list[Evidencia], list[Evidencia]]:
+def separar_pessoal(evidencias: list[Evidencia],
+                    marcas: tuple[str, ...] = ()) -> tuple[list[Evidencia], list[Evidencia]]:
     """Split evidence into likely client work and likely personal work."""
     cliente, pessoal = [], []
     for e in evidencias:
-        (pessoal if parece_pessoal(e.descricao) else cliente).append(e)
+        (pessoal if parece_pessoal(e.descricao, marcas) else cliente).append(e)
     return cliente, pessoal
 
 
@@ -442,7 +492,8 @@ def coletar(fontes: Fontes, inicio: date, fim: date) -> tuple[list[Evidencia], l
     return evidencias, falhas
 
 
-def resumo(evidencias: list[Evidencia], falhas: list[str]) -> str:
+def resumo(evidencias: list[Evidencia], falhas: list[str],
+           pessoais: tuple[str, ...] = ()) -> str:
     """What was collected, by source, so a person can sanity check it."""
     from collections import Counter
     if not evidencias and not falhas:
@@ -456,7 +507,7 @@ def resumo(evidencias: list[Evidencia], falhas: list[str]) -> str:
         linhas.append("")
         linhas.append("  Fontes que nao puderam ser lidas:")
         linhas.extend(f"    {f}" for f in falhas)
-    _, pessoal = separar_pessoal(evidencias)
+    _, pessoal = separar_pessoal(evidencias, pessoais)
     if pessoal:
         h = sum((e.fim - e.inicio).total_seconds() for e in pessoal) / 3600
         linhas.append("")

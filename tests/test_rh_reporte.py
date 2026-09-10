@@ -6,7 +6,7 @@ stopped, and the delivery level of a report that was explicitly capped at 2.
 """
 
 import json
-from datetime import date
+from datetime import date, datetime, time
 
 import pytest
 
@@ -54,6 +54,26 @@ def test_data_ilegivel_vira_none_sem_derrubar_a_pessoa(tmp_path):
     c.write_text("nome,nascimento\nAna,05/09/1994\n")
     (p,) = rh.carregar(c)
     assert p.nome == "Ana" and p.nascimento is None
+
+
+def test_o_modelo_de_roster_que_o_pacote_entrega_e_lido_pelo_proprio_carregador():
+    """As colunas viviam so dentro de `carregar`, entao ligar o item 6 exigia
+    ler o codigo. O modelo existe para ser copiado e preenchido, e um modelo
+    que o carregador nao le e pior que nenhum."""
+    from pathlib import Path
+
+    from soteria_pmo import checagem
+
+    modelo = Path(__file__).resolve().parent.parent / checagem.MODELO_DE_ROSTER
+    assert modelo.exists(), "a checagem aponta para um arquivo que nao existe"
+    pessoas = rh.carregar(modelo)
+    assert len(pessoas) == 2
+    assert all(p.nome for p in pessoas)
+    # Cada coluna do modelo tem que chegar preenchida em pelo menos uma pessoa,
+    # senao o modelo ensina uma coluna que o carregador ignora.
+    for campo in ("nascimento", "inicio_contrato", "fim_contrato",
+                  "interrupcao_inicio", "ultimo_feedback"):
+        assert any(getattr(p, campo) for p in pessoas), campo
 
 
 def test_aniversario_dentro_da_antecedencia_aparece():
@@ -305,6 +325,132 @@ def test_reporte_executivo_cliente_consolida_implantacao_e_sustentacao():
     assert "Ajuste de Permissoes" in md
     assert "Max valida e envia (nivel 2)" in md
 
+
+
+# ── o consolidado ligado a um espaco de cliente ──────────────────────────────
+#
+# Ate 10/09/2026 `ReporteCliente` e `markdown_consolidado` existiam sem nenhum
+# chamador em lugar nenhum do pacote: o unico caminho vivo do item 1 lia um
+# `list_id` e devolvia uma lista so. O consolidado era codigo que passava nos
+# testes e nunca tinha rodado.
+
+
+def tarefa_em(tid, nome, lista, pasta="", **kw):
+    t = tarefa(tid, nome, **kw)
+    t["list"] = {"id": lista, "name": lista}
+    t["folder"] = {"name": pasta}
+    return t
+
+
+def entrada_em(tid, horas, lista, espaco="sp1", **kw):
+    e = entrada(tid, horas, **kw)
+    e["task_location"] = {"list_id": lista, "space_id": espaco}
+    return e
+
+
+def test_o_consolidado_agrupa_por_lista_e_separa_as_duas_naturezas():
+    rc = R.montar_consolidado(
+        [tarefa_em("t1", "Setup Inicial", "Implantacao Fase 1",
+                   status="publicado/finalizado"),
+         tarefa_em("t2", "Ajuste de permissoes", "Chamados 2026")],
+        [entrada_em("t1", 20.0, "Implantacao Fase 1"),
+         entrada_em("t2", 5.0, "Chamados 2026")],
+        "Grupo Angelus", INI, FIM)
+    assert [r.projeto for r in rc.implantacao] == ["Implantacao Fase 1"]
+    assert [r.projeto for r in rc.sustentacao] == ["Chamados 2026"]
+    assert rc.total_horas == 25.0
+
+
+def test_lista_sem_nada_no_periodo_fica_de_fora_do_consolidado():
+    """O consolidado e documento executivo, nao inventario do cliente."""
+    rc = R.montar_consolidado(
+        [tarefa_em("t1", "Andou", "Ativa"), tarefa_em("t2", "Parada", "Dormente")],
+        [entrada_em("t1", 3.0, "Ativa")], "Cliente", INI, FIM)
+    assert [r.projeto for r in rc.implantacao] == ["Ativa"]
+
+
+def test_o_tipo_do_config_classifica_o_que_o_nome_da_lista_nao_entrega():
+    """Nome de lista nem sempre diz a natureza; o config do cliente diz."""
+    tarefas = [tarefa_em("t1", "X", "Fila Principal")]
+    entradas = [entrada_em("t1", 2.0, "Fila Principal")]
+    sem_tipo = R.montar_consolidado(tarefas, entradas, "C", INI, FIM)
+    com_tipo = R.montar_consolidado(tarefas, entradas, "C", INI, FIM, tipo="chamado")
+    assert sem_tipo.implantacao and not sem_tipo.sustentacao
+    assert com_tipo.sustentacao and not com_tipo.implantacao
+
+
+def test_a_pasta_tambem_classifica_a_lista():
+    rc = R.montar_consolidado(
+        [tarefa_em("t1", "X", "Sprint 12", pasta="Sustentacao")],
+        [entrada_em("t1", 2.0, "Sprint 12")], "C", INI, FIM)
+    assert [r.projeto for r in rc.sustentacao] == ["Sprint 12"]
+
+
+def test_o_consolidado_nao_despeja_a_lista_inteira():
+    """Mesma razao do teto do reporte por lista: um espaco de cliente cabe aqui."""
+    tarefas = [tarefa_em(f"t{i}", f"Tarefa {i}", "Fila") for i in range(30)]
+    entradas = [entrada_em(f"t{i}", 1.0, "Fila") for i in range(30)]
+    md = R.markdown_consolidado(
+        R.montar_consolidado(tarefas, entradas, "C", INI, FIM))
+    assert md.count("  * [") <= R.TETO_POR_LISTA + 1
+    assert "e mais 20 tarefa(s)" in md
+
+
+def test_gerar_consolidado_le_o_espaco_e_ignora_as_horas_de_outro_cliente():
+    class FalsoClickUp:
+        def __init__(self):
+            self.espacos = []
+
+        def tarefas_do_espaco(self, space_id, desde_ms=None):
+            self.espacos.append((space_id, desde_ms))
+            return [tarefa_em("t1", "Do cliente", "Implantacao")]
+
+    cliente = FalsoClickUp()
+    texto = R.gerar_consolidado(
+        cliente, {"nome": "Angelus", "space_id": "sp1"}, INI, FIM,
+        entradas=[entrada_em("t1", 4.0, "Implantacao", espaco="sp1"),
+                  entrada_em("t9", 40.0, "Outra", espaco="sp2")])
+    assert cliente.espacos == [("sp1", ms(datetime.combine(INI, time.min, tzinfo=BRT)))]
+    assert "4.0h totais" in texto
+    assert "40" not in texto
+
+
+def test_sem_space_id_o_consolidado_cai_no_reporte_da_lista():
+    class SoLista:
+        def tarefas_da_lista(self, *_a, **_k):
+            return [tarefa("t1", "A")]
+
+        def membros(self):
+            return []
+
+        def entradas(self, *_a, **_k):
+            return []
+
+    texto = R.gerar_consolidado(SoLista(), {"nome": "C", "list_id": "9"}, INI, FIM)
+    assert texto.startswith("# C")
+
+
+def test_um_cliente_que_falha_nao_cala_os_outros():
+    """Mesma regra da rotina: um item quebrado nao pode virar semana quieta."""
+    class Instavel:
+        def membros(self):
+            return []
+
+        def entradas(self, *_a, **_k):
+            return []
+
+        def tarefas_do_espaco(self, space_id, desde_ms=None):
+            if space_id == "sp_ruim":
+                raise RuntimeError("api fora")
+            return [tarefa_em("t1", "Viva", "Implantacao")]
+
+    texto = R.gerar_todos(
+        Instavel(),
+        [{"nome": "Quebrado", "space_id": "sp_ruim"},
+         {"nome": "Inteiro", "space_id": "sp_bom"}],
+        INI, FIM)
+    assert "Nao foi possivel montar este reporte" in texto
+    assert "Reporte Executivo: Inteiro" in texto
 
 
 # ── pre-analise do reporte, autorizada pelo Max em 08/09/2026 ────────────────

@@ -346,6 +346,57 @@ def test_evidencia_pessoal_e_separada_da_de_cliente():
     assert all("clickup" in c.descricao.lower() or "PMO" in c.descricao for c in cliente)
 
 
+def test_projeto_pessoal_de_nome_proprio_so_e_visto_se_o_config_disser():
+    """O que passou pela lista fixa em agosto de 2026, e custou 10,53h.
+
+    `palweave` e nome proprio de projeto pessoal: nao ha palavra a acrescentar
+    na lista do pacote que o alcance sem alcancar tambem nome de cliente. Quem
+    sabe quais sao os proprios projetos e o dono da maquina.
+    """
+    from datetime import datetime
+    from soteria_pmo import coletor as C
+    from soteria_pmo.horas import Evidencia
+
+    d = datetime(2026, 9, 2, 9, tzinfo=BRT)
+    ev = [Evidencia("sessao_ia", d, d.replace(hour=11),
+                    "sessao a1b2c3d4 em ~/Projects/palweave: ajuste de spawn")]
+
+    cliente, pessoal = C.separar_pessoal(ev)
+    assert (len(cliente), len(pessoal)) == (1, 0), "sem config, nao ha como saber"
+
+    cliente, pessoal = C.separar_pessoal(ev, ("~/Projects/palweave",))
+    assert (len(cliente), len(pessoal)) == (0, 1)
+
+
+def test_sessao_de_ia_leva_o_cwd_e_o_titulo_e_nao_o_nome_da_pasta(tmp_path):
+    """Medido nesta maquina em 10/09/2026: as 60 sessoes estao sob duas pastas
+    e o `cwd` das mensagens aponta para 20 lugares. Enquanto a descricao vinha
+    da pasta, toda sessao se chamava "em -home-joey" e nao havia o que filtrar.
+    """
+    import json
+    from pathlib import Path
+
+    from soteria_pmo import coletor as C
+
+    pasta = tmp_path / "-home-alguem"
+    pasta.mkdir()
+    linhas = [
+        {"type": "ai-title", "aiTitle": "Ajuste de spawn"},
+        {"timestamp": "2026-09-02T12:00:00Z", "cwd": f"{Path.home()}/Projects/palweave"},
+        {"timestamp": "2026-09-02T12:20:00Z"},
+        {"timestamp": "2026-09-02T12:40:00Z", "cwd": f"{Path.home()}/Projects/soteria-pmo"},
+    ]
+    (pasta / "a1b2c3d4-0000.jsonl").write_text(
+        "\n".join(json.dumps(l) for l in linhas), encoding="utf-8")
+
+    (ev,) = C.sessoes_ia(tmp_path, date(2026, 9, 2), date(2026, 9, 2))
+    assert "~/Projects/palweave" in ev.descricao
+    assert "Ajuste de spawn" in ev.descricao
+    # A linha sem cwd herda o anterior em vez de virar um lugar desconhecido.
+    assert "-home-alguem" not in ev.descricao
+    assert C.parece_pessoal(ev.descricao, ("palweave",))
+
+
 def test_o_resumo_diz_quanto_foi_separado_como_pessoal():
     from datetime import datetime
     from soteria_pmo import coletor as C

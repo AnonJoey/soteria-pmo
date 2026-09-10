@@ -43,6 +43,11 @@ ATIVIDADE_DESCONHECIDA = "ATIVIDADE NAO IDENTIFICADA"
 # loudly the proposal argues for itself, not whether a human is in the loop.
 CONFIANCA_MINIMA = 0.5
 
+# Quanto a declaracao da daily pode divergir das janelas medidas antes de virar
+# pergunta. Meia hora: ninguem declara com precisao de minuto numa daily, e
+# perguntar por 12 minutos de diferenca treina a pessoa a ignorar as perguntas.
+TOLERANCIA_DECLARACAO = 0.5
+
 # Evidence kinds, ranked by how well each supports a DURATION, which is what
 # the confidence score is about and what ends up billed.
 #
@@ -129,15 +134,38 @@ class Proposta:
     tags: tuple[str, ...]
     citacoes: list[str] = field(default_factory=list)
     fontes: tuple[str, ...] = ()
+    #: A janela medida desta proposta, quando ela veio de uma. Uma proposta
+    #: ancorada e lancada na hora em que o trabalho aconteceu; uma sem ancora
+    #: precisa que o chamador escolha uma hora, e isso e uma escolha, nao uma
+    #: medicao. So a declaracao de daily produz proposta sem ancora, porque a
+    #: pessoa disse quanto trabalhou e nao quando.
+    inicio: datetime | None = None
+    fim: datetime | None = None
 
     @property
     def duvidosa(self) -> bool:
         return self.confianca < CONFIANCA_MINIMA
 
-    def para_lancamento(self, inicio: datetime) -> Lancamento:
+    @property
+    def ancorada(self) -> bool:
+        return self.inicio is not None
+
+    def para_lancamento(self, inicio: datetime | None = None) -> Lancamento:
+        """The entry to write. Uses the measured start whenever there is one.
+
+        `inicio` is the fallback for a proposal with no window of its own, and
+        it is ignored when the proposal carries one: an anchored proposal that
+        accepted an outside start would be written at an hour nobody observed,
+        which is the defect this argument used to cause for every entry.
+        """
+        comeco = self.inicio or inicio
+        if comeco is None:
+            raise ValueError(
+                f"proposta de {self.dia:%d/%m} sem janela medida e sem hora de "
+                f"inicio: informe uma hora ou nao a lance")
         return Lancamento(
             task_id=self.task_id,
-            inicio_ms=ms(inicio),
+            inicio_ms=ms(comeco),
             duracao_ms=int(self.horas * 3_600_000),
             descricao=self.descricao,
             faturavel=self.faturavel,
@@ -334,7 +362,23 @@ def _confianca(evidencias: list[Evidencia], tem_fala: bool,
 def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
                task_id: str, cliente: str, tags: tuple[str, ...],
                horas_esperadas: float = 8.0) -> tuple[list[Proposta], list[Lacuna]]:
-    """Propose the day's entries and name what stayed unexplained."""
+    """Propose the day's entries and name what stayed unexplained.
+
+    UMA PROPOSTA POR JANELA MEDIDA, e nao uma por dia. A versao anterior somava
+    o dia inteiro numa entrada so e o `lancar` a colocava as 09:00, porque a
+    proposta nao carregava hora nenhuma. Medido em 09/09/2026 contra o proprio
+    lancamento: os dias 01 a 04/09 estavam no ClickUp como quatro entradas
+    monoliticas e, refeitos pelas janelas, viraram 79 com o total de cada dia
+    igual ao minuto. O total nunca foi o problema; a atribuicao era. Uma entrada
+    de 11h as 09:00 diz que a pessoa trabalhou direto das 9 as 20, e a trilha de
+    quem auditar nao bate com nada.
+
+    A declaracao da daily nao e mais distribuida por cima das janelas. Ela nao
+    diz QUANDO, entao espalha-la sobre janelas medidas inventaria horario ou
+    criaria sobreposicao, que e exatamente o que o item 3 marca como defeito.
+    Quando a pessoa declara mais do que a maquina viu, a diferenca vira
+    pergunta, como qualquer outra hora sem lastro.
+    """
     do_dia = [e for e in evidencias if e.inicio.date() == dia]
     falas_do_dia = [f for f in falas if f.dia == dia]
 
@@ -346,14 +390,14 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
             horas_em_aberto=horas_esperadas,
         )]
 
-    janelas = fundir([e.intervalo for e in do_dia])
-    horas_evidencia = round(somar_horas([e.intervalo for e in do_dia]), 2)
-    declaradas = sum(f.horas_declaradas or 0 for f in falas_do_dia)
-    # A statement of hours outranks the windows: the person was there.
-    horas = round(declaradas or horas_evidencia, 2)
+    # Janela de duracao zero nao e janela: um commit isolado que o coletor nao
+    # conseguiu agrupar chega aqui como instante e viraria uma entrada de 0h.
+    janelas = [j for j in fundir([e.intervalo for e in do_dia]) if j.horas > 0]
+    horas_medidas = round(somar_horas([e.intervalo for e in do_dia]), 2)
+    declaradas = round(sum(f.horas_declaradas or 0 for f in falas_do_dia), 2)
 
     lacunas: list[Lacuna] = []
-    if horas <= 0:
+    if not janelas and declaradas <= 0:
         return [], [Lacuna(dia, f"O que voce fez em {dia:%d/%m}?",
                            "evidencia sem duracao aproveitavel", horas_esperadas)]
 
@@ -370,18 +414,69 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
     else:
         atividade = ATIVIDADE_DESCONHECIDA
         atividade_conhecida = False
-    progressao = (f"{len(janelas)} janelas" if len(janelas) > 1 else "")
-    proposta = Proposta(
-        dia=dia,
-        task_id=task_id,
-        descricao=descricao_da_casa(atividade, cliente, progressao),
-        horas=horas,
-        faturavel=classificar_faturavel(tags, atividade),
-        confianca=_confianca(do_dia, bool(falas_do_dia), bool(declaradas)),
-        tags=tags,
-        citacoes=[f.texto for f in falas_do_dia] + [e.descricao for e in do_dia],
-        fontes=tuple(sorted({e.tipo for e in do_dia} | ({"transcricao"} if falas_do_dia else set()))),
-    )
+    citacoes_da_fala = [f.texto for f in falas_do_dia]
+    faturavel = classificar_faturavel(tags, atividade)
+
+    # A declaracao so sustenta a DURACAO quando bate com o que foi medido. Sem
+    # janela nenhuma ela e a unica fonte e vale por si; contra janelas que dizem
+    # outra coisa, ela vira a pergunta logo abaixo em vez de virar confianca.
+    corrobora = bool(declaradas) and (
+        not janelas or abs(declaradas - horas_medidas) <= TOLERANCIA_DECLARACAO)
+
+    propostas: list[Proposta] = []
+    if janelas:
+        for i, j in enumerate(janelas, start=1):
+            dentro = [e for e in do_dia if e.intervalo.sobrepoe(j)]
+            progressao = f"parte {i} de {len(janelas)}" if len(janelas) > 1 else ""
+            propostas.append(Proposta(
+                dia=dia,
+                task_id=task_id,
+                descricao=descricao_da_casa(atividade, cliente, progressao),
+                horas=round(j.horas, 2),
+                faturavel=faturavel,
+                confianca=_confianca(dentro, bool(falas_do_dia), corrobora),
+                tags=tags,
+                citacoes=citacoes_da_fala + [e.descricao for e in dentro],
+                fontes=tuple(sorted({e.tipo for e in dentro}
+                                    | ({"transcricao"} if falas_do_dia else set()))),
+                inicio=j.inicio,
+                fim=j.fim,
+            ))
+    else:
+        # So a fala: a pessoa disse quanto trabalhou e a maquina nao viu nada.
+        # Fica sem ancora de proposito, e quem lancar escolhe a hora sabendo
+        # que escolheu.
+        propostas.append(Proposta(
+            dia=dia,
+            task_id=task_id,
+            descricao=descricao_da_casa(atividade, cliente),
+            horas=declaradas,
+            faturavel=faturavel,
+            confianca=_confianca([], True, True),
+            tags=tags,
+            citacoes=citacoes_da_fala,
+            fontes=("transcricao",),
+        ))
+
+    horas = round(sum(p.horas for p in propostas), 2)
+
+    if janelas and declaradas > horas + TOLERANCIA_DECLARACAO:
+        sobra = round(declaradas - horas, 2)
+        lacunas.append(Lacuna(
+            dia=dia,
+            pergunta=f"A daily declara {declaradas:.1f}h em {dia:%d/%m} e a maquina "
+                     f"mediu {horas:.1f}h em {len(janelas)} janela(s). "
+                     f"Em que horario entram as outras {sobra:.1f}h?",
+            motivo="declaracao acima das janelas medidas: a diferenca nao tem hora",
+            horas_em_aberto=sobra,
+        ))
+    elif janelas and 0 < declaradas < horas - TOLERANCIA_DECLARACAO:
+        lacunas.append(Lacuna(
+            dia=dia,
+            pergunta=f"A daily declara {declaradas:.1f}h em {dia:%d/%m} e as janelas "
+                     f"medidas somam {horas:.1f}h. Qual das duas vale?",
+            motivo="declaracao abaixo das janelas medidas",
+        ))
 
     faltando = horas_esperadas - horas
     if faltando >= 2:
@@ -402,14 +497,21 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
             motivo="sem fala na daily: houve tempo, falta o que",
             horas_em_aberto=horas,
         ))
-    if proposta.duvidosa:
+    # Uma pergunta por dia, e nao uma por janela: um dia de seis janelas fracas
+    # renderia seis perguntas identicas, e uma lista de perguntas repetidas e
+    # lida como ruido, que e como uma pergunta legitima deixa de ser respondida.
+    duvidosas = [p for p in propostas if p.duvidosa]
+    if duvidosas:
+        pior = min(duvidosas, key=lambda p: p.confianca)
+        quais = ("" if len(propostas) == 1
+                 else f" ({len(duvidosas)} de {len(propostas)} janelas)")
         lacunas.append(Lacuna(
             dia=dia,
-            pergunta=f"Confirma que {dia:%d/%m} foi {atividade}?",
-            motivo=f"confianca baixa ({proposta.confianca:.2f}), "
-                   f"fontes: {', '.join(proposta.fontes) or 'nenhuma'}",
+            pergunta=f"Confirma que {dia:%d/%m} foi {atividade}?{quais}",
+            motivo=f"confianca baixa ({pior.confianca:.2f}), "
+                   f"fontes: {', '.join(pior.fontes) or 'nenhuma'}",
         ))
-    return [proposta], lacunas
+    return propostas, lacunas
 
 
 def apurar(inicio: date, fim: date, evidencias: list[Evidencia], falas: list[Fala],
@@ -491,10 +593,15 @@ def relatorio(ap: Apuracao) -> str:
 
     if ap.propostas:
         linhas.append("## Propostas")
-        for p in sorted(ap.propostas, key=lambda x: x.dia):
+        for p in sorted(ap.propostas, key=lambda x: (x.dia, x.inicio or datetime.min.replace(tzinfo=BRT))):
             marca = " [CONFIANCA BAIXA]" if p.duvidosa else ""
+            # O horario e o que distingue uma proposta ancorada de uma que
+            # alguem vai posicionar no lancamento, entao ele aparece no lugar
+            # onde a pessoa aprova, e nao so no objeto.
+            quando = (f"{p.inicio:%H:%M}-{p.fim:%H:%M}" if p.ancorada
+                      else "sem horario medido")
             linhas.append(
-                f"- {p.dia:%d/%m} {p.horas:.1f}h {p.descricao}{marca}\n"
+                f"- {p.dia:%d/%m} {quando} {p.horas:.1f}h {p.descricao}{marca}\n"
                 f"    faturavel={p.faturavel} confianca={p.confianca:.2f} "
                 f"fontes={', '.join(p.fontes) or 'nenhuma'}")
             for c in p.citacoes[:3]:
@@ -518,13 +625,26 @@ def relatorio(ap: Apuracao) -> str:
 
 def lancar(cliente_clickup, ap: Apuracao, aprovacao: Aprovacao | None,
            hora_inicial: int = 9) -> list:
-    """Write an approved window. Refuses while any question is open."""
+    """Write an approved window. Refuses while any question is open.
+
+    `hora_inicial` so alcanca proposta sem janela medida, que hoje e apenas a
+    que veio de declaracao de daily. Enquanto ele valia para todas, cada dia era
+    gravado as 09:00 independentemente de quando o trabalho aconteceu.
+    """
     if not ap.pronta_para_lancar:
         raise ValueError(
             f"apuracao com {len(ap.lacunas)} lacuna(s) aberta(s): responda antes de lancar")
+    padrao = {}
     resultados = []
-    for p in sorted(ap.propostas, key=lambda x: x.dia):
-        inicio = datetime.combine(p.dia, datetime.min.time(), tzinfo=BRT) \
-            .replace(hour=hora_inicial)
+    for p in sorted(ap.propostas, key=lambda x: (x.dia, x.inicio or datetime.min.replace(tzinfo=BRT))):
+        if p.ancorada:
+            inicio = p.inicio
+        else:
+            # Duas propostas sem ancora no mesmo dia nao podem cair na mesma
+            # hora: seriam duas entradas sobrepostas, que e defeito que o item 3
+            # aponta. A segunda comeca onde a primeira termina.
+            inicio = padrao.get(p.dia) or datetime.combine(
+                p.dia, datetime.min.time(), tzinfo=BRT).replace(hour=hora_inicial)
+            padrao[p.dia] = inicio + timedelta(hours=p.horas)
         resultados.append(cliente_clickup.lancar(p.para_lancamento(inicio), aprovacao))
     return resultados

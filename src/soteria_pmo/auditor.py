@@ -82,6 +82,11 @@ TIPOS_DE_CONFLITO = ("duplicidade", "contencao", "sobreposicao")
 # are reported once, as a day the clock check could not run.
 LIMITE_DE_EMPILHAMENTO = 3
 
+# Quantas entradas de um mesmo dia a excecao lista antes de resumir o resto.
+# Escolha de leitura, sem verdade externa: o que decide o dia e o total dele e
+# a evidencia ao lado, e as entradas estao no ClickUp para quem for conferir.
+LIMITE_DE_LISTAGEM = 5
+
 
 @dataclass
 class Achado:
@@ -95,6 +100,14 @@ class Achado:
     horas_evidencia: float
     faturavel: bool
     veredito: str
+    #: O total lancado por esta pessoa NESTE DIA, que e a unidade em que o
+    #: lastro pode ser comparado. A evidencia de maquina e do dia inteiro e nao
+    #: sabe dizer a qual entrada pertence; comparar uma entrada de 0,2h contra
+    #: as 7,8h do dia marca divergencia em toda entrada de um dia bem lancado.
+    #: Medido em 10/09/2026 contra o proprio workspace: 0 de 66 entradas
+    #: corroboradas numa semana inteira, o pior resultado possivel, produzido
+    #: justamente pelo lancamento mais granular.
+    horas_lancadas_no_dia: float = 0.0
     #: Quem lancou. Vazio numa auditoria de uma pessoa so, onde a resposta e
     #: obvia; preenchido quando o periodo cobre o time, para o relatorio poder
     #: agrupar por pessoa em vez de listar mil entradas iguais.
@@ -115,8 +128,14 @@ class Achado:
         return self.veredito not in self.NEUTROS or bool(self.observacoes)
 
     @property
+    def total_do_dia(self) -> float:
+        """O lancado no dia, caindo na propria entrada quando ninguem informou."""
+        return self.horas_lancadas_no_dia or self.horas_lancadas
+
+    @property
     def diferenca(self) -> float:
-        return round(self.horas_lancadas - self.horas_evidencia, 2)
+        """Dia lancado menos dia testemunhado. Nunca entrada menos dia."""
+        return round(self.total_do_dia - self.horas_evidencia, 2)
 
 
 @dataclass
@@ -407,6 +426,19 @@ def auditar(entradas: list[dict], evidencias: list, inicio: date, fim: date,
     aud = Auditoria(inicio=inicio, fim=fim, com_evidencia=com_evidencia)
     dias_com_lancamento: set[date] = set()
 
+    # O lastro se compara por DIA e por pessoa, nunca entrada a entrada: a
+    # evidencia de maquina testemunha o dia e nao sabe a qual lancamento
+    # pertence cada janela. Por pessoa porque um periodo de time inteiro traz
+    # treze agendas no mesmo dia, e somar todas elas contra a evidencia de UMA
+    # maquina compararia coisas diferentes.
+    lancado_no_dia: dict[tuple[date, str], float] = defaultdict(float)
+    for ent in entradas:
+        quando = de_ms(ent.get("start"))
+        if quando is None:
+            continue
+        chave = (quando.date(), str(campo_objeto(ent, "user").get("username") or ""))
+        lancado_no_dia[chave] += round(int(ent.get("duration") or 0) / 3_600_000, 2)
+
     for ent in entradas:
         comeco = de_ms(ent.get("start"))
         if comeco is None:
@@ -414,6 +446,8 @@ def auditar(entradas: list[dict], evidencias: list, inicio: date, fim: date,
         dia = comeco.date()
         dias_com_lancamento.add(dia)
         lancadas = round(int(ent.get("duration") or 0) / 3_600_000, 2)
+        quem = str(campo_objeto(ent, "user").get("username") or "")
+        no_dia = round(lancado_no_dia[(dia, quem)], 2)
         do_dia = por_dia.get(dia, [])
         evid_horas = round(somar_horas([e.intervalo for e in do_dia]), 2)
         descricao = ent.get("description") or ""
@@ -434,7 +468,7 @@ def auditar(entradas: list[dict], evidencias: list, inicio: date, fim: date,
                 "nenhuma evidencia de maquina neste dia. Nao quer dizer que nao houve "
                 "trabalho: planejamento, ligacao e conversa nao deixam rastro, e foi "
                 "ali que estavam 60% das horas do piloto")
-        elif abs(lancadas - evid_horas) > max(tolerancia * max(lancadas, evid_horas), 0.5):
+        elif abs(no_dia - evid_horas) > max(tolerancia * max(no_dia, evid_horas), 0.5):
             veredito = "divergente"
         elif observacoes:
             veredito = "fora do formato"
@@ -447,10 +481,11 @@ def auditar(entradas: list[dict], evidencias: list, inicio: date, fim: date,
             task_id=str(campo_objeto(ent, "task").get("id") or "?"),
             descricao=descricao,
             horas_lancadas=lancadas,
+            horas_lancadas_no_dia=no_dia,
             horas_evidencia=evid_horas,
             faturavel=bool(ent.get("billable")),
             veredito=veredito,
-            pessoa=str(campo_objeto(ent, "user").get("username") or ""),
+            pessoa=quem,
             evidencias=[e.descricao for e in do_dia[:5]],
             observacoes=observacoes,
         ))
@@ -549,17 +584,38 @@ def relatorio(aud: Auditoria) -> str:
 
     if restantes:
         linhas.append("## Excecoes, com a evidencia ao lado")
+        # Veredito de lastro e do DIA, entao ele sai uma vez por dia, com as
+        # entradas daquele dia embaixo. Impresso por entrada, um dia de 17
+        # lancamentos granulares repetia a mesma frase 17 vezes, com a mesma
+        # evidencia colada em cada uma, e a leitura de excecao virava rolagem.
+        grupos: dict[tuple, list[Achado]] = defaultdict(list)
         for a in sorted(restantes, key=lambda x: (x.veredito, x.dia)):
+            grupos[(a.veredito, a.dia, a.pessoa)].append(a)
+
+        for (veredito, dia, pessoa), itens in grupos.items():
+            de_lastro = veredito in ("divergente", "sem lastro")
+            total = round(sum(i.horas_lancadas for i in itens), 2)
+            quem = f" [{pessoa}]" if pessoa else ""
+            cabeca = itens[0]
+            faturavel = ("faturavel" if all(i.faturavel for i in itens)
+                         else "nao faturavel" if not any(i.faturavel for i in itens)
+                         else "faturavel em parte")
+            quantas = f" em {len(itens)} entradas" if len(itens) > 1 else ""
             linhas.append(
-                f"\n### {a.dia:%d/%m} [{a.veredito}] {a.horas_lancadas:.1f}h "
-                f"{'faturavel' if a.faturavel else 'nao faturavel'}")
-            linhas.append(f"  lancado: {a.descricao or '(sem descricao)'}")
-            if a.horas_evidencia:
-                linhas.append(f"  evidencia: {a.horas_evidencia:.1f}h "
-                              f"(diferenca de {a.diferenca:+.1f}h)")
-            for ev in a.evidencias:
+                f"\n### {dia:%d/%m} [{veredito}] {total:.1f}h{quantas} "
+                f"{faturavel}{quem}")
+            for i in itens[:LIMITE_DE_LISTAGEM]:
+                linhas.append(f"  lancado: {i.horas_lancadas:.1f}h "
+                              f"{i.descricao or '(sem descricao)'}")
+            if len(itens) > LIMITE_DE_LISTAGEM:
+                linhas.append(f"  e mais {len(itens) - LIMITE_DE_LISTAGEM} "
+                              f"entrada(s) deste dia")
+            if cabeca.horas_evidencia and de_lastro:
+                linhas.append(f"  evidencia do dia: {cabeca.horas_evidencia:.1f}h "
+                              f"(diferenca de {cabeca.diferenca:+.1f}h no dia)")
+            for ev in cabeca.evidencias:
                 linhas.append(f"    > {ev[:120]}")
-            for o in a.observacoes:
+            for o in dict.fromkeys(o for i in itens for o in i.observacoes):
                 linhas.append(f"  nota: {o}")
         linhas.append("")
 
