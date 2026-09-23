@@ -29,6 +29,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from urllib.parse import urlparse
 
+from . import bolsao
+
 #: Onde o interprete de daily procura o modelo. Vem do delegation-core quando
 #: ele esta de pe, e nada aqui sobe modelo nenhum.
 MODELO_PADRAO = "http://127.0.0.1:8181"
@@ -120,10 +122,18 @@ def checar(cfg: dict, modelo: str = MODELO_PADRAO) -> Checagem:
         detalhe=str(cfg.get("team_id") or ""),
         custo="sem team nao ha de onde ler entrada de tempo"))
 
-    com_teto = [p for p in projetos if p.get("horas_contratadas")]
+    # Quem tem teto e pergunta para o vigia, nao conta refeita aqui. Esta linha
+    # contava so `horas_contratadas` do config e ignorava `TETOS_DE_REFERENCIA`,
+    # entao dizia "4 com teto" onde o bolsao vigiava 8: a checagem que existe
+    # para dizer o que falta inventava uma falta que nao havia. Duas leituras da
+    # mesma regra derivam, e a correcao e nao ter duas.
+    vigiados, sem_teto = bolsao.carregar_bolsoes(projetos)
+    detalhe_projetos = f"{len(projetos)} cliente(s), {len(vigiados)} com teto"
+    if sem_teto:
+        detalhe_projetos += f", {len(sem_teto)} sem"
     c.itens.append(Item(
         nome="Projetos configurados", obrigatorio=True, presente=bool(projetos),
-        detalhe=f"{len(projetos)} cliente(s), {len(com_teto)} com teto",
+        detalhe=detalhe_projetos,
         custo="sem projeto o vigia de bolsao e o cronograma nao tem o que ler"))
 
     # ── daqui para baixo, tudo opcional ──────────────────────────────────────
