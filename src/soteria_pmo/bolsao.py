@@ -384,8 +384,10 @@ def digest(vigilancia: "Vigilancia | list[Situacao]",
     if sem_teto:
         partes.append("  Sem teto para medir contra:")
         partes.extend(f"    {t}" for t in sem_teto)
-        partes.append("  Enquanto o teto nao vier por escrito, estes ficam fora "
-                      "da projecao de estouro.")
+        # Cada linha carrega o proprio motivo, porque os motivos passaram a ser
+        # diferentes: um cliente encerrado nao esta esperando teto nenhum.
+        partes.append("  Estes ficam fora da projecao de estouro, pela razao "
+                      "dita em cada linha.")
     return "\n".join(partes)
 
 
@@ -408,6 +410,17 @@ def carregar_bolsoes(dados: list[dict] | dict) -> tuple[list[Bolsao], list[str]]
         horas = float(item.get("horas_contratadas") or item.get("horas")
                       or teto_sugerido(nome) or 0.0)
         if not (nome and (lid or sid)):
+            continue
+        # Cliente encerrado sai antes do teto, e nao depois. `encerrado()` e
+        # `NAO_MAIS_CLIENTE` existiam desde 08/09/2026 e nunca eram
+        # consultados aqui: a Conta Azul, que o Max declarou encerrada naquela
+        # reuniao, aparecia no digest como "sem teto configurado", que e o
+        # sistema pedindo ao Max um numero que ele ja disse nao existir mais.
+        # Sai nomeado, e nao calado, pela razao do docstring: projeto ausente
+        # do digest e indistinguivel de projeto saudavel.
+        if encerrado(nome):
+            sem_teto.append(f"{nome}: encerrado como cliente, fora da vigia; "
+                            f"nao ha teto a confirmar")
             continue
         if horas > 0:
             resultado.append(Bolsao(projeto=nome, list_id=lid,

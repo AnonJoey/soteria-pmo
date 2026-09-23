@@ -543,6 +543,36 @@ def test_projeto_sem_teto_sai_nomeado_em_vez_de_sumir_do_digest():
     assert any("previsao mensal" in t for t in sem_teto), "diz o que se sabe"
 
 
+def test_cliente_encerrado_nao_e_vigiado_nem_cobrado_por_teto():
+    """`encerrado()` existia, passava no teste unitario, e nunca era chamada.
+
+    O teste que existia media a funcao isolada. Nada a ligava ao caminho que
+    roda, entao a suite ficava verde enquanto o digest real pedia ao Max o
+    teto da Conta Azul, que ele declarou encerrada em 08/09/2026. Este teste
+    cobre a ligacao, que e onde o defeito estava.
+    """
+    bolsoes, sem_teto = B.carregar_bolsoes([
+        {"nome": "Conta Azul", "space_id": "1"},
+        {"nome": "China Gate", "space_id": "2"},
+    ])
+    assert [b.projeto for b in bolsoes] == ["China Gate"]
+
+    linha = next(t for t in sem_teto if "Conta Azul" in t)
+    assert "encerrado" in linha
+    assert "sem teto configurado" not in linha, (
+        "pedir teto de cliente encerrado e pedir numero que o Max ja disse nao existir")
+
+
+def test_cliente_encerrado_com_teto_no_config_continua_fora():
+    """Encerrado vence o teto: quem saiu da carteira nao volta por causa de um
+    numero esquecido no config."""
+    bolsoes, sem_teto = B.carregar_bolsoes([
+        {"nome": "Conta Azul", "space_id": "1", "horas_contratadas": 120},
+    ])
+    assert bolsoes == []
+    assert any("Conta Azul" in t and "encerrado" in t for t in sem_teto)
+
+
 def test_o_digest_conta_quem_ficou_fora_da_projecao():
     v = B.Vigilancia(sem_teto=["Grupo Anjos: sem teto configurado"])
     saida = B.digest(v)

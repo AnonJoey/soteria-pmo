@@ -395,17 +395,37 @@ def gerar_todos(cliente, projetos: list[dict], inicio: date, fim: date) -> str:
         entradas = []
 
     partes = []
+    # Cliente configurado que nao produziu reporte na janela. Ate 22/09/2026
+    # ele simplesmente nao aparecia, e tres clientes sumiram calados de uma
+    # rodada de onze. Para quem le, "nao veio nada da Unimed" e ambiguo entre
+    # "nao houve movimento" e "a leitura falhou", e as duas pedem acao
+    # diferente. E o mesmo argumento do bolsao: ausencia de alerta nao e boa
+    # noticia, e falta de noticia.
+    sem_movimento: list[str] = []
     for p in projetos:
+        nome = str(p.get("nome") or "Cliente")
         try:
             texto = gerar_consolidado(cliente, p, inicio, fim, entradas)
         except Exception as e:
             # Um cliente que falha nao pode calar os outros dez, pela mesma
             # razao que um item que falha nao cala a rotina.
-            logger.warning("reporte de %s falhou: %s", p.get("nome"), e)
-            texto = (f"# {p.get('nome')}\n\nNao foi possivel montar este "
+            logger.warning("reporte de %s falhou: %s", nome, e)
+            texto = (f"# {nome}\n\nNao foi possivel montar este "
                      f"reporte: {type(e).__name__}.\n")
         if texto.strip():
             partes.append(texto.strip())
+        else:
+            sem_movimento.append(nome)
+
+    if sem_movimento:
+        partes.append(
+            "# Clientes sem movimento no periodo\n\n"
+            + "\n".join(f"- {n}" for n in sem_movimento)
+            + "\n\nNenhuma tarefa tocada e nenhuma hora lancada entre "
+            f"{inicio:%d/%m/%Y} e {fim:%d/%m/%Y}. Estao listados porque um "
+            "cliente que some do relatorio sem explicacao nao se distingue de "
+            "um cliente que o sistema falhou em ler."
+        )
     return "\n\n---\n\n".join(partes)
 
 

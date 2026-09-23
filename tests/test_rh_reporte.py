@@ -526,3 +526,56 @@ def test_lista_de_sustentacao_nao_despeja_o_backlog_inteiro():
     saida = R.markdown(rep)
     assert "e mais 25 tarefas abertas sem horas" in saida
     assert saida.count("- Chamado") == R.TETO_DE_PARADAS
+
+
+def test_clientes_sem_movimento_saem_nomeados_no_fim():
+    """Tres clientes sumiram calados da rodada de 22/09/2026, de onze.
+
+    Um cliente ausente do relatorio e ambiguo entre "nao houve movimento" e "a
+    leitura falhou". As duas pedem acao diferente, entao a ausencia precisa ser
+    dita.
+    """
+    class ClienteFalso:
+        def membros(self):
+            return [{"id": "1"}]
+
+        def entradas(self, *a, **k):
+            return []
+
+        def tarefas_do_espaco(self, space_id, desde_ms=None):
+            return [] if space_id == "vazio" else [
+                {"id": "t1", "name": "Uma tarefa", "status": {"status": "em andamento"},
+                 "assignees": [], "time_spent": 0}
+            ]
+
+    texto = R.gerar_todos(
+        ClienteFalso(),
+        [{"nome": "Com Movimento", "space_id": "cheio", "tipo": "chamado"},
+         {"nome": "Parado Ltda", "space_id": "vazio", "tipo": "chamado"}],
+        date(2026, 9, 14), date(2026, 9, 20),
+    )
+    assert "Clientes sem movimento no periodo" in texto
+    assert "Parado Ltda" in texto
+    assert "Com Movimento" in texto
+
+
+def test_sem_clientes_parados_a_secao_nao_aparece():
+    """A seccao so existe quando ha o que dizer: relatorio nao ganha ruido."""
+    class ClienteFalso:
+        def membros(self):
+            return [{"id": "1"}]
+
+        def entradas(self, *a, **k):
+            return []
+
+        def tarefas_do_espaco(self, space_id, desde_ms=None):
+            return [{"id": "t1", "name": "Uma tarefa",
+                     "status": {"status": "em andamento"},
+                     "assignees": [], "time_spent": 0}]
+
+    texto = R.gerar_todos(
+        ClienteFalso(),
+        [{"nome": "Ativo", "space_id": "cheio", "tipo": "chamado"}],
+        date(2026, 9, 14), date(2026, 9, 20),
+    )
+    assert "Clientes sem movimento" not in texto
