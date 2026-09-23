@@ -14,6 +14,7 @@ silenciosa. O que ja existe e mantido e reportado como mantido.
 from __future__ import annotations
 
 import shutil
+import sys
 from pathlib import Path
 
 
@@ -69,19 +70,63 @@ def install_agents(root: Path) -> dict:
     return resultado
 
 
+def _candidatas() -> tuple[Path, ...]:
+    """As raizes a tentar, da intencao mais explicita para a menos.
+
+    O diretorio atual vem primeiro de proposito. Quem esta dentro da pasta de
+    entrega e roda o comando esta dizendo qual material quer instalar, e essa
+    afirmacao vale mais que o lugar onde o pacote por acaso foi instalado. A
+    ordem inversa faz um checkout do repo sequestrar a instalacao de uma pasta
+    de entrega aberta ao lado, que e silencioso e dificil de enxergar.
+
+    `parents[2]` fica como segunda opcao porque so acerta em checkout: numa
+    instalacao por wheel ele cai dentro de `site-packages`, onde nao existe
+    `skills/` nem `agents/`.
+    """
+    return (Path.cwd(), Path(__file__).resolve().parents[2])
+
+
+def raiz_provavel(root: Path | None = None) -> Path:
+    """Onde procurar as pastas `skills/` e `agents/`.
+
+    O caminho explicito vence sempre. Sem ele, vale a primeira candidata que
+    de fato tenha uma das duas pastas. Se nenhuma tiver, devolve a primeira,
+    e quem chama reporta ausencia em vez de copiar o que encontrar pela frente.
+    """
+    if root is not None:
+        return root
+    candidatas = _candidatas()
+    for candidata in candidatas:
+        if (candidata / "skills").is_dir() or (candidata / "agents").is_dir():
+            return candidata
+    return candidatas[0]
+
+
 def instalar(root: Path | None = None) -> dict:
     """As duas de uma vez, para o comando de instalacao chamar."""
-    raiz = root or Path(__file__).resolve().parents[2]
+    raiz = raiz_provavel(root)
     return {"skills": install_skills(raiz), "agents": install_agents(raiz)}
 
 
 def main(argv: list[str] | None = None) -> int:
-    """`soteria-pmo-instalar`: copia skills e agente e diz o que fez."""
-    r = instalar()
+    """`soteria-pmo-instalar [pasta]`: copia skills e agente e diz o que fez.
+
+    O argumento posicional existe para quem instalou o pacote por wheel e
+    guarda a pasta de entrega em outro lugar: aponte para ela e a busca
+    automatica sai do caminho.
+    """
+    args = list(argv) if argv is not None else sys.argv[1:]
+    alvo = Path(args[0]).expanduser().resolve() if args else None
+    if alvo is not None and not alvo.is_dir():
+        print(f"pasta nao encontrada: {alvo}")
+        return 1
+    r = instalar(alvo)
+    print(f"lendo de: {raiz_provavel(alvo)}")
     for tipo in ("skills", "agents"):
         parte = r[tipo]
         if not parte["available"]:
-            print(f"{tipo}: nada empacotado neste repo")
+            print(f"{tipo}: nenhuma pasta `{tipo}/` na raiz lida acima. "
+                  f"Rode dentro da pasta de entrega, ou passe o caminho dela.")
             continue
         print(f"{tipo}: {len(parte['installed'])} instalada(s), "
               f"{len(parte['kept_yours'])} mantida(s) como estavam")
