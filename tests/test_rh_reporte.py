@@ -579,3 +579,38 @@ def test_sem_clientes_parados_a_secao_nao_aparece():
         date(2026, 9, 14), date(2026, 9, 20),
     )
     assert "Clientes sem movimento" not in texto
+
+
+def test_lista_com_marca_de_projeto_vira_implantacao_mesmo_com_tipo_chamado():
+    """Grupo Angelus tem tipo='chamado' no config, mas listas de implantacao/fase
+    devem ir para Projetos de Implantacao e nao para Chamados."""
+    tarefas = [
+        tarefa_em("t1", "Setup inicial", "Implantacao Fase 1"),
+        tarefa_em("t2", "Ajuste de bug", "Chamados Gerais"),
+    ]
+    entradas = [
+        entrada_em("t1", 10.0, "Implantacao Fase 1"),
+        entrada_em("t2", 5.0, "Chamados Gerais"),
+    ]
+    rc = R.montar_consolidado(tarefas, entradas, "Grupo Angelus", INI, FIM, tipo="chamado")
+    assert [r.projeto for r in rc.implantacao] == ["Implantacao Fase 1"]
+    assert [r.projeto for r in rc.sustentacao] == ["Chamados Gerais"]
+
+
+def test_listas_explicitas_no_config_prevalecem_no_reporte():
+    tarefas = [
+        tarefa_em("t1", "Tarefa A", "Lista Sem Marca 1"),
+        tarefa_em("t2", "Tarefa B", "Lista Sem Marca 2"),
+    ]
+    entradas = [
+        entrada_em("t1", 8.0, "Lista Sem Marca 1"),
+        entrada_em("t2", 4.0, "Lista Sem Marca 2"),
+    ]
+    rc = R.montar_consolidado(
+        tarefas, entradas, "Cliente Hibrido", INI, FIM, tipo="chamado",
+        listas_projeto={"Lista Sem Marca 1"},
+        listas_sustentacao={"Lista Sem Marca 2"},
+    )
+    assert [r.projeto for r in rc.implantacao] == ["Lista Sem Marca 1"]
+    assert [r.projeto for r in rc.sustentacao] == ["Lista Sem Marca 2"]
+

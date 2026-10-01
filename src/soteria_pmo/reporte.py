@@ -279,22 +279,41 @@ MARCAS_DE_SUSTENTACAO = (
     "sla", "manutencao", "manutenção",
 )
 
+#: Marcas de projeto de implantacao / escopo fechado.
+MARCAS_DE_PROJETO = (
+    "projeto", "implantacao", "implantação", "setup", "onboarding",
+    "fase", "migracao", "migração",
+)
+
 #: Quantas tarefas cada lista mostra no consolidado antes de resumir o resto.
 #: Mesma razao do TETO_DE_PARADAS: um espaco de cliente inteiro cabe aqui, e
 #: sem teto o que aconteceu na semana some no meio do que so existe.
 TETO_POR_LISTA = 10
 
 
-def _e_sustentacao(nome_lista: str, nome_pasta: str = "", tipo: str = "") -> bool:
+def _e_sustentacao(nome_lista: str, nome_pasta: str = "", tipo: str = "",
+                   list_id: str = "",
+                   listas_sustentacao: set[str] | frozenset[str] | None = None,
+                   listas_projeto: set[str] | frozenset[str] | None = None) -> bool:
     """Se esta lista e fila de sustentacao, e nao projeto de implantacao."""
+    if list_id:
+        if listas_sustentacao and list_id in listas_sustentacao:
+            return True
+        if listas_projeto and list_id in listas_projeto:
+            return False
+
     alvo = f"{nome_lista} {nome_pasta}".lower()
     if any(m in alvo for m in MARCAS_DE_SUSTENTACAO):
         return True
-    return str(tipo).strip().lower() == "chamado"
+    if any(m in alvo for m in MARCAS_DE_PROJETO):
+        return False
+    return str(tipo).strip().lower() in ("chamado", "sustentacao")
 
 
 def montar_consolidado(tarefas: list[dict], entradas: list[dict], cliente: str,
-                       inicio: date, fim: date, tipo: str = "") -> ReporteCliente:
+                       inicio: date, fim: date, tipo: str = "",
+                       listas_sustentacao: set[str] | frozenset[str] | None = None,
+                       listas_projeto: set[str] | frozenset[str] | None = None) -> ReporteCliente:
     """Agrupa o espaco de um cliente por lista e separa as duas naturezas.
 
     Lista sem hora e sem tarefa concluida no periodo fica de fora: ela nao tem
@@ -325,8 +344,12 @@ def montar_consolidado(tarefas: list[dict], entradas: list[dict], cliente: str,
                    nome_lista, inicio, fim)
         if not r.horas_totais and not r.concluidas:
             continue
-        (rc.sustentacao if _e_sustentacao(nome_lista, nome_pasta, tipo)
-         else rc.implantacao).append(r)
+        (rc.sustentacao if _e_sustentacao(
+            nome_lista, nome_pasta, tipo,
+            list_id=lid,
+            listas_sustentacao=listas_sustentacao,
+            listas_projeto=listas_projeto,
+        ) else rc.implantacao).append(r)
 
     rc.implantacao.sort(key=lambda r: -r.horas_totais)
     rc.sustentacao.sort(key=lambda r: -r.horas_totais)
@@ -370,8 +393,13 @@ def gerar_consolidado(cliente, projeto: dict, inicio: date, fim: date,
     tarefas = cliente.tarefas_do_espaco(space_id, desde_ms=ini_ms)
     if not tarefas and not minhas:
         return ""
+
+    listas_sust = {str(x) for x in (projeto.get("listas_sustentacao") or ())}
+    listas_proj = {str(x) for x in (projeto.get("listas_projeto") or ())}
     return markdown_consolidado(montar_consolidado(
-        tarefas, minhas, nome, inicio, fim, str(projeto.get("tipo") or "")))
+        tarefas, minhas, nome, inicio, fim, str(projeto.get("tipo") or ""),
+        listas_sustentacao=listas_sust or None,
+        listas_projeto=listas_proj or None))
 
 
 def gerar_todos(cliente, projetos: list[dict], inicio: date, fim: date) -> str:

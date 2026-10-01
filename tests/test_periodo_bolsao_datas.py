@@ -632,3 +632,50 @@ def test_estouro_dentro_do_ciclo_continua_datado():
                    data_estouro=date(2026, 9, 10), dias_ate_estourar=2,
                    fim_do_ciclo=date(2026, 9, 30))
     assert "estoura em 10/09" in s.linha()
+
+
+def test_bolsao_exclui_listas_de_projeto_do_mesmo_espaco():
+    """Grupo Angelus tem 160h de sustentacao no espaco, mas frentes de projeto
+    no mesmo espaco nao devem abater do bolsao."""
+    b = B.Bolsao(projeto="Grupo Angelus", list_id="", horas_contratadas=160.0,
+                 space_id="sp_angelus",
+                 listas_projeto=("list_proj_1", "list_proj_2"))
+
+    entrada_chamado = {"task_location": {"space_id": "sp_angelus", "list_id": "list_chamados"}}
+    entrada_projeto = {"task_location": {"space_id": "sp_angelus", "list_id": "list_proj_1"}}
+    entrada_outro = {"task_location": {"space_id": "sp_outro", "list_id": "list_chamados"}}
+
+    assert b.pertence(entrada_chamado), "entrada de sustentacao deve pertencer ao bolsao"
+    assert not b.pertence(entrada_projeto), "entrada de projeto nao deve consumir bolsao de sustentacao"
+    assert not b.pertence(entrada_outro), "entrada de outro espaco nao deve pertencer"
+
+
+def test_bolsao_filtra_listas_sustentacao_se_especificadas():
+    b = B.Bolsao(projeto="Grupo Dimas", list_id="", horas_contratadas=30.0,
+                 space_id="sp_dimas",
+                 listas_sustentacao=("list_sust_oficial",))
+
+    entrada_sust = {"task_location": {"space_id": "sp_dimas", "list_id": "list_sust_oficial"}}
+    entrada_avulsa = {"task_location": {"space_id": "sp_dimas", "list_id": "list_outra"}}
+
+    assert b.pertence(entrada_sust)
+    assert not b.pertence(entrada_avulsa)
+
+
+def test_carregar_bolsoes_propaga_listas_projeto_e_sustentacao():
+    cfg = [
+        {
+            "nome": "Grupo Angelus",
+            "space_id": "sp_angelus",
+            "horas_contratadas": 160,
+            "tipo": "sustentacao",
+            "listas_projeto": ["list_proj_1"],
+            "listas_sustentacao": ["list_chamados"],
+        }
+    ]
+    bolsoes, sem_teto = B.carregar_bolsoes(cfg)
+    assert len(bolsoes) == 1
+    assert bolsoes[0].listas_projeto == ("list_proj_1",)
+    assert bolsoes[0].listas_sustentacao == ("list_chamados",)
+    assert bolsoes[0].tipo == "sustentacao"
+

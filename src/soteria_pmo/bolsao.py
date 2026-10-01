@@ -163,12 +163,19 @@ class Bolsao:
 
     Quando os dois estao presentes o espaco vence, e `list_id` sozinho continua
     servindo para vigiar uma frente especifica de propositode.
+
+    `listas_projeto` e `listas_sustentacao` permitem segregar na raiz o que sao
+    horas de projeto vs. sustentacao em espacos que abrigam ambos (ex.: Grupo
+    Angelus tem 160h de sustentacao, com projetos correndo no mesmo espaco).
     """
 
     projeto: str
     list_id: str
     horas_contratadas: float
     space_id: str = ""
+    listas_sustentacao: tuple[str, ...] = ()
+    listas_projeto: tuple[str, ...] = ()
+    tipo: str = "sustentacao"
 
     def __post_init__(self) -> None:
         if self.horas_contratadas <= 0:
@@ -179,9 +186,22 @@ class Bolsao:
     def pertence(self, entrada: dict) -> bool:
         """Se esta entrada de tempo consome este bolsao."""
         onde = campo_objeto(entrada, "task_location")
+        lid = str(onde.get("list_id") or "")
+        sid = str(onde.get("space_id") or "")
         if self.space_id:
-            return str(onde.get("space_id") or "") == str(self.space_id)
-        return str(onde.get("list_id") or "") == str(self.list_id)
+            if sid != str(self.space_id):
+                return False
+        elif self.list_id:
+            if lid != str(self.list_id):
+                return False
+        else:
+            return False
+
+        if self.listas_projeto and lid in self.listas_projeto:
+            return False
+        if self.listas_sustentacao and lid not in self.listas_sustentacao:
+            return False
+        return True
 
 
 @dataclass
@@ -407,6 +427,9 @@ def carregar_bolsoes(dados: list[dict] | dict) -> tuple[list[Bolsao], list[str]]
         nome = item.get("projeto") or item.get("nome") or ""
         lid = str(item.get("list_id") or "")
         sid = str(item.get("space_id") or "")
+        tipo = str(item.get("tipo") or "sustentacao")
+        listas_sust = tuple(str(x) for x in (item.get("listas_sustentacao") or ()))
+        listas_proj = tuple(str(x) for x in (item.get("listas_projeto") or ()))
         horas = float(item.get("horas_contratadas") or item.get("horas")
                       or teto_sugerido(nome) or 0.0)
         if not (nome and (lid or sid)):
@@ -424,7 +447,10 @@ def carregar_bolsoes(dados: list[dict] | dict) -> tuple[list[Bolsao], list[str]]
             continue
         if horas > 0:
             resultado.append(Bolsao(projeto=nome, list_id=lid,
-                                    horas_contratadas=horas, space_id=sid))
+                                    horas_contratadas=horas, space_id=sid,
+                                    listas_sustentacao=listas_sust,
+                                    listas_projeto=listas_proj,
+                                    tipo=tipo))
             continue
         incerto = teto_a_confirmar(nome)
         sem_teto.append(f"{nome}: sem teto configurado"
