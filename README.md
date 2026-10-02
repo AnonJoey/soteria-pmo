@@ -70,11 +70,18 @@ soteria-pmo cadencias              # o que roda hoje e o que nao, e por que
 soteria-pmo rodar                  # roda os itens devidos hoje e imprime
 soteria-pmo rodar --forcar reporte # roda um item fora da cadencia dele
 soteria-pmo horas --de 2026-09-01 --ate 2026-09-05
+soteria-pmo lancar --arquivo proposta.json --aprovado-por "Nome"         # simula
+soteria-pmo lancar --arquivo proposta.json --aprovado-por "Nome" --real  # grava
 ```
 
-Nenhum deles escreve no ClickUp. `dry_run` e o padrao do cliente e `rotina.py`
-nao tem caminho de escrita; lancar hora e um ato separado e deliberado, com
-aprovacao.
+Os quatro primeiros nao escrevem no ClickUp. `lancar` e o unico que escreve, e
+so com `--real` e o nome de quem aprovou: ele grava uma proposta que uma pessoa
+ja leu. Recusa a proposta inteira se duas entradas do mesmo dia se cruzarem,
+pula o que ja existe, rele cada entrada e para no primeiro resultado que nao
+voltar conferido, sem retentar. `rotina.py` continua sem caminho de escrita.
+
+A proposta e uma lista JSON de `{"dia", "ini", "fim", "task", "desc", "fat",
+"tag"}`, com `fat` obrigatorio pelo mesmo motivo do controle 2 abaixo.
 
 ### A leitura diaria, rodando sozinha
 
@@ -164,7 +171,10 @@ sem nunca sobrescrever o que a pessoa ja tem com aquele nome.
 ## O que nada aqui faz
 
 - **Nao lanca hora sem aprovacao.** `dry_run` e o padrao do cliente, `Aprovacao`
-  e obrigatoria em toda escrita, e `rotina.py` nao tem caminho de escrita.
+  e obrigatoria em toda escrita, `lancar` simula sem `--real`, e `rotina.py`
+  nao tem caminho de escrita.
+- **Nao fatura o que nao sabe o que foi.** Janela de evidencia sem atividade
+  identificada sai nao faturavel e vira pergunta.
 - **Nao manda relatorio ao cliente.** Entrega no nivel 2: produz, o Max valida e
   envia. O nivel 3 foi recusado em 24/06 e isso viaja como campo no artefato.
 - **Nao infere trabalho de aba de navegador ou processo aberto.** Navegador pesa
@@ -235,8 +245,7 @@ criou quatro entradas fantasma e 16 horas cobradas indevidamente. Em
 
 O projeto carregava desde 07/08 que "nao existe edicao nem exclusao de entrada
 de tempo". Isso descrevia o conector MCP, nao o ClickUp: existem
-`PUT` e `DELETE` em `/v2/team/{team}/time_entries/{id}`, e o PUT aceita
-`description`, `billable` e `tags` no formato `{name, tag_fg, tag_bg}`.
+`PUT` e `DELETE` em `/v2/team/{team}/time_entries/{id}`.
 
 Por isso `corrigir()` e `remover()` existem. Aprovacao humana continua
 obrigatoria, pela razao que se sustenta: horas viram cobranca e a pessoa e a
@@ -244,9 +253,18 @@ unica fonte para a parte delas que a maquina nao ve. Nao porque o erro seria
 permanente, que era o argumento antigo e cai na primeira consulta a
 documentacao.
 
-O contrato acima e documentacao oficial, nao medicao: nada foi chamado contra o
-workspace real. Antes de usar em producao, testar `PUT` numa entrada
-descartavel.
+O que foi medido contra o workspace real, e nao lido na documentacao:
+
+- **08/09/2026:** o `PUT` aceita `description` e `billable`, mas **ignora
+  `tags`**, e com tags sozinhas responde 400 TIMEENTRY_060. Etiqueta de entrada
+  entra por `POST /team/{id}/time_entries/tags`. A documentacao dizia o
+  contrario, e foi a conferencia pos-escrita que pegou.
+- **02/10/2026:** o `PUT` aceita `start`, `end` e `duration` e move a entrada.
+  `corrigir()` passou a mudar horario por ai.
+- **02/10/2026:** em `GET /time_entries`, **`start_date` e `end_date` sao
+  exclusivos**. Uma entrada que comeca exatamente no inicio da janela nao vem.
+  `entradas()` pede 1ms antes do inicio; sem isso, toda entrada da meia-noite
+  sumia da conta do proprio dia, no auditor e no bolsao inclusive.
 
 ## Testes
 
