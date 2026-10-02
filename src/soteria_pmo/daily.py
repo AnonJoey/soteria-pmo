@@ -308,16 +308,21 @@ class InterpreteLocal:
     tests never need a GPU and so swapping the model is a constructor argument.
     """
 
-    def __init__(self, pessoa: str, chamar=None, max_tokens: int = 700):
+    def __init__(self, pessoa: str, chamar=None, max_tokens: int = 700, url: str = ""):
         self.pessoa = pessoa
         self.max_tokens = max_tokens
+        # A URL vem do config (`modelo.url`). Ate 02/10/2026 o endereco do
+        # modelo do delegation-core estava escrito aqui, e o pacote so lia daily
+        # na maquina onde aquele servidor existia.
+        self.url = url.rstrip("/")
+        if chamar is None and not self.url:
+            raise ValueError("sem modelo: informe `modelo.url` no config ou um `chamar`")
         self._chamar = chamar or self._chamar_llama
         # Whether the last call failed to reach the model, as opposed to the
         # model answering that there was no work.
         self.ultima_falhou = False
 
-    @staticmethod
-    def _chamar_llama(sistema: str, usuario: str, max_tokens: int) -> str:
+    def _chamar_llama(self, sistema: str, usuario: str, max_tokens: int) -> str:
         import json as _json
         import urllib.request
         corpo = _json.dumps({
@@ -329,7 +334,7 @@ class InterpreteLocal:
             "chat_template_kwargs": {"enable_thinking": False},
         }).encode()
         req = urllib.request.Request(
-            "http://127.0.0.1:8181/v1/chat/completions", data=corpo,
+            f"{self.url}/v1/chat/completions", data=corpo,
             headers={"Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=300) as r:
             msg = _json.loads(r.read())["choices"][0]["message"]
@@ -406,7 +411,8 @@ def falas_da_pessoa(pasta: str | Path, pessoa: str, inicio: date, fim: date,
     where the person said nothing produces no Fala, which the gap protocol
     turns into a question rather than a zero.
     """
-    interprete = interprete or InterpreteLocal(pessoa)
+    if interprete is None:
+        raise ValueError("falas_da_pessoa precisa de um interprete; sem modelo, nao chame")
     todas: list[Fala] = []
     for t in transcricoes(pasta, inicio, fim):
         minhas = t.de(pessoa)

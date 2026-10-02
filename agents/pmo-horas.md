@@ -29,8 +29,12 @@ soteria-pmo horas --de AAAA-MM-DD --ate AAAA-MM-DD
 soteria-pmo horas --de ... --ate ... --sem-modelo   # so evidencia de maquina
 ```
 
-Coleta commits, sessoes de IA, notas do vault e historico de navegador, separa a
-evidencia pessoal da de cliente, le as dailies da pessoa, e propoe o bloco.
+Coleta commits, sessoes de IA (Claude Code e Antigravity), notas, historico de
+navegador e agenda, separa a evidencia pessoal da de cliente, le as dailies da
+pessoa (pasta `evidencia.dailies`, interpretadas pelo modelo em `modelo.url`), e
+propoe o bloco. Duas fontes nunca viram hora sozinhas e voltam como pergunta: o
+**evento de agenda isolado** ("aconteceu?") e o **agente rodando sozinho** alem
+de 45 min depois da ultima mensagem digitada ("entra no lancamento?").
 
 **Uma proposta por janela medida, com a hora em que o trabalho aconteceu.** Nao
 uma por dia. Ate 09/09/2026 o dia inteiro virava uma entrada so, posicionada as

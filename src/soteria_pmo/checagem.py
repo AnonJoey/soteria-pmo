@@ -31,9 +31,6 @@ from urllib.parse import urlparse
 
 from . import bolsao
 
-#: Onde o interprete de daily procura o modelo. Vem do delegation-core quando
-#: ele esta de pe, e nada aqui sobe modelo nenhum.
-MODELO_PADRAO = "http://127.0.0.1:8181"
 
 #: Planilha de exemplo com as colunas que `rh.carregar` le. Caminho dentro do
 #: repositorio, e nao um arquivo gerado: e material para copiar e preencher.
@@ -81,9 +78,8 @@ def _porta_responde(url: str, timeout: float = 1.5) -> bool:
         return False
 
 
-def _conta_dailies(vault: Path, dias: int = 30) -> tuple[int, date | None]:
+def _conta_dailies(pasta: Path, dias: int = 30) -> tuple[int, date | None]:
     """Quantas transcricoes de daily existem na janela, e a mais recente."""
-    pasta = vault / "Sessions"
     if not pasta.is_dir():
         return 0, None
     limite = date.today() - timedelta(days=dias)
@@ -101,7 +97,7 @@ def _conta_dailies(vault: Path, dias: int = 30) -> tuple[int, date | None]:
     return len(achadas), max(achadas) if achadas else None
 
 
-def checar(cfg: dict, modelo: str = MODELO_PADRAO) -> Checagem:
+def checar(cfg: dict, modelo: str = "", dailies: Path | None = None) -> Checagem:
     """Monta a checagem a partir do config, sem tocar a rede do ClickUp.
 
     O token nao e validado com uma chamada de proposito: uma checagem que gasta
@@ -138,15 +134,15 @@ def checar(cfg: dict, modelo: str = MODELO_PADRAO) -> Checagem:
 
     # ── daqui para baixo, tudo opcional ──────────────────────────────────────
 
-    vault = Path(ev["vault"]).expanduser() if ev.get("vault") else None
-    tem_vault = bool(vault and vault.is_dir())
-    detalhe = ""
-    if tem_vault:
-        n, recente = _conta_dailies(vault)
-        detalhe = (f"{n} daily(s) nos ultimos 30 dias"
+    pasta = dailies or Path(ev.get("dailies") or "~/.soteria-pmo/dailies").expanduser()
+    tem_pasta = pasta.is_dir()
+    detalhe = str(pasta)
+    if tem_pasta:
+        n, recente = _conta_dailies(pasta)
+        detalhe = (f"{pasta}: {n} daily(s) nos ultimos 30 dias"
                    + (f", a mais recente de {recente:%d/%m}" if recente else ""))
     c.itens.append(Item(
-        nome="Vault com as dailies", obrigatorio=False, presente=tem_vault,
+        nome="Pasta das dailies", obrigatorio=False, presente=tem_pasta,
         detalhe=detalhe,
         custo="sem transcricao o motor de horas nao sabe o QUE foi feito, so "
               "quanto tempo houve, e toda proposta sai como atividade nao "
@@ -154,7 +150,8 @@ def checar(cfg: dict, modelo: str = MODELO_PADRAO) -> Checagem:
 
     c.itens.append(Item(
         nome="Modelo local para ler as dailies", obrigatorio=False,
-        presente=_porta_responde(modelo), detalhe=modelo,
+        presente=bool(modelo) and _porta_responde(modelo),
+        detalhe=modelo or "nenhum em modelo.url",
         custo="sem modelo as transcricoes nao sao interpretadas, com o mesmo "
               "efeito de nao existirem"))
 
@@ -177,6 +174,21 @@ def checar(cfg: dict, modelo: str = MODELO_PADRAO) -> Checagem:
         nome="Historico do navegador", obrigatorio=False,
         presente=bool(hist and hist.exists()), detalhe=str(hist or ""),
         custo="perde a fonte que separa trabalho de pessoal por dominio"))
+
+    ag = Path(ev["antigravity"]).expanduser() if ev.get("antigravity") else None
+    c.itens.append(Item(
+        nome="Historico do Antigravity", obrigatorio=False,
+        presente=bool(ag and ag.exists()), detalhe=str(ag or ""),
+        custo="perde o trabalho feito por esse agente, que nenhuma outra fonte ve"))
+
+    # A agenda pode ser um arquivo ou um comando. A checagem nao roda o comando:
+    # so diz se ha um configurado, porque executar algo para checar o ambiente
+    # mistura duas perguntas, como o token que tambem nao e testado aqui.
+    agenda = str(ev.get("agenda") or "")
+    c.itens.append(Item(
+        nome="Agenda", obrigatorio=False, presente=bool(agenda), detalhe=agenda,
+        custo="perde a conferencia contra o que estava marcado; evento de agenda "
+              "nunca vira hora sozinho, so pergunta ou da nome"))
 
     roster = Path(cfg["roster_rh"]).expanduser() if cfg.get("roster_rh") else None
     c.itens.append(Item(

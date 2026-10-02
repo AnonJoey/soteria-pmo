@@ -40,27 +40,38 @@ def test_cada_ausencia_vem_com_o_preco_dela():
     assert "Nada disso e requisito" in texto
 
 
-def test_o_vault_ausente_e_ausencia_e_nao_falha(tmp_path):
-    c = C.checar(cfg_minimo(evidencia={"vault": str(tmp_path / "nao-existe")}),
+def test_pasta_de_dailies_ausente_e_ausencia_e_nao_falha(tmp_path):
+    c = C.checar(cfg_minimo(evidencia={"dailies": str(tmp_path / "nao-existe")}),
                  modelo="http://127.0.0.1:1")
-    (vault,) = [i for i in c.itens if i.nome == "Vault com as dailies"]
-    assert not vault.presente and not vault.obrigatorio
+    (dailies,) = [i for i in c.itens if i.nome == "Pasta das dailies"]
+    assert not dailies.presente and not dailies.obrigatorio
     assert c.pronto
 
 
 def test_conta_as_dailies_da_janela_e_diz_a_mais_recente(tmp_path):
-    sessoes = tmp_path / "Sessions"
-    sessoes.mkdir()
+    """A pasta e a do config, e nao mais `<vault>/Sessions`: o pacote nao sabe
+    como o delegation-core organiza o vault dele."""
+    pasta = tmp_path / "dailies"
+    pasta.mkdir()
     hoje = date.today()
     for delta in (1, 3, 40):
         d = hoje - timedelta(days=delta)
-        (sessoes / f"{d.isoformat()}-Daily-Equipe-Dev-transcricao.md").write_text("x")
-    (sessoes / "2026-01-01-Outra-coisa.md").write_text("x")
-    c = C.checar(cfg_minimo(evidencia={"vault": str(tmp_path)}), modelo="http://127.0.0.1:1")
-    (vault,) = [i for i in c.itens if i.nome == "Vault com as dailies"]
-    assert vault.presente
-    assert "2 daily" in vault.detalhe, "a de 40 dias esta fora da janela"
-    assert f"{hoje - timedelta(days=1):%d/%m}" in vault.detalhe
+        (pasta / f"{d.isoformat()}-Daily-Equipe-Dev-transcricao.md").write_text("x")
+    (pasta / "2026-01-01-Outra-coisa.md").write_text("x")
+    c = C.checar(cfg_minimo(evidencia={"dailies": str(pasta)}), modelo="http://127.0.0.1:1")
+    (dailies,) = [i for i in c.itens if i.nome == "Pasta das dailies"]
+    assert dailies.presente
+    assert "2 daily" in dailies.detalhe, "a de 40 dias esta fora da janela"
+    assert f"{hoje - timedelta(days=1):%d/%m}" in dailies.detalhe
+
+
+def test_sem_modelo_configurado_e_ausencia_dita(tmp_path):
+    """Nao ha mais endereco de modelo no codigo: sem `modelo.url`, a checagem
+    diz que falta, em vez de testar a porta do delegation-core."""
+    c = C.checar(cfg_minimo(), modelo="")
+    (modelo,) = [i for i in c.itens if i.nome.startswith("Modelo")]
+    assert not modelo.presente
+    assert "modelo.url" in modelo.detalhe
 
 
 def test_roster_ausente_desliga_o_item_de_rh_sem_derrubar_o_resto():

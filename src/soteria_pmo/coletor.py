@@ -398,9 +398,8 @@ def notas_vault(vault: str | Path, inicio: date, fim: date,
     return _agrupar(pontos, "nota_vault")
 
 
-def reunioes(vault: str | Path, inicio: date, fim: date,
-             pasta: str = "Sessions") -> list[Evidencia]:
-    """Meetings, from the transcripts saved in the vault.
+def reunioes(pasta: str | Path, inicio: date, fim: date) -> list[Evidencia]:
+    """Meetings, from the transcripts in the dailies folder.
 
     Three things this has to get right, all of them learned by running it.
 
@@ -420,7 +419,7 @@ def reunioes(vault: str | Path, inicio: date, fim: date,
     """
     from .daily import DURACAO_MAXIMA, HORA_DA_DAILY, e_daily, horario_no_texto, ler_transcricao
 
-    pasta_dir = Path(vault).expanduser() / pasta
+    pasta_dir = Path(pasta).expanduser()
     if not pasta_dir.exists():
         return []
 
@@ -532,6 +531,89 @@ def _rajadas_de_restauracao(reloads_wk: list[int]) -> list[tuple[int, int]]:
     return [(g[0], g[-1] + cauda) for g in grupos if len(g) >= RAJADA_MINIMO]
 
 
+# ── antigravity ──────────────────────────────────────────────────────────────
+
+
+def antigravity(historico: str | Path, inicio: date, fim: date) -> list[Evidencia]:
+    """Pedidos digitados no Antigravity CLI, agrupados como sessao acompanhada.
+
+    O history.jsonl guarda so o que a pessoa escreveu (`display`, `timestamp`
+    em ms, `workspace`), nao o que o agente fez. Medido em 02/10/2026: em 28/09
+    os pedidos das 08:13 as 08:50 sao a conexao com o Chrome que virou o commit
+    6e103b2 as 09:37, e nenhuma outra fonte desta maquina via aquela manha.
+    """
+    arquivo = Path(historico).expanduser()
+    if not arquivo.exists():
+        logger.warning("historico do antigravity nao existe: %s", arquivo)
+        return []
+    ini_dt = datetime.combine(inicio, datetime.min.time(), tzinfo=BRT)
+    fim_dt = datetime.combine(fim, datetime.max.time(), tzinfo=BRT)
+    pontos = []
+    for linha in arquivo.read_text(encoding="utf-8", errors="ignore").splitlines():
+        try:
+            r = json.loads(linha)
+            quando = datetime.fromtimestamp(int(r["timestamp"]) / 1000, BRT)
+        except (ValueError, KeyError, TypeError):
+            continue
+        if not ini_dt <= quando <= fim_dt:
+            continue
+        texto = str(r.get("display") or "")[:70].replace("\n", " ")
+        onde = _encurtar(r.get("workspace")) or ""
+        pontos.append(Ponto(quando, f"antigravity em {onde}: {texto}"))
+    return _agrupar(pontos, "sessao_ia")
+
+
+# ── agenda ───────────────────────────────────────────────────────────────────
+
+#: Evento que atravessa a meia-noite e passa disto e bloco, nao compromisso.
+#: Uma recepcao das 19:00 em Sao Francisco termina 01:30 em Brasilia e fica.
+BLOCO_DE_DIAS = timedelta(hours=12)
+
+
+def agenda(origem: str, inicio: date, fim: date) -> list[Evidencia]:
+    """Eventos de agenda, lidos como DADO e nunca por import.
+
+    `origem` e um arquivo JSON ou um comando que imprime esse JSON, com `{de}`
+    e `{ate}` trocados pelas datas. O formato e uma lista de objetos com
+    `titulo`, `inicio`, `fim` (ISO 8601) e, opcionais, `dia_inteiro` e
+    `status`. E o que o modulo `agenda` imprime com `--json`, mas qualquer
+    produtor serve: este pacote nao sabe quem gerou o arquivo.
+
+    Evento nao prova que algo aconteceu. A "Reuniao com o Max" de 23/09/2026
+    estava na agenda e nao aconteceu. Por isso o tipo e `agenda`, e o motor de
+    horas nao o usa como janela medida: evento sem outra evidencia vira
+    pergunta, e evento que coincide com evidencia so da nome a proposta.
+    """
+    texto = ""
+    caminho = Path(origem).expanduser()
+    if caminho.exists():
+        texto = caminho.read_text(encoding="utf-8")
+    else:
+        cmd = origem.format(de=inicio.isoformat(), ate=fim.isoformat())
+        saida = subprocess.run(cmd, shell=True, capture_output=True, text=True,
+                               timeout=120, check=True)
+        texto = saida.stdout
+    evidencias = []
+    for e in json.loads(texto or "[]"):
+        if e.get("dia_inteiro") or str(e.get("status", "")).upper() == "CANCELLED":
+            continue
+        try:
+            ini = datetime.fromisoformat(e["inicio"]).astimezone(BRT)
+            fim_ev = datetime.fromisoformat(e["fim"]).astimezone(BRT)
+        except (KeyError, ValueError):
+            continue
+        if fim_ev <= ini or not inicio <= ini.date() <= fim:
+            continue
+        # Bloco de varios dias nao e compromisso: e o "Dreamforce 2026", de
+        # 11/09 14:00 a 20/09 15:30, que chega sem `dia_inteiro` e somava 217h.
+        if fim_ev.date() > ini.date() and fim_ev - ini > BLOCO_DE_DIAS:
+            continue
+        evidencias.append(Evidencia(tipo="agenda", inicio=ini, fim=fim_ev,
+                                    descricao=f"agenda: {e.get('titulo', '')}",
+                                    inferida=True))
+    return evidencias
+
+
 # ── tudo junto ───────────────────────────────────────────────────────────────
 
 
@@ -547,6 +629,12 @@ class Fontes:
     #: Pedacos de caminho ou de nome que marcam trabalho pessoal nesta maquina,
     #: alem das palavras que `MARCAS_PESSOAIS` ja cobre. Vem do config.
     pessoais: tuple[str, ...] = ()
+    #: Pasta das transcricoes de daily e de reuniao.
+    dailies: str = ""
+    #: history.jsonl do Antigravity CLI.
+    antigravity: str = ""
+    #: Arquivo JSON de eventos, ou comando que imprime esse JSON.
+    agenda: str = ""
 
 
 def separar_pessoal(evidencias: list[Evidencia],
@@ -583,9 +671,14 @@ def coletar(fontes: Fontes, inicio: date, fim: date) -> tuple[list[Evidencia], l
         tenta("sessoes_ia", lambda: sessoes_ia(fontes.sessoes_ia, inicio, fim))
     if fontes.vault:
         tenta("notas_vault", lambda: notas_vault(fontes.vault, inicio, fim))
-        tenta("reunioes", lambda: reunioes(fontes.vault, inicio, fim))
+    if fontes.dailies:
+        tenta("reunioes", lambda: reunioes(fontes.dailies, inicio, fim))
     if fontes.historico_navegador:
         tenta("navegador", lambda: navegador(fontes.historico_navegador, inicio, fim))
+    if fontes.antigravity:
+        tenta("antigravity", lambda: antigravity(fontes.antigravity, inicio, fim))
+    if fontes.agenda:
+        tenta("agenda", lambda: agenda(fontes.agenda, inicio, fim))
 
     evidencias.sort(key=lambda e: e.inicio)
     return evidencias, falhas

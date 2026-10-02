@@ -36,11 +36,12 @@ logger = logging.getLogger("pmo.cli")
 CONFIG_HOME = Path.home() / ".soteria-pmo"
 CONFIG_PADRAO = CONFIG_HOME / "pmo.json"
 
-#: Onde o config morava enquanto o pacote vivia dentro do delegation-core. Lido
-#: como segunda opcao, e so quando o novo nao existe, porque quem ja tinha o
-#: arquivo la nao deve descobrir a mudanca por um erro de config ausente. Some
-#: quando ninguem mais tiver essa instalacao.
-CONFIG_ANTIGO = Path.home() / ".delegation_core" / "pmo.json"
+#: Onde as transcricoes de daily ficam quando o config nao diz outra pasta. E
+#: do proprio pacote: o caminho antigo era a pasta Sessions do vault do
+#: delegation-core, e um pacote independente nao pode nascer apontando para o
+#: disco de outro projeto. Quem guarda as dailies em outro lugar aponta
+#: `evidencia.dailies` para la.
+DAILIES_PADRAO = CONFIG_HOME / "dailies"
 
 # How many days back the daily audit looks. Long enough that an entry logged on
 # Friday is still checked on Monday, short enough that the same exception is not
@@ -62,12 +63,23 @@ EXEMPLO = {
         "repos": ["~/Projects/algum-repo"],
         "autor_git": "",
         "sessoes_ia": "~/.claude/projects",
-        "vault": "~/caminho/para/o/vault",
+        # Transcricoes de daily, uma por arquivo. Ausente, vale ~/.soteria-pmo/dailies.
+        "dailies": "~/.soteria-pmo/dailies",
+        # Notas em markdown que viram evidencia pelo horario de escrita. Opcional.
+        "vault": "~/caminho/para/notas",
         "historico_navegador": "~/.config/google-chrome/Default/History",
+        # Historico de pedidos do Antigravity CLI. Opcional.
+        "antigravity": "~/.gemini/antigravity-cli/history.jsonl",
+        # Agenda: um arquivo JSON de eventos ou um comando que imprime esse JSON,
+        # com {de} e {ate} trocados pelas datas. Opcional.
+        "agenda": "agenda eventos --de {de} --ate {ate} --json",
         # Projetos pessoais desta maquina, por caminho ou por nome. O que cair
         # aqui sai da apuracao em vez de virar hora de cliente.
         "pessoais": ["~/Projects/algum-projeto-pessoal"],
     },
+    # Endpoint compativel com OpenAI que interpreta as dailies. Sem ele as
+    # dailies nao sao lidas, e a apuracao segue so com a evidencia de maquina.
+    "modelo": {"url": "http://127.0.0.1:8080"},
     "task_horas": "id da tarefa guarda-chuva de horas desta pessoa",
     "projetos": [
         # "space_id" e a unidade do bolsao: o trabalho de um cliente se espalha
@@ -92,16 +104,23 @@ class ConfigAusente(RuntimeError):
 
 
 def carregar_config(caminho: Path) -> dict:
+    # O config antigo em ~/.delegation_core deixou de ser lido em 02/10/2026:
+    # era o ultimo caminho do pacote que apontava para outro projeto.
     if not caminho.exists():
-        # So vale para o caminho padrao: quem passou --config apontando para um
-        # arquivo que nao existe quer saber disso, e nao ser desviado em
-        # silencio para outro workspace.
-        if caminho == CONFIG_PADRAO and CONFIG_ANTIGO.exists():
-            logger.info("config lido de %s; mova para %s", CONFIG_ANTIGO, CONFIG_PADRAO)
-            caminho = CONFIG_ANTIGO
-        else:
-            raise ConfigAusente(str(caminho))
+        raise ConfigAusente(str(caminho))
     return json.loads(caminho.read_text(encoding="utf-8"))
+
+
+def pasta_dailies(cfg: dict) -> Path:
+    """Onde estao as transcricoes de daily: o config, ou a pasta do pacote."""
+    ev = cfg.get("evidencia") or {}
+    return Path(ev.get("dailies") or DAILIES_PADRAO).expanduser()
+
+
+def modelo_url(cfg: dict) -> str:
+    """O modelo que interpreta as dailies, se houver. Sem padrao de proposito:
+    o 127.0.0.1:8181 que ficava escrito no codigo era o modelo do delegation-core."""
+    return str((cfg.get("modelo") or {}).get("url") or "").rstrip("/")
 
 
 def _feriados(cfg: dict) -> frozenset[date]:
@@ -123,6 +142,9 @@ def fontes_de_evidencia(cfg: dict) -> "coletor.Fontes":
         vault=ev.get("vault", ""),
         historico_navegador=ev.get("historico_navegador", ""),
         pessoais=tuple(ev.get("pessoais", ())),
+        dailies=str(pasta_dailies(cfg)),
+        antigravity=ev.get("antigravity", ""),
+        agenda=ev.get("agenda", ""),
     )
 
 
@@ -259,13 +281,16 @@ def cmd_horas(args) -> int:
     evidencias, _pessoais = coletor.separar_pessoal(evidencias, fontes.pessoais)
 
     falas = []
-    if pessoa and ev_cfg.get("vault"):
-        pasta = Path(ev_cfg["vault"]).expanduser() / "Sessions"
-        if args.sem_modelo:
-            print("Modo sem modelo: as dailies nao serao interpretadas, entao o "
-                  "que a pessoa disse que fez nao entra na apuracao.\n")
+    url = modelo_url(cfg)
+    if pessoa:
+        pasta = pasta_dailies(cfg)
+        if args.sem_modelo or not url:
+            motivo = "modo sem modelo" if args.sem_modelo else "nenhum modelo em modelo.url"
+            print(f"Dailies nao interpretadas ({motivo}): o que a pessoa disse que "
+                  "fez nao entra na apuracao.\n")
         else:
-            falas = daily.falas_da_pessoa(pasta, pessoa, inicio, fim)
+            falas = daily.falas_da_pessoa(pasta, pessoa, inicio, fim,
+                                          daily.InterpreteLocal(pessoa, url=url))
             print(f"Dailies: {len(falas)} atividade(s) declarada(s) por {pessoa}.\n")
 
     ap = horas.apurar(inicio, fim, evidencias, falas,
@@ -372,7 +397,7 @@ def cmd_checar(args) -> int:
               file=sys.stderr)
         print(json.dumps(EXEMPLO, indent=2, ensure_ascii=False), file=sys.stderr)
         return 2
-    c = checagem.checar(cfg)
+    c = checagem.checar(cfg, modelo=modelo_url(cfg), dailies=pasta_dailies(cfg))
     print(checagem.relatorio(c))
     return 0 if c.pronto else 1
 

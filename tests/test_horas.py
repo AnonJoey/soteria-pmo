@@ -659,3 +659,37 @@ def test_job_autonomo_vira_pergunta_e_nao_proposta():
                               "Soteria", ("desenvolvimento",))
     assert sum(x.horas for x in p) <= 3.01
     assert any("sozinho" in l.pergunta for l in lacunas)
+
+
+def _agenda(dia, h1, h2, titulo):
+    return H.Evidencia("agenda", datetime(dia.year, dia.month, dia.day, h1, tzinfo=BRT),
+                       datetime(dia.year, dia.month, dia.day, h2, tzinfo=BRT),
+                       f"agenda: {titulo}", inferida=True)
+
+
+def test_evento_de_agenda_sem_outra_evidencia_vira_pergunta_e_nao_hora():
+    """A "Reuniao com o Max" de 23/09/2026 estava na agenda e nao aconteceu.
+    Evento marcado nao e evento acontecido."""
+    p, lacunas = H.apurar_dia(QUA, [ev("commit", QUA, 9, 11),
+                                    _agenda(QUA, 17, 18, "Reuniao com o Max")],
+                              [], "t1", "Soteria", ("desenvolvimento",))
+    assert sum(x.horas for x in p) <= 2.01
+    assert any("Reuniao com o Max" in l.pergunta and "aconteceu" in l.pergunta.lower()
+               for l in lacunas)
+
+
+def test_evento_de_agenda_que_coincide_com_evidencia_da_nome_e_nao_soma():
+    p, lacunas = H.apurar_dia(QUA, [ev("sessao_ia", QUA, 9, 11),
+                                    _agenda(QUA, 9, 10, "Apoio ao Luan")],
+                              [], "t1", "Soteria", ("desenvolvimento",))
+    assert abs(sum(x.horas for x in p) - 2.0) < 0.01
+    assert any("Apoio ao Luan" in c for x in p for c in x.citacoes)
+    assert not any("Apoio ao Luan" in l.pergunta for l in lacunas)
+
+
+def test_dia_so_com_agenda_pergunta_pelo_evento_e_pelo_dia():
+    p, lacunas = H.apurar_dia(QUA, [_agenda(QUA, 15, 16, "Implementacao Claude")],
+                              [], "t1", "Soteria", ("desenvolvimento",))
+    assert p == []
+    assert any("Implementacao Claude" in l.pergunta for l in lacunas)
+    assert any("O que voce fez" in l.pergunta for l in lacunas)

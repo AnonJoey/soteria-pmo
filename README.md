@@ -39,9 +39,29 @@ projeto, se cada um e projeto de implantacao ou fila de chamado, quantas horas
 cada bolsao tem, e quem esta no time. Rodar qualquer subcomando sem o arquivo
 imprime o exemplo completo com os campos esperados, em vez de um traceback.
 
-Quem tinha o arquivo em `~/.delegation_core/pmo.json`, de antes da separacao,
-continua funcionando: a cli le esse caminho como segunda opcao e diz de onde
-leu. E compatibilidade de transicao, nao um segundo lugar oficial.
+O caminho antigo, `~/.delegation_core/pmo.json`, deixou de ser lido em
+02/10/2026. Era o ultimo ponto em que o pacote apontava para outro projeto.
+
+### Independente de qualquer outro projeto
+
+O pacote nao importa nada alem da biblioteca padrao e do `httpx`, e nao traz
+escrito caminho, porta ou pasta de outro projeto. Dado de fora e bem-vindo,
+mas entra **pelo config**, nunca pelo codigo:
+
+| Chave | O que e | Sem ela |
+|---|---|---|
+| `evidencia.dailies` | pasta com as transcricoes de daily e de reuniao | `~/.soteria-pmo/dailies` |
+| `modelo.url` | endpoint compativel com OpenAI que interpreta as dailies | as dailies nao sao interpretadas |
+| `evidencia.antigravity` | `history.jsonl` do Antigravity CLI | fonte ausente |
+| `evidencia.agenda` | arquivo JSON de eventos, ou comando que imprime esse JSON (`{de}` e `{ate}` trocados pelas datas) | fonte ausente |
+| `evidencia.vault` | pasta de notas em markdown, lidas pelo horario de escrita | fonte ausente |
+
+A agenda e o exemplo da regra: o modulo `agenda` existe e imprime exatamente
+esse JSON com `--json`, mas este pacote nao o importa. Chama um comando e le a
+saida, e qualquer outro produtor do mesmo formato serve.
+
+`tests/test_independencia.py` e a guarda: falha se um modulo importar algo de
+fora ou trouxer escrito o caminho, a porta ou a pasta de outro projeto.
 
 ## O que e obrigatorio, e o que e so aproveitado
 
@@ -52,11 +72,16 @@ soteria-pmo checar
 **Obrigatorio: o ClickUp**, token e team. Seis dos sete itens leem campo e fazem
 conta, e funcionam com isso e mais nada.
 
-**Opcional: tudo que vem da maquina.** Repositorios git, sessoes de IA em disco,
-historico do navegador, o vault com as transcricoes de daily, e o modelo local
-em `127.0.0.1:8181`. Essas fontes nasceram do delegation-core, onde o pacote foi
-construido, e nenhuma delas e requisito: sem elas o motor de horas continua
-rodando e simplesmente **pergunta mais**. Faltar fonte nao e erro, e menos
+**Opcional: tudo que vem da maquina.** Repositorios git, sessoes de IA em disco
+(Claude Code e Antigravity), historico do navegador, agenda, a pasta das
+dailies e um modelo para interpreta-las. Nenhuma delas e requisito: sem elas o
+motor de horas continua rodando e simplesmente **pergunta mais**.
+
+Duas fontes nunca viram hora sozinhas. **A agenda** diz o que estava marcado,
+nao o que aconteceu: evento que coincide com outra evidencia so da nome a
+proposta, e evento isolado vira pergunta ("aconteceu?"). **O agente rodando
+sozinho** tambem: cada mensagem digitada abre 45 min de atencao, e o que o
+agente faz fora disso vira pergunta com o horario ("entra no lancamento?"). Faltar fonte nao e erro, e menos
 evidencia, e menos evidencia sai declarada como pergunta em vez de virar numero.
 
 O `checar` diz o que esta la, o que falta, e **o que cada ausencia custa**. Uma

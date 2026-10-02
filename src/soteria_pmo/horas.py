@@ -360,6 +360,7 @@ def _confianca(evidencias: list[Evidencia], tem_fala: bool,
 
 
 TIPO_AUTONOMA = "sessao_ia_autonoma"
+TIPO_AGENDA = "agenda"
 
 
 def _pergunta_autonoma(dia: date, autonomas: list["Evidencia"]) -> "Lacuna | None":
@@ -374,6 +375,28 @@ def _pergunta_autonoma(dia: date, autonomas: list["Evidencia"]) -> "Lacuna | Non
         motivo="atividade autonoma: o agente trabalhou sem a pessoa acompanhando",
         horas_em_aberto=horas,
     )
+
+
+def _perguntas_da_agenda(dia: date, eventos: list["Evidencia"],
+                         propostas: list["Proposta"]) -> list["Lacuna"]:
+    """Evento que coincide com uma proposta so da nome a ela; isolado, pergunta."""
+    perguntas = []
+    for evento in eventos:
+        cobertas = [x for x in propostas if x.inicio and x.fim
+                    and x.inicio < evento.fim and evento.inicio < x.fim]
+        for x in cobertas:
+            x.citacoes.append(evento.descricao)
+        if not cobertas:
+            titulo = evento.descricao.removeprefix("agenda: ")
+            perguntas.append(Lacuna(
+                dia=dia,
+                pergunta=f"A agenda marca \"{titulo}\" de {evento.inicio:%H:%M} a "
+                         f"{evento.fim:%H:%M} em {dia:%d/%m}, e nada mais registra esse "
+                         f"horario. Aconteceu?",
+                motivo="evento de agenda sem outra evidencia",
+                horas_em_aberto=round(evento.intervalo.horas, 2),
+            ))
+    return perguntas
 
 
 def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
@@ -405,15 +428,20 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
     # eram. Aqui elas saem das janelas e voltam como pergunta, com o horario.
     autonomas = [e for e in do_dia if e.tipo == TIPO_AUTONOMA]
     do_dia = [e for e in do_dia if e.tipo != TIPO_AUTONOMA]
+    # Evento de agenda nao prova que aconteceu: a "Reuniao com o Max" de
+    # 23/09/2026 estava marcada e nao houve. Ele nunca abre janela sozinho;
+    # coincidindo com evidencia, da nome a proposta, e isolado vira pergunta.
+    eventos = [e for e in do_dia if e.tipo == TIPO_AGENDA]
+    do_dia = [e for e in do_dia if e.tipo != TIPO_AGENDA]
     pergunta_autonoma = _pergunta_autonoma(dia, autonomas)
     if pergunta_autonoma and not do_dia and not falas_do_dia:
-        return [], [pergunta_autonoma, Lacuna(
+        return [], _perguntas_da_agenda(dia, eventos, []) + [pergunta_autonoma, Lacuna(
             dia=dia, pergunta=f"Fora o agente, o que voce fez em {dia:%d/%m}?",
             motivo="so houve atividade autonoma neste dia",
             horas_em_aberto=horas_esperadas)]
 
     if not do_dia and not falas_do_dia:
-        return [], [Lacuna(
+        return [], _perguntas_da_agenda(dia, eventos, []) + [Lacuna(
             dia=dia,
             pergunta=f"O que voce fez em {dia:%d/%m}?",
             motivo="nenhuma evidencia encontrada neste dia",
@@ -428,7 +456,7 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
 
     lacunas: list[Lacuna] = []
     if not janelas and declaradas <= 0:
-        return [], [Lacuna(dia, f"O que voce fez em {dia:%d/%m}?",
+        return [], _perguntas_da_agenda(dia, eventos, []) + [Lacuna(dia, f"O que voce fez em {dia:%d/%m}?",
                            "evidencia sem duracao aproveitavel", horas_esperadas)]
 
     # Without a statement the engine knows that time passed and not what was
@@ -531,6 +559,7 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
             motivo="sem fala na daily: houve tempo, falta o que",
             horas_em_aberto=horas,
         ))
+    lacunas.extend(_perguntas_da_agenda(dia, eventos, propostas))
     if pergunta_autonoma:
         lacunas.append(pergunta_autonoma)
     # Uma pergunta por dia, e nao uma por janela: um dia de seis janelas fracas
