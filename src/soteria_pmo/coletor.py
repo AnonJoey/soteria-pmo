@@ -62,7 +62,29 @@ DOMINIOS_DE_TRABALHO = (
     "office365.com", "microsoftonline.com", "onedrive.live.com", "live.com",
     "github.com", "gitlab.com", "claude.ai", "anthropic.com",
     "stackoverflow.com", "docs.python.org", "developer.clickup.com",
+    # O Teams e o Outlook novos moram em `*.cloud.microsoft`. Medido em
+    # 02/10/2026: as visitas de 10 a 30/09 ao Teams e ao Outlook vinham todas
+    # deste dominio, e nenhuma casava com a lista, entao o coletor nunca as viu.
+    "teams.cloud.microsoft", "outlook.cloud.microsoft", "portal.azure.com",
 )
+
+# Tipo de transicao RELOAD do Chrome, nos 8 bits de baixo de `visits.transition`.
+# E o tipo que a restauracao de abas grava: em 22/09/2026 as 10:16 o navegador
+# reabriu Azure, Outlook, Teams e ClickUp no mesmo segundo, todas com 8, e isso
+# entrava como janela de trabalho. Abrir o navegador nao prova trabalho, e uma
+# recarga manual sozinha tambem nao.
+TRANSICAO_RELOAD = 8
+
+# A restauracao nao para no RELOAD: as abas reabertas disparam sozinhas logins
+# e redirecionamentos, que chegam como LINK. Em 22/09/2026 o login automatico
+# do Azure, um segundo depois da rajada, manteve viva uma janela das 10:16 as
+# 10:31 mesmo com o RELOAD filtrado. Por isso a unidade e a rajada: 3 ou mais
+# RELOADs com no maximo RAJADA_VAO entre eles, e tudo que o navegador carregar
+# ate RAJADA_CAUDA depois da ultima aba sai junto. Uma recarga isolada nao e
+# rajada e nao derruba o que vem depois.
+RAJADA_MINIMO = 3
+RAJADA_VAO = 5          # segundos
+RAJADA_CAUDA = 30       # segundos
 
 
 # Marks on evidence that almost certainly is not client work. This machine
@@ -415,7 +437,7 @@ def navegador(historico: str | Path, inicio: date, fim: date,
             shutil.copy2(origem, copia)
             con = sqlite3.connect(f"file:{copia}?mode=ro", uri=True)
             linhas = con.execute(
-                "SELECT v.visit_time, u.url, u.title FROM visits v "
+                "SELECT v.visit_time, u.url, u.title, v.transition & 255 FROM visits v "
                 "JOIN urls u ON u.id = v.url "
                 "WHERE v.visit_time BETWEEN ? AND ? ORDER BY v.visit_time",
                 (ini_wk, fim_wk)).fetchall()
@@ -424,13 +446,31 @@ def navegador(historico: str | Path, inicio: date, fim: date,
             logger.warning("nao foi possivel ler o historico: %s", e)
             return []
 
-    for quando_wk, url, titulo in linhas:
+    restauracoes = _rajadas_de_restauracao(
+        [q for q, _, _, t in linhas if t == TRANSICAO_RELOAD])
+    for quando_wk, url, titulo, transicao in linhas:
+        if transicao == TRANSICAO_RELOAD:
+            continue
+        if any(a <= quando_wk <= b for a, b in restauracoes):
+            continue
         host = (urlparse(url).hostname or "").lower()
         if not any(host == d or host.endswith("." + d) for d in dominios):
             continue
         dt = datetime.fromtimestamp(quando_wk / 1_000_000 - EPOCA_WEBKIT, BRT)
         pontos.append(Ponto(dt, f"{host}: {(titulo or url)[:70]}"))
     return _agrupar(pontos, "navegador")
+
+
+def _rajadas_de_restauracao(reloads_wk: list[int]) -> list[tuple[int, int]]:
+    """Intervalos (em tempo WebKit) em que o navegador estava se restaurando."""
+    vao, cauda = RAJADA_VAO * 1_000_000, RAJADA_CAUDA * 1_000_000
+    grupos: list[list[int]] = []
+    for q in sorted(reloads_wk):
+        if grupos and q - grupos[-1][-1] <= vao:
+            grupos[-1].append(q)
+        else:
+            grupos.append([q])
+    return [(g[0], g[-1] + cauda) for g in grupos if len(g) >= RAJADA_MINIMO]
 
 
 # ── tudo junto ───────────────────────────────────────────────────────────────
