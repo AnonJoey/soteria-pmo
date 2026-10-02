@@ -524,6 +524,25 @@ def test_sem_fala_a_atividade_nao_e_inventada_a_partir_da_evidencia():
     assert any("falta o que" in l.motivo for l in lacunas)
 
 
+def test_atividade_desconhecida_nao_sai_faturavel():
+    """Medido em 30/09/2026 na apuracao de 10 a 30/09: toda janela "ATIVIDADE
+    NAO IDENTIFICADA" saiu com faturavel=True, porque a tag padrao do lote era
+    `desenvolvimento`. O motor sabe que houve tempo e nao sabe o que foi feito;
+    marcar isso como cobranca e faturar por omissao, que e exatamente o que a
+    regra da casa proibe."""
+    p, _ = H.apurar_dia(QUA, [ev("commit", QUA, 9, 12)], [], "t1", "Soteria",
+                        ("desenvolvimento",))
+    assert p and all(not x.faturavel for x in p)
+
+
+def test_atividade_conhecida_continua_faturavel_pela_tag():
+    falas = [H.Fala(texto="segui no agente de horas",
+                    atividade="desenvolvimento do agente de horas", dia=QUA)]
+    p, _ = H.apurar_dia(QUA, [ev("commit", QUA, 9, 12)], falas, "t1", "Soteria",
+                        ("desenvolvimento",))
+    assert p and all(x.faturavel for x in p)
+
+
 def test_atividade_desconhecida_impede_o_lancamento():
     ap = H.apurar(QUA, QUA, [ev("commit", QUA, 9, 17)], [], "t1", "Soteria")
     assert not ap.pronta_para_lancar

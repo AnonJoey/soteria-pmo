@@ -415,7 +415,11 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
         atividade = ATIVIDADE_DESCONHECIDA
         atividade_conhecida = False
     citacoes_da_fala = [f.texto for f in falas_do_dia]
-    faturavel = classificar_faturavel(tags, atividade)
+    # Sem saber o que foi feito, nao ha base para cobrar. A tag padrao do lote
+    # (`desenvolvimento`) decidia sozinha e, na apuracao de 10 a 30/09/2026,
+    # toda janela nao identificada saiu faturavel. Fica nao faturavel e vira a
+    # pergunta "qual foi a atividade?" mais abaixo; quem responder decide.
+    faturavel = atividade_conhecida and classificar_faturavel(tags, atividade)
 
     # A declaracao so sustenta a DURACAO quando bate com o que foi medido. Sem
     # janela nenhuma ela e a unica fonte e vale por si; contra janelas que dizem
