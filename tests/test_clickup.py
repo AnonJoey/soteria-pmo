@@ -68,7 +68,10 @@ def servidor(*, entry=None, post_status=200, put_status=200, delete_status=200,
             # O PUT IGNORA tags, e com tags sozinhas responde 400. Este duble
             # aceitava, e por ser mais permissivo que a API deixou passar um
             # defeito que so a primeira escrita real encontrou.
-            util = {k: v for k, v in corpo.items() if k in ("description", "billable")}
+            # Horario entra: medido em 02/10/2026, PUT com start, end e
+            # duration moveu uma entrada real de 14:32 para 18:00 com 200.
+            util = {k: v for k, v in corpo.items()
+                    if k in ("description", "billable", "start", "end", "duration")}
             if not util:
                 return httpx.Response(400, json={"err": "At least one param is required",
                                                  "ECODE": "TIMEENTRY_060"})
@@ -491,3 +494,75 @@ def test_validar_tag_nao_vai_a_rede():
     r = c.corrigir("te_1", APROVADO, tags=("inventada",))
     assert r.detalhe == "tags invalidas"
     assert chamadas == []
+
+
+def test_entradas_inclui_a_que_comeca_exatamente_no_inicio_da_janela():
+    """MEDIDO contra a API em 02/10/2026: `start_date` e `end_date` do
+    /time_entries sao EXCLUSIVOS. Com start_date igual ao inicio exato de uma
+    entrada, ela nao vem; com 1ms antes, vem. A contagem do dia perdia assim as
+    tres entradas dos jobs noturnos que comecam as 00:00 de 25, 26 e 27/09.
+
+    O dublê filtra como a API real, e nao mais permissivo que ela: um dublê que
+    aceita o limite inclusivo deixaria este teste verde sobre o defeito."""
+    meia_noite = 1790305200000  # 25/09/2026 00:00 BRT
+    entrada = {"id": "e1", "start": str(meia_noite), "duration": "3600000"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        ini = int(request.url.params["start_date"])
+        fim = int(request.url.params["end_date"])
+        dentro = ini < int(entrada["start"]) < fim
+        return httpx.Response(200, json={"data": [entrada] if dentro else []})
+
+    with cliente(handler) as c:
+        ids = [e["id"] for e in c.entradas(meia_noite, meia_noite + 86_400_000)]
+    assert ids == ["e1"]
+
+
+def test_entradas_nao_puxa_a_que_comeca_no_fim_da_janela():
+    """A janela continua meio aberta: o dia seguinte nao entra no dia de hoje."""
+    meia_noite = 1790305200000
+    entrada = {"id": "e2", "start": str(meia_noite + 86_400_000), "duration": "60000"}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        ini = int(request.url.params["start_date"])
+        fim = int(request.url.params["end_date"])
+        dentro = ini < int(entrada["start"]) < fim
+        return httpx.Response(200, json={"data": [entrada] if dentro else []})
+
+    with cliente(handler) as c:
+        assert c.entradas(meia_noite, meia_noite + 86_400_000) == []
+
+
+def test_corrigir_move_o_horario_e_confere():
+    """A correcao que faltou em 02/10/2026: a segunda chamada do Saad estava
+    lancada as 14:32 e foi feita a noite. `corrigir` so sabia mexer em
+    descricao, faturavel e tags, e o horario teve de ser movido a mao."""
+    ini, fim = 1790629200000, 1790633760000  # 28/09 18:00 e 19:16 BRT
+    handler, estado = servidor(entry={
+        "id": "te_1", "description": "x", "billable": True, "tags": [],
+        "start": "1790616720000", "end": "1790621280000", "duration": "4560000"})
+    r = cliente(handler).corrigir("te_1", APROVADO, inicio_ms=ini, fim_ms=fim)
+    assert r.escrito and r.conferido, r.divergencias
+    assert int(estado["entry"]["start"]) == ini
+    assert int(estado["entry"]["duration"]) == fim - ini
+
+
+def test_corrigir_recusa_horario_invertido_sem_chamar():
+    chamadas = []
+    handler, _ = servidor(entry={"id": "te_1", "tags": []}, registro=chamadas)
+    r = cliente(handler).corrigir("te_1", APROVADO, inicio_ms=2000, fim_ms=1000)
+    assert not r.escrito
+    assert chamadas == []
+
+
+def test_corrigir_detecta_horario_que_nao_gravou():
+    """Se a API devolver 200 e nao mover, a conferencia tem de dizer."""
+    def handler(request: httpx.Request) -> httpx.Response:
+        if request.method == "PUT":
+            return httpx.Response(200, json={"data": {}})
+        return httpx.Response(200, json={"data": {
+            "id": "te_1", "start": "1", "duration": "60000", "tags": []}})
+    r = cliente(handler).corrigir("te_1", APROVADO, inicio_ms=1790629200000,
+                                  fim_ms=1790633760000)
+    assert r.escrito and not r.conferido
+    assert any("horario" in d for d in r.divergencias)

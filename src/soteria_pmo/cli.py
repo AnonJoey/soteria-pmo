@@ -12,8 +12,10 @@ many hours each budget holds, the team roster, and each person's cadence. A
 missing config produces an explicit error naming the file, not an empty run
 that looks like a quiet day.
 
-Nothing here writes to ClickUp. `pmo rodar` prints; approving and launching
-hours is a separate, deliberate act.
+Only one subcommand writes to ClickUp, `lancar`, and only with `--real` and a
+named approver: it launches a proposal a person already read and approved.
+`rodar` and `horas` print. Approving and launching hours stays a separate,
+deliberate act.
 """
 
 from __future__ import annotations
@@ -26,8 +28,8 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from . import (auditor, bolsao, checagem, coletor, cronograma, daily, datas, horas,
-               periodo, reporte, rh, rotina)
-from .clickup import ClickUp
+               lancamento, periodo, reporte, rh, rotina)
+from .clickup import Aprovacao, ClickUp
 
 logger = logging.getLogger("pmo.cli")
 
@@ -315,6 +317,16 @@ def _subcomandos(pmo_sub) -> None:
                          help="nao interpreta as dailies; so evidencia de maquina")
     p_horas.set_defaults(func=cmd_horas)
 
+    p_lan = pmo_sub.add_parser(
+        "lancar", help="Lanca uma proposta de horas ja aprovada (simula sem --real)")
+    p_lan.add_argument("--arquivo", required=True, help="JSON com a proposta aprovada")
+    p_lan.add_argument("--aprovado-por", required=True,
+                       help="quem leu e aprovou esta proposta, pelo nome")
+    p_lan.add_argument("--real", action="store_true",
+                       help="escreve de verdade; sem isto, so simula")
+    p_lan.add_argument("--config", default=str(CONFIG_PADRAO))
+    p_lan.set_defaults(func=cmd_lancar)
+
     p_cad = pmo_sub.add_parser("cadencias", help="Mostra o que roda hoje e o que nao")
     p_cad.add_argument("--dia", default=None)
     p_cad.add_argument("--config", default=str(CONFIG_PADRAO))
@@ -324,6 +336,27 @@ def _subcomandos(pmo_sub) -> None:
         "checar", help="O que e obrigatorio, o que e opcional, e o que falta agora")
     p_chk.add_argument("--config", default=str(CONFIG_PADRAO))
     p_chk.set_defaults(func=cmd_checar)
+
+
+def cmd_lancar(args) -> int:
+    """Lanca uma proposta aprovada, dia a dia, conferindo cada entrada.
+
+    Sai com 1 se a proposta tiver sobreposicao (nada e escrito) ou se alguma
+    entrada nao voltar conferida (o lote para ali e nada e retentado).
+    """
+    cfg = carregar_config(Path(args.config).expanduser())
+    itens = lancamento.ler_proposta(args.arquivo)
+    aprovacao = Aprovacao.de(args.aprovado_por, f"proposta {Path(args.arquivo).name}")
+    with ClickUp(cfg["token"], cfg["team_id"], dry_run=not args.real) as cliente:
+        try:
+            rels = lancamento.lancar(cliente, itens, aprovacao)
+        except ValueError as e:
+            print(str(e), file=sys.stderr)
+            return 1
+    print(lancamento.resumo(rels, dry_run=not args.real))
+    if not args.real:
+        print("\nSimulacao: nada foi escrito. Rode com --real para lancar.")
+    return 1 if any(r.parado_em for r in rels) else 0
 
 
 def cmd_checar(args) -> int:

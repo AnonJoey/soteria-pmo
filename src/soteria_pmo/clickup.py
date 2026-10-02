@@ -271,7 +271,13 @@ class ClickUp:
         of broad, and `escopo_das_entradas` exists to say which one was used,
         so a narrow answer is never mistaken for an empty team.
         """
-        params: dict[str, Any] = {"start_date": inicio_ms, "end_date": fim_ms}
+        # A janela pedida e [inicio, fim), e a API trata os DOIS limites como
+        # exclusivos. Medido em 02/10/2026: com start_date igual ao inicio exato
+        # de uma entrada ela nao vem, com 1ms antes vem. Sem o -1, toda entrada
+        # que comeca a meia-noite some da conta do proprio dia, e foram as tres
+        # dos jobs noturnos de 25, 26 e 27/09. O fim fica como esta: o que
+        # comeca exatamente em `fim` ja e o dia seguinte.
+        params: dict[str, Any] = {"start_date": inicio_ms - 1, "end_date": fim_ms}
         if assignee:
             params["assignee"] = (",".join(assignee)
                                   if isinstance(assignee, (tuple, list)) else assignee)
@@ -563,7 +569,8 @@ class ClickUp:
                  descricao: str | None = None, faturavel: bool | None = None,
                  tags: tuple[str, ...] | None = None,
                  tags_permitidas: set[str] | frozenset[str] | None = None,
-                 acao_tags: Literal["replace", "add", "remove"] = "replace") -> Resultado:
+                 acao_tags: Literal["replace", "add", "remove"] = "replace",
+                 inicio_ms: int | None = None, fim_ms: int | None = None) -> Resultado:
         """Repair an entry that was written wrong. This is the path that the
         "the API cannot edit" premise wrongly said did not exist.
 
@@ -576,6 +583,18 @@ class ClickUp:
         if aprovacao is None:
             raise AprovacaoAusente(f"correcao de {entry_id} sem aprovacao")
         corpo: dict[str, Any] = {}
+        # Horario vai inteiro ou nao vai: inicio sem fim deixaria a API
+        # recalcular a duracao por conta propria. Medido em 02/10/2026: o PUT
+        # aceita start, end e duration e move a entrada, que foi como a
+        # segunda chamada do Saad saiu das 14:32 para as 18:00 de 28/09.
+        if (inicio_ms is None) != (fim_ms is None):
+            return Resultado(entry_id, False, False, detalhe="horario incompleto",
+                             divergencias=["informe inicio_ms e fim_ms juntos"])
+        if inicio_ms is not None and fim_ms is not None:
+            if fim_ms <= inicio_ms:
+                return Resultado(entry_id, False, False, detalhe="horario invertido",
+                                 divergencias=[f"fim {fim_ms} nao e depois de inicio {inicio_ms}"])
+            corpo.update(start=inicio_ms, end=fim_ms, duration=fim_ms - inicio_ms)
         if descricao is not None:
             corpo["description"] = descricao
         if faturavel is not None:
@@ -622,6 +641,12 @@ class ClickUp:
             divergencias.append("descricao nao gravou")
         if faturavel is not None and bool(lido.get("billable")) != faturavel:
             divergencias.append("faturavel nao gravou")
+        if inicio_ms is not None and fim_ms is not None:
+            if int(lido.get("start") or 0) != inicio_ms or \
+                    int(lido.get("duration") or 0) != fim_ms - inicio_ms:
+                divergencias.append(
+                    f"horario nao gravou: lido start={lido.get('start')} "
+                    f"duration={lido.get('duration')}")
         if aplicar_tags:
             gravadas = {t.get("name") for t in (lido.get("tags") or []) if isinstance(t, dict)}
             faltando = sorted(set(aplicar_tags) - gravadas)
