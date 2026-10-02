@@ -646,3 +646,16 @@ def test_evidencia_em_fim_de_semana_tambem_pergunta():
     ap = H.apurar(sabado, sabado, [ev("commit", sabado, 10, 14)], [], "t1", "Soteria")
     assert ap.propostas == []
     assert "fim de semana" in ap.lacunas[0].pergunta
+
+
+def test_job_autonomo_vira_pergunta_e_nao_proposta():
+    """O agente rodando sozinho nao e hora medida da pessoa. Em setembro de
+    2026 o Jordan decidiu lancar as noites de delegation-core, e decidiu
+    sabendo o que eram; o motor nao pode tomar essa decisao calado."""
+    auto = H.Evidencia("sessao_ia_autonoma",
+                       datetime(2026, 9, 2, 23, 20, tzinfo=BRT),
+                       datetime(2026, 9, 3, 8, 7, tzinfo=BRT), "sessao x")
+    p, lacunas = H.apurar_dia(QUA, [ev("commit", QUA, 9, 12), auto], [], "t1",
+                              "Soteria", ("desenvolvimento",))
+    assert sum(x.horas for x in p) <= 3.01
+    assert any("sozinho" in l.pergunta for l in lacunas)

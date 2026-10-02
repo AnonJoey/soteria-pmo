@@ -262,7 +262,7 @@ def sessoes_ia(raiz: str | Path, inicio: date, fim: date) -> list[Evidencia]:
     evidencias = []
 
     for arquivo in raiz.rglob("*.jsonl"):
-        marcas: list[tuple[datetime, str]] = []
+        marcas: list[tuple[datetime, str, bool]] = []
         titulo = ""
         onde = arquivo.parent.name
         try:
@@ -287,20 +287,79 @@ def sessoes_ia(raiz: str | Path, inicio: date, fim: date) -> list[Evidencia]:
                             t.replace("Z", "+00:00")).astimezone(BRT)
                     except ValueError:
                         continue
-                    marcas.append((quando, onde))
+                    marcas.append((quando, onde, _digitado(registro)))
         except OSError as e:
             logger.warning("nao foi possivel ler %s: %s", arquivo.name, e)
             continue
         if not marcas:
             continue
-        quandos = [m for m, _ in marcas]
+        quandos = [m for m, _, _ in marcas]
         if max(quandos) < ini_dt or min(quandos) > fim_dt:
             continue
         sufixo = f": {titulo[:60]}" if titulo else ""
-        pontos = [Ponto(m, f"sessao {arquivo.stem[:8]} em {lugar}{sufixo}")
-                  for m, lugar in marcas if ini_dt <= m <= fim_dt]
-        evidencias.extend(_agrupar(pontos, "sessao_ia"))
+        acompanhados, sozinhos = _separar_atencao(sorted(marcas))
+        for grupo, tipo in ((acompanhados, "sessao_ia"), (sozinhos, "sessao_ia_autonoma")):
+            pontos = [Ponto(m, f"sessao {arquivo.stem[:8]} em {lugar}{sufixo}")
+                      for m, lugar, _ in grupo if ini_dt <= m <= fim_dt]
+            evidencias.extend(_agrupar(pontos, tipo))
     return evidencias
+
+
+#: Quanto tempo depois de uma mensagem digitada a atividade do agente ainda
+#: conta como acompanhada. Medido em 02/10/2026 sobre os turnos de 10 a 30/09
+#: (do pedido ao ultimo registro do agente antes do pedido seguinte): de dia,
+#: mediana 6 min, 75% ate 23 min; acima de 45 min sobram 20 de 117, quase todos
+#: jobs longos de verdade (339, 485, 1260 min). Entre 20 e 45 min ficam 12
+#: turnos que sao conversa com espera, e com 20 eles viravam autonomos.
+ATENCAO = timedelta(minutes=45)
+
+
+def _digitado(registro: dict) -> bool:
+    """Se o registro e uma mensagem que a pessoa escreveu.
+
+    O Claude Code grava como `user` tambem a volta de cada ferramenta e os
+    avisos do proprio harness. So conta o texto que alguem digitou.
+    """
+    if registro.get("type") != "user" or registro.get("isMeta"):
+        return False
+    # Registros que o proprio Claude Code injeta como `user`: o resumo de uma
+    # compactacao de contexto e o disparo de uma tarefa agendada. Medido na
+    # noite de 26 para 27/09: o resumo das 04:24 chegava sem `isMeta` e abria
+    # atencao no meio de um job autonomo.
+    if registro.get("isCompactSummary") or registro.get("scheduledTaskId"):
+        return False
+    origem = registro.get("origin")
+    if isinstance(origem, dict) and origem.get("kind") not in (None, "human"):
+        return False
+    conteudo = (registro.get("message") or {}).get("content")
+    if isinstance(conteudo, str):
+        return bool(conteudo.strip()) and not conteudo.lstrip().startswith("<")
+    if isinstance(conteudo, list):
+        textos = [c.get("text", "") for c in conteudo
+                  if isinstance(c, dict) and c.get("type") == "text"]
+        return any(t.strip() and not t.lstrip().startswith("<") for t in textos)
+    return False
+
+
+def _separar_atencao(marcas: list[tuple[datetime, str, bool]]):
+    """Divide os carimbos de uma sessao entre acompanhados e autonomos.
+
+    Medido em setembro de 2026: as noites de 24 para 25 e de 25 para 26/09
+    entraram como janelas de 9,5h e 9,9h de sessao de IA, com a mesma forca de
+    trabalho acompanhado, e eram o agente rodando sozinho depois de um pedido.
+    Uma mensagem digitada abre `ATENCAO` de atividade acompanhada; o que o
+    agente faz depois disso, sem nova mensagem, e dele.
+    """
+    acompanhados, sozinhos = [], []
+    ultima_digitada: datetime | None = None
+    for quando, lugar, digitada in marcas:
+        if digitada:
+            ultima_digitada = quando
+        if ultima_digitada is not None and quando - ultima_digitada <= ATENCAO:
+            acompanhados.append((quando, lugar, digitada))
+        else:
+            sozinhos.append((quando, lugar, digitada))
+    return acompanhados, sozinhos
 
 
 # ── vault ────────────────────────────────────────────────────────────────────

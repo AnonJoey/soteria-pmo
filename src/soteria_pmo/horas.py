@@ -359,6 +359,23 @@ def _confianca(evidencias: list[Evidencia], tem_fala: bool,
     return round(max(min(score, 0.95), 0.05), 2)
 
 
+TIPO_AUTONOMA = "sessao_ia_autonoma"
+
+
+def _pergunta_autonoma(dia: date, autonomas: list["Evidencia"]) -> "Lacuna | None":
+    if not autonomas:
+        return None
+    horas = round(somar_horas([e.intervalo for e in autonomas]), 2)
+    trechos = ", ".join(f"{e.inicio:%H:%M} a {e.fim:%d/%m %H:%M}" for e in autonomas[:4])
+    return Lacuna(
+        dia=dia,
+        pergunta=f"O agente rodou sozinho {horas:.1f}h a partir de {dia:%d/%m} "
+                 f"({trechos}). Entra no lancamento? E de qual cliente?",
+        motivo="atividade autonoma: o agente trabalhou sem a pessoa acompanhando",
+        horas_em_aberto=horas,
+    )
+
+
 def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
                task_id: str, cliente: str, tags: tuple[str, ...],
                horas_esperadas: float = 8.0) -> tuple[list[Proposta], list[Lacuna]]:
@@ -381,6 +398,19 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
     """
     do_dia = [e for e in evidencias if e.inicio.date() == dia]
     falas_do_dia = [f for f in falas if f.dia == dia]
+
+    # O agente rodando sozinho nao e hora medida da pessoa. Em setembro de 2026
+    # as noites de job autonomo entraram como 9,5h e 9,9h de sessao de IA; o
+    # Jordan decidiu lancar as de delegation-core, mas decidiu sabendo o que
+    # eram. Aqui elas saem das janelas e voltam como pergunta, com o horario.
+    autonomas = [e for e in do_dia if e.tipo == TIPO_AUTONOMA]
+    do_dia = [e for e in do_dia if e.tipo != TIPO_AUTONOMA]
+    pergunta_autonoma = _pergunta_autonoma(dia, autonomas)
+    if pergunta_autonoma and not do_dia and not falas_do_dia:
+        return [], [pergunta_autonoma, Lacuna(
+            dia=dia, pergunta=f"Fora o agente, o que voce fez em {dia:%d/%m}?",
+            motivo="so houve atividade autonoma neste dia",
+            horas_em_aberto=horas_esperadas)]
 
     if not do_dia and not falas_do_dia:
         return [], [Lacuna(
@@ -501,6 +531,8 @@ def apurar_dia(dia: date, evidencias: list[Evidencia], falas: list[Fala],
             motivo="sem fala na daily: houve tempo, falta o que",
             horas_em_aberto=horas,
         ))
+    if pergunta_autonoma:
+        lacunas.append(pergunta_autonoma)
     # Uma pergunta por dia, e nao uma por janela: um dia de seis janelas fracas
     # renderia seis perguntas identicas, e uma lista de perguntas repetidas e
     # lida como ruido, que e como uma pergunta legitima deixa de ser respondida.
