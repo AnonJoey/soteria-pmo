@@ -166,7 +166,10 @@ def _proxima_ocorrencia(quando: date, hoje: date) -> date:
             candidata = date(ano, 3, 1)
         if candidata >= hoje:
             return candidata
-    return quando.replace(year=hoje.year + 1)
+    try:
+        return quando.replace(year=hoje.year + 1)
+    except ValueError:
+        return date(hoje.year + 1, 3, 1)
 
 
 def eventos(pessoas: list[Pessoa], hoje: date) -> list[Evento]:

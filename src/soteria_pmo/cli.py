@@ -188,6 +188,8 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
     inicio_aud = hoje - timedelta(days=JANELA_DA_AUDITORIA)
     fim_aud = hoje - timedelta(days=1)
 
+    com_lista = next((p for p in projetos if p.get("list_id")), None)
+
     tarefas: dict[str, callable] = {
         # A janela do bolsao e o MES CORRENTE, nao trinta dias corridos: o teto
         # e mensal e reseta na virada. Com a janela movel, dois clientes
@@ -196,7 +198,7 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
             bolsao.vigiar(cliente, bolsoes, hoje.replace(day=1), hoje,
                           feriados, sem_teto=bolsoes_sem_teto,
                           fim_do_ciclo=periodo.fim_do_mes(hoje))),
-        "datas": lambda: datas.vigiar(cliente, primeiro["list_id"], hoje) if primeiro else "",
+        "datas": (lambda: datas.vigiar(cliente, str(com_lista["list_id"]), hoje)) if com_lista else (lambda: ""),
         # Item 2 le TODOS os projetos, nao so o primeiro: a regua de 03/09 e
         # por projeto, e avaliar um de uma lista de nove nao e acompanhar
         # cronograma nenhum.
@@ -214,10 +216,11 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
     # que nesta maquina e a lista interna dos proprios Agentes PMO: o reporte ao
     # cliente nao passava por cliente nenhum.
     if projetos:
+        formato = getattr(cliente, "_formato_reporte", "markdown")
         tarefas["reporte"] = lambda: reporte.gerar_todos(
-            cliente, projetos, inicio_semana, fim_semana)
+            cliente, projetos, inicio_semana, fim_semana, formato=formato)
 
-    if primeiro:
+    if com_lista or primeiro:
         tarefas["auditor"] = lambda: auditor.relatorio(auditor.auditar(
             cliente.entradas(*periodo.janela(inicio_aud, fim_aud)),
             evidencia_do_periodo(cfg, inicio_aud, fim_aud),
@@ -243,13 +246,67 @@ def cmd_rodar(args) -> int:
         return 2
 
     with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
+        if getattr(args, "formato", None):
+            setattr(cliente, "_formato_reporte", args.formato)
         digest = rotina.rodar(hoje, montar_tarefas(cfg, cliente, hoje),
                               forcar=frozenset(args.forcar or ()),
                               feriados=_feriados(cfg))
     print(digest.texto())
+    if getattr(args, "saida_html", None) and "reporte" in digest.resultados:
+        conteudo = digest.resultados["reporte"]
+        caminho_out = Path(args.saida_html).expanduser()
+        caminho_out.parent.mkdir(parents=True, exist_ok=True)
+        caminho_out.write_text(conteudo, encoding="utf-8")
+        print(f"Reporte salvo em {caminho_out}")
     # Non-zero when an item failed, so a scheduler notices. A quiet day is
     # success; a broken item is not.
     return 1 if digest.erros else 0
+
+
+def cmd_reporte(args) -> int:
+    """Gera o reporte executivo consolidado em HTML (com semaforo) ou Markdown."""
+    hoje = date.fromisoformat(args.dia) if args.dia else date.today()
+    try:
+        cfg = carregar_config(Path(args.config).expanduser())
+    except ConfigAusente as e:
+        print(f"Sem configuracao do PMO em {e}.\n\nCrie o arquivo com esta forma:\n",
+              file=sys.stderr)
+        print(json.dumps(EXEMPLO, indent=2, ensure_ascii=False), file=sys.stderr)
+        return 2
+
+    if args.de and args.ate:
+        inicio = date.fromisoformat(args.de)
+        fim = date.fromisoformat(args.ate)
+    else:
+        inicio = hoje - timedelta(days=hoje.weekday() + 7)
+        fim = inicio + timedelta(days=6)
+
+    projetos = cfg.get("projetos") or []
+    with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
+        bolsoes_info = {}
+        try:
+            bolsoes_objs, _ = bolsao.carregar_bolsoes(projetos)
+            feriados = _feriados(cfg)
+            vig = bolsao.vigiar(cliente, bolsoes_objs, hoje.replace(day=1), hoje,
+                                feriados=feriados, fim_do_ciclo=periodo.fim_do_mes(hoje))
+            bolsoes_info = {s.projeto: s for s in vig.situacoes}
+        except Exception as e:
+            logger.warning("nao foi possivel carregar bolsoes para o reporte: %s", e)
+
+        conteudo = reporte.gerar_todos(
+            cliente, projetos, inicio, fim,
+            formato=args.formato,
+            pre_analise=args.pre_analise or "",
+            bolsoes=bolsoes_info)
+
+    if args.saida:
+        caminho = Path(args.saida).expanduser()
+        caminho.parent.mkdir(parents=True, exist_ok=True)
+        caminho.write_text(conteudo, encoding="utf-8")
+        print(f"Reporte ({args.formato}) salvo em {caminho}")
+    else:
+        print(conteudo)
+    return 0
 
 
 def cmd_horas(args) -> int:
@@ -329,7 +386,21 @@ def _subcomandos(pmo_sub) -> None:
     p_rodar.add_argument("--dia", default=None, help="AAAA-MM-DD, para testar outro dia")
     p_rodar.add_argument("--forcar", nargs="*", default=None,
                          help="itens a rodar fora da cadencia (ex: reporte)")
+    p_rodar.add_argument("--formato", choices=["markdown", "html"], default=None,
+                         help="formato do reporte ('html' ou 'markdown')")
+    p_rodar.add_argument("--saida-html", default=None, help="salva o HTML gerado neste arquivo")
     p_rodar.set_defaults(func=cmd_rodar)
+
+    p_rep = pmo_sub.add_parser(
+        "reporte", help="Gera o reporte executivo consolidado (HTML com semaforo ou Markdown)")
+    p_rep.add_argument("--formato", choices=["html", "markdown"], default="html")
+    p_rep.add_argument("--saida", default=None, help="Caminho do arquivo de saida")
+    p_rep.add_argument("--dia", default=None, help="AAAA-MM-DD como data de referencia")
+    p_rep.add_argument("--de", default=None, help="AAAA-MM-DD inicio do periodo")
+    p_rep.add_argument("--ate", default=None, help="AAAA-MM-DD fim do periodo")
+    p_rep.add_argument("--pre-analise", default="", help="Texto de pre-analise")
+    p_rep.add_argument("--config", default=str(CONFIG_PADRAO))
+    p_rep.set_defaults(func=cmd_reporte)
 
     p_horas = pmo_sub.add_parser(
         "horas", help="Apura um periodo a partir da evidencia e das dailies (nao escreve)")

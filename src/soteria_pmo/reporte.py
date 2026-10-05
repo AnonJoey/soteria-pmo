@@ -396,17 +396,76 @@ def gerar_consolidado(cliente, projeto: dict, inicio: date, fim: date,
 
     listas_sust = {str(x) for x in (projeto.get("listas_sustentacao") or ())}
     listas_proj = {str(x) for x in (projeto.get("listas_projeto") or ())}
-    return markdown_consolidado(montar_consolidado(
+    rc = montar_consolidado(
         tarefas, minhas, nome, inicio, fim, str(projeto.get("tipo") or ""),
         listas_sustentacao=listas_sust or None,
-        listas_projeto=listas_proj or None))
+        listas_projeto=listas_proj or None)
+    return rc
 
 
-def gerar_todos(cliente, projetos: list[dict], inicio: date, fim: date) -> str:
-    """Item 1 sobre todos os clientes configurados, numa leitura de janela so.
+def gerar_consolidado(cliente, projeto: dict, inicio: date, fim: date,
+                      entradas: list[dict] | None = None,
+                      formato: str = "markdown",
+                      bolsao_info: dict | None = None) -> str:
+    """O reporte executivo de um cliente, do jeito que o Max pediu em 24/06.
 
-    O item 1 lia um `list_id` unico ate 10/09/2026, que era a lista interna da
-    Soteria: o reporte AO CLIENTE nao passava por cliente nenhum.
+    Suporta formato 'markdown' (padrao) ou 'html' com semaforo visual.
+    """
+    res = obter_consolidado(cliente, projeto, inicio, fim, entradas)
+    if isinstance(res, str):
+        return res
+    if res is None:
+        return ""
+    if str(formato).lower() == "html":
+        from .template_html import renderizar_cliente_html
+        return renderizar_cliente_html(res, bolsao_info)
+    return markdown_consolidado(res)
+
+
+def obter_consolidado(cliente, projeto: dict, inicio: date, fim: date,
+                      entradas: list[dict] | None = None) -> ReporteCliente | str | None:
+    """Obtem o objeto ReporteCliente estruturado, ou texto de fallback para listas simples."""
+    space_id = str(projeto.get("space_id") or "")
+    nome = str(projeto.get("nome") or "Cliente")
+    if not space_id:
+        if projeto.get("list_id"):
+            return gerar(cliente, str(projeto["list_id"]), nome, inicio, fim)
+        logger.warning("projeto %s sem space_id e sem list_id: nada a reportar", nome)
+        return None
+
+    ini_ms, fim_ms = janela(inicio, fim)
+    if entradas is None:
+        try:
+            equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
+        except Exception as e:
+            logger.warning("nao foi possivel listar a equipe para %s: %s", nome, e)
+            equipe = None
+        try:
+            entradas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
+        except Exception as e:
+            logger.warning("nao foi possivel ler as horas de %s: %s", nome, e)
+            return None
+
+    minhas = [e for e in entradas
+              if str(campo_objeto(e, "task_location").get("space_id") or "") == space_id]
+    tarefas = cliente.tarefas_do_espaco(space_id, desde_ms=ini_ms)
+    if not tarefas and not minhas:
+        return None
+
+    listas_sust = {str(x) for x in (projeto.get("listas_sustentacao") or ())}
+    listas_proj = {str(x) for x in (projeto.get("listas_projeto") or ())}
+    return montar_consolidado(
+        tarefas, minhas, nome, inicio, fim, str(projeto.get("tipo") or ""),
+        listas_sustentacao=listas_sust or None,
+        listas_projeto=listas_proj or None)
+
+
+def gerar_todos(cliente, projetos: list[dict], inicio: date, fim: date,
+                formato: str = "markdown", pre_analise: str = "",
+                bolsoes: dict | None = None) -> str:
+    """Item 1 sobre todos os clientes configurados.
+
+    Suporta formato 'markdown' (padrao) ou 'html' (executivo com semaforo).
     """
     if not projetos:
         return ""
@@ -423,27 +482,44 @@ def gerar_todos(cliente, projetos: list[dict], inicio: date, fim: date) -> str:
         entradas = []
 
     partes = []
-    # Cliente configurado que nao produziu reporte na janela. Ate 22/09/2026
-    # ele simplesmente nao aparecia, e tres clientes sumiram calados de uma
-    # rodada de onze. Para quem le, "nao veio nada da Unimed" e ambiguo entre
-    # "nao houve movimento" e "a leitura falhou", e as duas pedem acao
-    # diferente. E o mesmo argumento do bolsao: ausencia de alerta nao e boa
-    # noticia, e falta de noticia.
+    reportes_objetos: list[ReporteCliente] = []
     sem_movimento: list[str] = []
+
     for p in projetos:
         nome = str(p.get("nome") or "Cliente")
         try:
-            texto = gerar_consolidado(cliente, p, inicio, fim, entradas)
+            obj = obter_consolidado(cliente, p, inicio, fim, entradas)
         except Exception as e:
-            # Um cliente que falha nao pode calar os outros dez, pela mesma
-            # razao que um item que falha nao cala a rotina.
             logger.warning("reporte de %s falhou: %s", nome, e)
-            texto = (f"# {nome}\n\nNao foi possivel montar este "
-                     f"reporte: {type(e).__name__}.\n")
-        if texto.strip():
-            partes.append(texto.strip())
-        else:
+            partes.append(f"# {nome}\n\nNao foi possivel montar este reporte: {type(e).__name__}.\n")
+            continue
+
+        if obj is None:
             sem_movimento.append(nome)
+        elif isinstance(obj, str):
+            # Fallback de lista unica
+            if obj.strip():
+                partes.append(obj.strip())
+            else:
+                sem_movimento.append(nome)
+        else:
+            reportes_objetos.append(obj)
+            texto_md = markdown_consolidado(obj)
+            if texto_md.strip():
+                partes.append(texto_md.strip())
+            else:
+                sem_movimento.append(nome)
+
+    if str(formato).lower() == "html":
+        from .template_html import renderizar_relatorio_html
+        return renderizar_relatorio_html(
+            reportes=reportes_objetos,
+            sem_movimento=sem_movimento,
+            inicio=inicio,
+            fim=fim,
+            pre_analise=pre_analise,
+            bolsoes=bolsoes,
+        )
 
     if sem_movimento:
         partes.append(

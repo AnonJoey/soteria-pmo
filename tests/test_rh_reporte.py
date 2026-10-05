@@ -614,3 +614,99 @@ def test_listas_explicitas_no_config_prevalecem_no_reporte():
     assert [r.projeto for r in rc.implantacao] == ["Lista Sem Marca 1"]
     assert [r.projeto for r in rc.sustentacao] == ["Lista Sem Marca 2"]
 
+
+def test_rh_proxima_ocorrencia_bissexto_29_fev_sem_erro():
+    """Nascido em 29 de fevereiro nao pode quebrar com ValueError em anos comuns."""
+    nasc = date(2000, 2, 29)
+    # 2026 e 2027 nao sao bissextos
+    prox = rh._proxima_ocorrencia(nasc, date(2026, 3, 2))
+    assert prox == date(2027, 3, 1)
+
+
+def test_reporte_gerar_html_com_semaforo_e_tokens_css():
+    """Gera HTML completo com as 4 cores do semaforo, tokens no :root e scape correto."""
+    class ClienteFalso:
+        def membros(self):
+            return [{"id": "1", "username": "joey"}]
+        def entradas(self, *a, **k):
+            return [{
+                "duration": 7_200_000,  # 2h
+                "billable": True,
+                "task_location": {"space_id": "sp1", "list_id": "l1"},
+                "task": {"id": "t1"},
+            }]
+        def tarefas_do_espaco(self, space_id, desde_ms=None):
+            if space_id != "sp1":
+                return []
+            return [{
+                "id": "t1",
+                "name": "Implementar <Tag> & Seguranca",
+                "status": {"status": "concluida"},
+                "list": {"id": "l1", "name": "Implantacao Fase 1"},
+                "folder": {"name": "Projetos"},
+                "assignees": [{"username": "joey"}],
+                "due_date": None,
+            }]
+
+    projetos = [
+        {"nome": "Angelus", "space_id": "sp1", "tipo": "projeto"},
+        {"nome": "Cliente Inativo", "space_id": "sp2", "tipo": "chamado"},
+    ]
+    bolsoes = {
+        "Angelus": {
+            "horas_gastas": 170.0,
+            "horas_contratadas": 160.0,
+            "nivel": "estourado",
+        }
+    }
+    html = R.gerar_todos(
+        ClienteFalso(), projetos, INI, FIM,
+        formato="html",
+        pre_analise="Analise executiva com <script>alert(1)</script>",
+        bolsoes=bolsoes,
+    )
+
+    assert "<!DOCTYPE html>" in html
+    assert "--color-verde: #10b981;" in html
+    assert "--color-amarelo: #f59e0b;" in html
+    assert "--color-critico: #ef4444;" in html
+    assert "--color-estourado: #8b5cf6;" in html
+    # Verifica escape de HTML
+    assert "Implementar &lt;Tag&gt; &amp; Seguranca" in html
+    assert "<script>" not in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+    # Verifica bolsao estourado (Roxo)
+    assert "progress-estourado" in html
+    assert "badge-estourado" in html
+    assert "Estourado" in html
+    # Verifica clientes sem movimento
+    assert "Cliente Inativo" in html
+    assert "Clientes sem movimentação no período" in html
+    # Verifica rodape nivel 2
+    assert "Max valida e envia (Nível 2)" in html
+
+
+def test_cli_montar_tarefas_com_primeiro_projeto_sem_list_id():
+    """Primeiro projeto sem list_id nao pode gerar KeyError ao montar 'datas'."""
+    from soteria_pmo import cli
+    class ClienteFalso:
+        def membros(self):
+            return []
+        def entradas(self, *a, **k):
+            return []
+    cfg = {
+        "token": "tok",
+        "team_id": "123",
+        "projetos": [
+            {"nome": "Espaco Puro", "space_id": "sp1"},
+            {"nome": "Com Lista", "list_id": "l2"},
+        ]
+    }
+    with cli.ClickUp("tok", "123", dry_run=True) as c:
+        tarefas = cli.montar_tarefas(cfg, c, date(2026, 9, 2))
+        assert "datas" in tarefas
+        # Executar a lambda de datas nao deve levantar KeyError
+        res = tarefas["datas"]()
+        assert isinstance(res, str)
+
+
