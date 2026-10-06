@@ -124,3 +124,66 @@ def test_main_instala_e_diz_de_onde_leu(entrega, casa, capsys):
     saida = capsys.readouterr().out
     assert str(entrega) in saida
     assert "pmo-reporte" in saida
+
+
+# ── --atualizar (06/10/2026) ─────────────────────────────────────────────────
+
+def _versoes(monkeypatch, mapa):
+    monkeypatch.setattr(I, "versoes_entregues", lambda: {k: set(v) for k, v in mapa.items()})
+
+
+def test_atualizar_troca_versao_nossa_intocada(entrega, casa, monkeypatch):
+    """O caso do Max: a skill de 22/09 instalada e nunca editada."""
+    import hashlib
+    destino = casa / ".claude" / "agents"
+    destino.mkdir(parents=True)
+    (destino / "pmo-horas.md").write_text("# agente velho\n", encoding="utf-8")
+    velho = hashlib.sha256(b"# agente velho\n").hexdigest()
+    _versoes(monkeypatch, {"agents/pmo-horas.md": [velho]})
+    r = I.instalar(entrega, atualizar=True)
+    assert r["agents"]["updated"] == ["pmo-horas"]
+    assert (destino / "pmo-horas.md").read_text(encoding="utf-8") == "# agente\n"
+    assert not (destino / "pmo-horas.md.novo").exists()
+
+
+def test_atualizar_nao_passa_por_cima_do_que_a_pessoa_editou(entrega, casa, monkeypatch):
+    destino = casa / ".claude" / "skills" / "pmo-reporte"
+    destino.mkdir(parents=True)
+    (destino / "SKILL.md").write_text("# minha versao\n", encoding="utf-8")
+    _versoes(monkeypatch, {"skills/pmo-reporte/SKILL.md": ["0" * 64]})
+    r = I.instalar(entrega, atualizar=True)
+    assert "pmo-reporte" in r["skills"]["kept_yours"]
+    assert (destino / "SKILL.md").read_text(encoding="utf-8") == "# minha versao\n"
+    assert (destino / "SKILL.md.novo").read_text(encoding="utf-8") == "# skill\n"
+
+
+def test_atualizar_reconhece_quem_ja_esta_na_versao_nova(entrega, casa, monkeypatch):
+    destino = casa / ".claude" / "skills" / "pmo-bolsao"
+    destino.mkdir(parents=True)
+    (destino / "SKILL.md").write_text("# skill\n", encoding="utf-8")
+    _versoes(monkeypatch, {})
+    r = I.instalar(entrega, atualizar=True)
+    assert "pmo-bolsao" in r["skills"]["already_current"]
+
+
+def test_sem_atualizar_continua_sem_tocar_em_nada(entrega, casa, monkeypatch):
+    import hashlib
+    destino = casa / ".claude" / "agents"
+    destino.mkdir(parents=True)
+    (destino / "pmo-horas.md").write_text("# agente velho\n", encoding="utf-8")
+    _versoes(monkeypatch, {"agents/pmo-horas.md": [hashlib.sha256(b"# agente velho\n").hexdigest()]})
+    r = I.instalar(entrega)
+    assert r["agents"]["kept_yours"] == ["pmo-horas"]
+    assert (destino / "pmo-horas.md").read_text(encoding="utf-8") == "# agente velho\n"
+
+
+def test_versoes_entregues_cobrem_o_que_o_repo_entrega_hoje():
+    """Editar uma skill sem regerar versoes_entregues.json deixaria o proximo
+    --atualizar cego para a versao que acabou de ir na entrega."""
+    import hashlib
+    raiz = Path(__file__).resolve().parents[1]
+    v = I.versoes_entregues()
+    assert v, "versoes_entregues.json ausente ou vazio"
+    for f in sorted(list(raiz.glob("skills/*/SKILL.md")) + list(raiz.glob("agents/*.md"))):
+        rel = str(f.relative_to(raiz))
+        assert hashlib.sha256(f.read_bytes()).hexdigest() in v.get(rel, set()), f"{rel}: regere versoes_entregues.json"

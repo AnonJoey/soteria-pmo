@@ -1,0 +1,30 @@
+{
+ "agents/pmo-horas.md": [
+  "506982d1226e92aa9e1fc05cb17a50564b22d5c210b1ea87db36242d8062b352",
+  "612dcf09ded967719cf7d478bdfde56f70a57e05cfab6ffbc2de876b0ed0ebff"
+ ],
+ "skills/pmo-auditor/SKILL.md": [
+  "2569033a7bb939b67b74eea6aec69b3e178aa28c55f13cb2b1ec2e76eb42f161",
+  "a3d396faab29984749ffd85ae0683b87087066a5fd919f40e4e97245d792792c"
+ ],
+ "skills/pmo-bolsao/SKILL.md": [
+  "11f194d31f5d047248c644b063226e1128cd99efcb0f0325cce6d36768c588e9",
+  "d94d786c45c2e88252f7cecb84f52ca5d8f71fcd8293b913648ce6c9206e6428"
+ ],
+ "skills/pmo-cronograma/SKILL.md": [
+  "15f30d94fc5bc1904ec3a1dc2170be47747b454d679062a2cfb1c07433c3e59c",
+  "dfa2df36be0d51ed25ae509b9e1417f86b6ffa3dd7ec0418ba3482f5b93e49cf"
+ ],
+ "skills/pmo-datas/SKILL.md": [
+  "7206618fe0ac7342f2c77d99c2985cb4cffa3ea2419e50caf3af44de310735b7",
+  "fdfc29dcce6e54e510ac707fc872ef430264efb18fee99966acca6527c40d6b4"
+ ],
+ "skills/pmo-reporte/SKILL.md": [
+  "16ed8abd7443729f05ed597fb2a11fdb1d37de22aa242c594fb5270465d78ab9",
+  "a5d19e3efc70a6930590e8d4034310d8736b2e538f3fa92d69e42f52b40366eb"
+ ],
+ "skills/pmo-rh/SKILL.md": [
+  "3fc4d06e9fea41f1563e85e86c0f2f017df69cb1d594b53eed4fe7b60728740b",
+  "729072978491ac50f62fa2cd886d988d3a9c2aa6904f1c043ce5fdad0ab5a94e"
+ ]
+}

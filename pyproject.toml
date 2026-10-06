@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soteria-pmo"
-version = "1.0.0"
+version = "1.1.0"
 description = "Agentes PMO: os sete itens de gestao de projeto e horas sobre o ClickUp"
 requires-python = ">=3.11"
 # Uma dependencia de runtime, e ela e o cliente HTTP. Nada da pilha pesada do
@@ -22,6 +22,11 @@ soteria-pmo-instalar = "soteria_pmo.instalador:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# Os hashes das versoes entregues: sem eles na wheel, `soteria-pmo-instalar
+# --atualizar` nao reconhece nada como versao nossa e nunca atualiza.
+[tool.setuptools.package-data]
+soteria_pmo = ["versoes_entregues.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
