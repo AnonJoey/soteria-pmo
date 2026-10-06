@@ -216,9 +216,22 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
     # que nesta maquina e a lista interna dos proprios Agentes PMO: o reporte ao
     # cliente nao passava por cliente nenhum.
     if projetos:
-        formato = getattr(cliente, "_formato_reporte", "markdown")
-        tarefas["reporte"] = lambda: reporte.gerar_todos(
-            cliente, projetos, inicio_semana, fim_semana, formato=formato)
+        formato = getattr(cliente, "_formato_reporte", FORMATO_PADRAO)
+
+        def _reporte() -> str:
+            corpo = reporte.gerar_todos(
+                cliente, projetos, inicio_semana, fim_semana, formato=formato)
+            if formato != "html" or not corpo:
+                return corpo
+            # A pagina inteira no resumo do dia (e no log do timer das 08:30)
+            # seria ilegivel: o HTML vai para um arquivo e o resumo diz onde.
+            destino = getattr(cliente, "_saida_reporte", None) or caminho_padrao_reporte(
+                inicio_semana, fim_semana)
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            destino.write_text(corpo, encoding="utf-8")
+            return (f"Reporte da semana {inicio_semana:%d/%m} a {fim_semana:%d/%m} em HTML, "
+                    f"para o Max validar e enviar: {destino}")
+        tarefas["reporte"] = _reporte
 
     if com_lista or primeiro:
         tarefas["auditor"] = lambda: auditor.relatorio(auditor.auditar(
@@ -235,6 +248,15 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
     return tarefas
 
 
+#: Formato do reporte quando ninguem pede outro. HTML desde 06/10/2026.
+FORMATO_PADRAO = "html"
+
+
+def caminho_padrao_reporte(inicio: date, fim: date) -> Path:
+    """Onde o `rodar` grava o reporte em HTML quando nao ha --saida-html."""
+    return Path.home() / ".soteria-pmo" / "reportes" / f"reporte-{inicio:%Y-%m-%d}_{fim:%Y-%m-%d}.html"
+
+
 def cmd_rodar(args) -> int:
     hoje = date.fromisoformat(args.dia) if args.dia else date.today()
     try:
@@ -246,18 +268,13 @@ def cmd_rodar(args) -> int:
         return 2
 
     with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
-        if getattr(args, "formato", None):
-            setattr(cliente, "_formato_reporte", args.formato)
+        setattr(cliente, "_formato_reporte", getattr(args, "formato", None) or FORMATO_PADRAO)
+        if getattr(args, "saida_html", None):
+            setattr(cliente, "_saida_reporte", Path(args.saida_html).expanduser())
         digest = rotina.rodar(hoje, montar_tarefas(cfg, cliente, hoje),
                               forcar=frozenset(args.forcar or ()),
                               feriados=_feriados(cfg))
     print(digest.texto())
-    if getattr(args, "saida_html", None) and "reporte" in digest.resultados:
-        conteudo = digest.resultados["reporte"]
-        caminho_out = Path(args.saida_html).expanduser()
-        caminho_out.parent.mkdir(parents=True, exist_ok=True)
-        caminho_out.write_text(conteudo, encoding="utf-8")
-        print(f"Reporte salvo em {caminho_out}")
     # Non-zero when an item failed, so a scheduler notices. A quiet day is
     # success; a broken item is not.
     return 1 if digest.erros else 0
@@ -387,8 +404,8 @@ def _subcomandos(pmo_sub) -> None:
     p_rodar.add_argument("--forcar", nargs="*", default=None,
                          help="itens a rodar fora da cadencia (ex: reporte)")
     p_rodar.add_argument("--formato", choices=["markdown", "html"], default=None,
-                         help="formato do reporte ('html' ou 'markdown')")
-    p_rodar.add_argument("--saida-html", default=None, help="salva o HTML gerado neste arquivo")
+                         help="formato do reporte (padrao: html, gravado em arquivo)")
+    p_rodar.add_argument("--saida-html", default=None, help="grava o reporte em HTML neste arquivo (padrao: ~/.soteria-pmo/reportes/)")
     p_rodar.set_defaults(func=cmd_rodar)
 
     p_rep = pmo_sub.add_parser(

@@ -17,6 +17,10 @@ quando alguem pedir.
 soteria-pmo rodar --forcar reporte
 ```
 
+O reporte sai em **HTML**, com semaforo, e o `rodar` grava a pagina em
+`~/.soteria-pmo/reportes/` (ou onde `--saida-html` mandar) e so diz no resumo
+onde ela ficou. Para o texto puro, `--formato markdown`.
+
 ## A regra que nao se negocia
 
 **Entrega no nivel 2.** O agente gera, o Max valida, o Max envia. O nivel 3, em
@@ -48,11 +52,13 @@ virar semana quieta.
 O Andre sugeriu a pre-analise em 04/09 e **o Max aprovou em 08/09**. Ela e a sua
 parte do item 1, e a unica parte dele que passa por um modelo.
 
-Fluxo: rode o comando, leia o markdown que sai, escreva a leitura, monte com
-`reporte.com_pre_analise(corpo, analise)`. O bloco sai sempre entre o cabecalho
-"Leitura do periodo" e o rodape que diz que e proposta de interpretacao, porque
-a fronteira entre o que foi contado e o que foi interpretado nao pode depender
-da redacao daquele dia.
+Fluxo: leia o conteudo com `soteria-pmo reporte --formato markdown`, escreva a
+leitura, e gere o reporte final em HTML com
+`soteria-pmo reporte --pre-analise "<a leitura>" --saida reporte.html`. Quem monta
+em markdown usa `reporte.com_pre_analise(corpo, analise)`. Nos dois formatos o
+bloco sai sempre entre o titulo "Leitura do periodo" e um rodape que diz que e
+proposta de interpretacao, porque a fronteira entre o que foi contado e o que foi
+interpretado nao pode depender da redacao daquele dia.
 
 **Cinco regras, e nenhuma e de estilo.**
 

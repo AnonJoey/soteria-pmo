@@ -97,7 +97,14 @@ soteria-pmo rodar --forcar reporte # roda um item fora da cadencia dele
 soteria-pmo horas --de 2026-09-01 --ate 2026-09-05
 soteria-pmo lancar --arquivo proposta.json --aprovado-por "Nome"         # simula
 soteria-pmo lancar --arquivo proposta.json --aprovado-por "Nome" --real  # grava
+soteria-pmo reporte --saida reporte.html                  # reporte em HTML (padrao)
+soteria-pmo reporte --formato markdown                    # o mesmo conteudo em texto
+soteria-pmo-instalar --atualizar                          # atualiza skills e agente instalados
 ```
+
+O reporte sai em **HTML**, com semaforo de quatro cores. O `rodar` grava a pagina em
+`~/.soteria-pmo/reportes/` (ou onde `--saida-html` mandar) e o resumo do dia so diz onde
+ela ficou; `--formato markdown` volta ao texto puro.
 
 Os quatro primeiros nao escrevem no ClickUp. `lancar` e o unico que escreve, e
 so com `--real` e o nome de quem aprovou: ele grava uma proposta que uma pessoa

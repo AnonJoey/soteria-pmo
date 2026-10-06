@@ -409,7 +409,8 @@ def test_gerar_consolidado_le_o_espaco_e_ignora_as_horas_de_outro_cliente():
     texto = R.gerar_consolidado(
         cliente, {"nome": "Angelus", "space_id": "sp1"}, INI, FIM,
         entradas=[entrada_em("t1", 4.0, "Implantacao", espaco="sp1"),
-                  entrada_em("t9", 40.0, "Outra", espaco="sp2")])
+                  entrada_em("t9", 40.0, "Outra", espaco="sp2")],
+        formato="markdown")
     assert cliente.espacos == [("sp1", ms(datetime.combine(INI, time.min, tzinfo=BRT)))]
     assert "4.0h totais" in texto
     assert "40" not in texto
@@ -426,7 +427,7 @@ def test_sem_space_id_o_consolidado_cai_no_reporte_da_lista():
         def entradas(self, *_a, **_k):
             return []
 
-    texto = R.gerar_consolidado(SoLista(), {"nome": "C", "list_id": "9"}, INI, FIM)
+    texto = R.gerar_consolidado(SoLista(), {"nome": "C", "list_id": "9"}, INI, FIM, formato="markdown")
     assert texto.startswith("# C")
 
 
@@ -448,7 +449,7 @@ def test_um_cliente_que_falha_nao_cala_os_outros():
         Instavel(),
         [{"nome": "Quebrado", "space_id": "sp_ruim"},
          {"nome": "Inteiro", "space_id": "sp_bom"}],
-        INI, FIM)
+        INI, FIM, formato="markdown")
     assert "Nao foi possivel montar este reporte" in texto
     assert "Reporte Executivo: Inteiro" in texto
 
@@ -552,7 +553,7 @@ def test_clientes_sem_movimento_saem_nomeados_no_fim():
         ClienteFalso(),
         [{"nome": "Com Movimento", "space_id": "cheio", "tipo": "chamado"},
          {"nome": "Parado Ltda", "space_id": "vazio", "tipo": "chamado"}],
-        date(2026, 9, 14), date(2026, 9, 20),
+        date(2026, 9, 14), date(2026, 9, 20), formato="markdown",
     )
     assert "Clientes sem movimento no periodo" in texto
     assert "Parado Ltda" in texto
@@ -576,7 +577,7 @@ def test_sem_clientes_parados_a_secao_nao_aparece():
     texto = R.gerar_todos(
         ClienteFalso(),
         [{"nome": "Ativo", "space_id": "cheio", "tipo": "chamado"}],
-        date(2026, 9, 14), date(2026, 9, 20),
+        date(2026, 9, 14), date(2026, 9, 20), formato="markdown",
     )
     assert "Clientes sem movimento" not in texto
 

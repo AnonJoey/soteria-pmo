@@ -405,11 +405,11 @@ def gerar_consolidado(cliente, projeto: dict, inicio: date, fim: date,
 
 def gerar_consolidado(cliente, projeto: dict, inicio: date, fim: date,
                       entradas: list[dict] | None = None,
-                      formato: str = "markdown",
+                      formato: str = "html",
                       bolsao_info: dict | None = None) -> str:
     """O reporte executivo de um cliente, do jeito que o Max pediu em 24/06.
 
-    Suporta formato 'markdown' (padrao) ou 'html' com semaforo visual.
+    Suporta formato 'html' (padrao, com semaforo visual) ou 'markdown'.
     """
     res = obter_consolidado(cliente, projeto, inicio, fim, entradas)
     if isinstance(res, str):
@@ -461,11 +461,11 @@ def obter_consolidado(cliente, projeto: dict, inicio: date, fim: date,
 
 
 def gerar_todos(cliente, projetos: list[dict], inicio: date, fim: date,
-                formato: str = "markdown", pre_analise: str = "",
+                formato: str = "html", pre_analise: str = "",
                 bolsoes: dict | None = None) -> str:
     """Item 1 sobre todos os clientes configurados.
 
-    Suporta formato 'markdown' (padrao) ou 'html' (executivo com semaforo).
+    Suporta formato 'html' (padrao, executivo com semaforo) ou 'markdown'.
     """
     if not projetos:
         return ""

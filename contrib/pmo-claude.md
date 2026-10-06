@@ -39,7 +39,8 @@ soteria-pmo rodar                     # o que é devido hoje
 soteria-pmo rodar --forcar reporte    # um item fora da cadência
 soteria-pmo cadencias                 # o que roda hoje e o que não
 soteria-pmo horas --de AAAA-MM-DD --ate AAAA-MM-DD   # só propõe, não grava
-soteria-pmo reporte --formato html --saida reporte.html   # reporte em HTML com semáforo
+soteria-pmo reporte --saida reporte.html   # reporte em HTML com semáforo (o padrão)
+soteria-pmo reporte --formato markdown     # o mesmo conteúdo em texto, para ler
 soteria-pmo lancar --arquivo proposta.json --aprovado-por NOME          # simula
 soteria-pmo lancar --arquivo proposta.json --aprovado-por NOME --real   # grava no ClickUp
 ```
@@ -106,7 +107,9 @@ E ele é **reativo**, não preventivo: avisa depois de 4 dias úteis de silênci
 Max pediu aviso antes da situação crítica. Isso é detecção precoce, e chamar de
 preventivo seria vender o que não tem.
 
-**Item 1, reporte.** Sai em texto ou em HTML (`--formato html`), com semáforo de
+**Item 1, reporte.** Sai em **HTML por padrão**, com semáforo de quatro cores
+(`--formato markdown` dá o texto puro). O `rodar` grava a página em
+`~/.soteria-pmo/reportes/` e só diz no resumo onde ela ficou. O semáforo usa
 quatro cores: verde, amarelo, vermelho e roxo para teto estourado. As cores
 ficam em variáveis no topo do HTML para o design ajustar, mas **ainda não são a
 identidade visual oficial** da Sotéria. Não sai em Word nem em slide, que era o
