@@ -38,8 +38,7 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from .periodo import (Intervalo, campo_objeto, de_ms, fundir,
-                       horas as somar_horas)
+from .periodo import (Intervalo, campo_objeto, de_ms, horas as somar_horas)
 
 logger = logging.getLogger("pmo.auditor")
 

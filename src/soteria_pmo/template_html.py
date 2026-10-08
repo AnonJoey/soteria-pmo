@@ -22,7 +22,7 @@ from string import Template
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .reporte import Linha, Reporte, ReporteCliente
+    from .reporte import ReporteCliente
 
 
 CSS_PADRAO = """

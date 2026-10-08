@@ -351,7 +351,7 @@ class ClickUp:
 
     def membros(self) -> list[dict[str, Any]]:
         """Everyone in the workspace, for the callers that genuinely need all."""
-        data = self._get(f"/team")
+        data = self._get("/team")
         for t in data.get("teams", []):
             if str(t.get("id")) == str(self.team_id):
                 return [m.get("user", {}) for m in t.get("members", [])]

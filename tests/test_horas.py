@@ -6,7 +6,7 @@ evidence at all and were normal working days. Every assertion about "asks
 instead of reporting zero" is that pair of days.
 """
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 
 import pytest
 

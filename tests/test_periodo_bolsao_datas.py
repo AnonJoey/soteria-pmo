@@ -271,7 +271,7 @@ def test_ler_aguenta_tarefa_sem_responsavel_e_sem_nome():
     assert p.responsavel == "sem responsavel" and p.nome == "(sem nome)"
 
 
-def test_vigiar_sobrevive_a_falha_de_leitura():
+def test_datas_vigiar_sobrevive_a_falha_de_leitura():
     class Quebrado:
         def tarefas_da_lista(self, *_a, **_k):
             raise RuntimeError("api fora")

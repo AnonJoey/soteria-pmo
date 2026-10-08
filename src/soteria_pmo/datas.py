@@ -21,7 +21,7 @@ import logging
 from dataclasses import dataclass
 from datetime import date
 
-from .periodo import BRT, de_ms
+from .periodo import de_ms
 
 logger = logging.getLogger("pmo.datas")
 

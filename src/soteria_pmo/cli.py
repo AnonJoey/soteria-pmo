@@ -353,7 +353,6 @@ def cmd_horas(args) -> int:
 
     inicio = date.fromisoformat(args.de)
     fim = date.fromisoformat(args.ate)
-    ev_cfg = cfg.get("evidencia") or {}
     pessoa = args.pessoa or cfg.get("pessoa", "")
 
     fontes = fontes_de_evidencia(cfg)
