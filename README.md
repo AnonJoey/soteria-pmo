@@ -99,12 +99,19 @@ soteria-pmo lancar --arquivo proposta.json --aprovado-por "Nome"         # simul
 soteria-pmo lancar --arquivo proposta.json --aprovado-por "Nome" --real  # grava
 soteria-pmo reporte --saida reporte.html                  # reporte em HTML (padrao)
 soteria-pmo reporte --formato markdown                    # o mesmo conteudo em texto
+soteria-pmo lancamentos                                   # quem lancou horas ontem e na semana passada
 soteria-pmo-instalar --atualizar                          # atualiza skills e agente instalados
 ```
 
 O reporte sai em **HTML**, com semaforo de quatro cores. O `rodar` grava a pagina em
 `~/.soteria-pmo/reportes/` (ou onde `--saida-html` mandar) e o resumo do dia so diz onde
 ela ficou; `--formato markdown` volta ao texto puro.
+
+`lancamentos` e a visao simples que o Max pediu no lugar da planilha: quantos lancaram no
+ultimo dia util, quem nao lancou e as horas por dia da semana passada. O limite vem
+impresso em todo quadro: **quem nunca lancou nao aparece**, porque os esperados sao quem
+lancou ao menos uma vez nos ultimos 30 dias. Para fixar a lista, ponha `equipe_lancamento`
+(lista de nomes, como aparecem no ClickUp) no config.
 
 Os quatro primeiros nao escrevem no ClickUp. `lancar` e o unico que escreve, e
 so com `--real` e o nome de quem aprovou: ele grava uma proposta que uma pessoa
