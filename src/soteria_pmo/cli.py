@@ -282,6 +282,16 @@ def cmd_rodar(args) -> int:
 
 def cmd_reporte(args) -> int:
     """Gera o reporte executivo consolidado em HTML (com semaforo) ou Markdown."""
+    if getattr(args, "exportar_modelo", False):
+        from .template_html import exportar_modelo
+        try:
+            destino = exportar_modelo(sobrescrever=getattr(args, "forcar", False))
+        except FileExistsError as e:
+            print(e, file=sys.stderr)
+            return 2
+        print(f"Modelo gravado em {destino}. Edite estilo e blocos; mantenha os marcadores "
+              "$CARDS e $SEM_MOVIMENTO. Veja docs/GUIA-MODELO-REPORTE.md.")
+        return 0
     hoje = date.fromisoformat(args.dia) if args.dia else date.today()
     try:
         cfg = carregar_config(Path(args.config).expanduser())
@@ -416,6 +426,11 @@ def _subcomandos(pmo_sub) -> None:
     p_rep.add_argument("--de", default=None, help="AAAA-MM-DD inicio do periodo")
     p_rep.add_argument("--ate", default=None, help="AAAA-MM-DD fim do periodo")
     p_rep.add_argument("--pre-analise", default="", help="Texto de pre-analise")
+    p_rep.add_argument("--exportar-modelo", action="store_true",
+                       help="Grava o modelo da pagina HTML em ~/.soteria-pmo/modelo-reporte.html "
+                            "para ser editado; o reporte passa a usar esse arquivo")
+    p_rep.add_argument("--forcar", action="store_true",
+                       help="Com --exportar-modelo, recomeca do padrao mesmo se o arquivo existir")
     p_rep.add_argument("--config", default=str(CONFIG_PADRAO))
     p_rep.set_defaults(func=cmd_reporte)
 
