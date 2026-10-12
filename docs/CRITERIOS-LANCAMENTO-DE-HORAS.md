@@ -32,7 +32,7 @@ O peso diz quão bem a fonte sustenta uma **duração**, que é o que vira hora 
 
 - O pacote separa evidência pessoal pela lista `evidencia.pessoais` do config de **cada pessoa**, por pasta ou por nome de projeto, mais uma lista fixa de marcas (jogos, streaming). O que cai ali sai da apuração em vez de virar hora de cliente. (código)
 - Erra para o lado de perguntar: um falso alerta custa uma pergunta; uma falha custa hora faturada errada. (código)
-- **Medido em 08/10:** com as pastas da carreira fora da lista, a auditoria de 30/09 a 06/10 corroborava 12 de 48 entradas; com elas na lista, 23 de 48. A lista precisa ser mantida por quem conhece os próprios projetos. (medição)
+- **Medido em 08/10:** com os projetos pessoais da pessoa fora da lista, a auditoria de 30/09 a 06/10 corroborava 12 de 48 entradas; com eles na lista, 23 de 48. A lista fica no config local de cada pessoa, nunca no repositório, e precisa ser mantida por quem conhece os próprios projetos. (medição)
 - Proposta: o pacote avisar quando uma sessão do Claude roda numa pasta que não é de nenhum projeto configurado nem está na lista de pessoais, para a pessoa classificar. (proposta)
 
 ## 4. Faturável ou não
@@ -69,6 +69,7 @@ As quatro primeiras são de código.
 ## 7. O que fica de fora de propósito
 
 - Planejamento, ligação e conversa que não deixam rastro de máquina. O agente não os inventa: pergunta.
+- **Nem toda hora tem evidência ligada a um horário.** Entre um prompt e outro, ou entre duas ações, há leitura, mensagens, conversa e pesquisa que não deixam marca própria. Esse tempo é trabalho do mesmo bloco: duas evidências do mesmo assunto separadas por uma lacuna curta formam um bloco contínuo, e o agente não corta o meio. A lacuna longa continua virando pergunta. O tamanho da lacuna que ainda conta como contínua precisa ser validado com o André e o Max. (decisão do Jordan em 12/10/2026; o limite é proposta)
 - Julgamento de volume comercial. A auditoria aponta, não acusa: nenhum veredito afirma erro, e "sem lastro" quer dizer só que a auditoria não viu evidência de máquina.
 
 ## 8. Perguntas para a conversa a três
