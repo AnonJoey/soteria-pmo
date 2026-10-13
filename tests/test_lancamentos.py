@@ -162,3 +162,40 @@ def test_sem_tarefa_faturaveis_e_horas_por_pessoa_em_horas_certas():
     st = L.apurar_sem_tarefa([_e("ana", 1.5, space=None, billable=True),
                               _e("ana", 0.5, space=None, billable=False)])
     assert st.faturaveis == 1.5 and st.por_pessoa["ana"] == 2.0
+
+
+def _tag(e, *nomes):
+    return {**e, "tags": [{"name": n} for n in nomes]}
+
+
+def test_sem_tarefa_daily_reuniao_ferias_e_feriado_nao_sao_a_explicar():
+    st = L.apurar_sem_tarefa([
+        _tag(_e("ana", 1.0, space=None, desc=""), "daily"),
+        _tag(_e("ana", 2.0, space=None, desc=""), "Reunião interna"),
+        _tag(_e("ana", 3.0, space=None, desc=""), "reunião com o cliente"),
+        _e("bia", 4.0, space=None, desc="FÉRIAS"),
+        _e("bia", 5.0, space=None, desc="DAYOFF - ANIVERSARIO"),
+        _e("bia", 6.0, space=None, desc="FERIADO"),
+        _e("caio", 7.0, space=None, desc=""),
+    ])
+    assert st.horas == 28.0
+    assert st.horas_esperadas == 21.0
+    assert st.por_pessoa == {"caio": 7.0}
+
+
+def test_sem_tarefa_tag_de_outro_assunto_nao_explica_nada():
+    st = L.apurar_sem_tarefa([_tag(_e("ana", 2.0, space=None, desc=""), "desenvolvimento")])
+    assert st.horas_esperadas == 0.0 and st.por_pessoa == {"ana": 2.0}
+
+
+def test_sem_tarefa_texto_diz_quanto_sobra():
+    st = L.apurar_sem_tarefa([_tag(_e("ana", 1.0, space=None), "daily"),
+                              _e("bia", 4.0, space=None, desc="")])
+    txt = L.formatar_sem_tarefa(st, 30)
+    assert "explicam 1.0h" in txt and "Sobram 4.0h" in txt and "- bia: 4.0h" in txt
+    assert "- ana" not in txt
+
+
+def test_sem_tarefa_tags_fora_do_formato_nao_derrubam_o_comando():
+    e = {**_e("ana", 1.0, space=None, desc=""), "tags": ["daily", None, 3]}
+    assert L.apurar_sem_tarefa([e]).por_pessoa == {"ana": 1.0}

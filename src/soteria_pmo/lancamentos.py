@@ -154,6 +154,27 @@ def formatar(ontem: Quadro, semana: Quadro) -> str:
     return "\n".join(linhas)
 
 
+# Hora que nao tem cliente por natureza: reuniao do time, daily, folga. Medido em
+# 13/10/2026 sobre o time inteiro, isso explica so 53,7 h + 70 h das 964 h sem
+# tarefa; o resto e hora que alguem lancou sem escolher a tarefa.
+ETIQUETAS_SEM_CLIENTE = frozenset({"daily", "reuniao interna", "reuniao com o cliente"})
+DESCRICOES_SEM_CLIENTE = ("ferias", "feriado", "dayoff", "day off")
+
+
+def _sem_acento(texto: str) -> str:
+    import unicodedata
+    base = unicodedata.normalize("NFKD", texto or "")
+    return "".join(c for c in base if not unicodedata.combining(c)).lower().strip()
+
+
+def _esperada_sem_tarefa(entrada: dict) -> bool:
+    etiquetas = {_sem_acento(t.get("name", "")) for t in (entrada.get("tags") or [])
+                 if isinstance(t, dict)}
+    if etiquetas & ETIQUETAS_SEM_CLIENTE:
+        return True
+    return _sem_acento(entrada.get("description") or "").startswith(DESCRICOES_SEM_CLIENTE)
+
+
 @dataclass
 class SemTarefa:
     """Horas lancadas sem tarefa: o time inteiro, numa janela."""
@@ -163,6 +184,8 @@ class SemTarefa:
     entradas: int
     horas_sem_descricao: float
     por_pessoa: dict[str, float]
+    #: Parte de `horas` que e daily, reuniao, ferias ou feriado: nao tem cliente por natureza.
+    horas_esperadas: float = 0.0
 
 
 def _sem_tarefa(entrada: dict) -> bool:
@@ -177,9 +200,10 @@ def _sem_tarefa(entrada: dict) -> bool:
 
 def apurar_sem_tarefa(entradas: list[dict]) -> SemTarefa:
     soltas = [e for e in entradas if _sem_tarefa(e)]
+    a_explicar = [e for e in soltas if not _esperada_sem_tarefa(e)]
     h = lambda L: round(sum(int(e.get("duration") or 0) for e in L) / 3_600_000, 1)
     por_pessoa: dict[str, float] = {}
-    for e in soltas:
+    for e in a_explicar:
         quem = _quem(e) or "(sem usuario)"
         por_pessoa[quem] = por_pessoa.get(quem, 0.0) + int(e.get("duration") or 0) / 3_600_000
     return SemTarefa(
@@ -188,17 +212,21 @@ def apurar_sem_tarefa(entradas: list[dict]) -> SemTarefa:
         entradas=len(soltas),
         horas_sem_descricao=h([e for e in soltas if not (e.get("description") or "").strip()]),
         por_pessoa={k: round(v, 1) for k, v in sorted(por_pessoa.items(), key=lambda kv: -kv[1])},
+        horas_esperadas=h([e for e in soltas if _esperada_sem_tarefa(e)]),
     )
 
 
 def formatar_sem_tarefa(st: SemTarefa, dias: int) -> str:
     if not st.entradas:
         return ""
+    sobram = round(st.horas - st.horas_esperadas, 1)
     linhas = ["", f"## Horas sem tarefa (ultimos {dias} dias)", "",
               f"{st.horas:.1f}h em {st.entradas} entradas, {st.faturaveis:.1f}h marcadas como faturaveis; "
               f"{st.horas_sem_descricao:.1f}h sem tarefa E sem descricao.",
+              f"Daily, reuniao, ferias e feriado explicam {st.horas_esperadas:.1f}h, que nao tem cliente "
+              f"por natureza. Sobram {sobram:.1f}h que alguem lancou sem escolher a tarefa.",
               "Hora sem tarefa nao entra no bolsao de cliente nenhum nem no reporte: ela nao "
-              "tem como ser atribuida. Quem mais tem:"]
+              "tem como ser atribuida. Quem mais tem, entre as que sobram:"]
     for quem, h in list(st.por_pessoa.items())[:8]:
         linhas.append(f"- {quem}: {h:.1f}h")
     return "\n".join(linhas)
