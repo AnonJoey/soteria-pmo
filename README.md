@@ -14,7 +14,7 @@ commits veio junto, e e onde estao os porques de cada constante.
 Quem usa os agentes instala **clonando o repositorio**, e atualiza com um
 comando. Nao ha zip para trocar.
 
-Instalar (Linux e macOS; no Windows o executavel fica em `.venv\\Scripts\\`):
+Instalar (Linux e macOS; no Windows o executavel fica em `.venv\Scripts\`):
 
 ```
 git clone https://github.com/AnonJoey/soteria-pmo.git ~/soteria-pmo
