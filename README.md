@@ -9,7 +9,58 @@ A separacao custou pouco porque o acoplamento tinha sido medido antes: o pacote
 nao importa nada do `delegation_core`, so stdlib mais `httpx`. O historico dos
 commits veio junto, e e onde estao os porques de cada constante.
 
-## Instalar
+## Instalar e atualizar pelo GitHub
+
+Quem usa os agentes instala **clonando o repositorio**, e atualiza com um
+comando. Nao ha zip para trocar.
+
+Instalar (Linux e macOS; no Windows o executavel fica em `.venv\Scripts\`):
+
+```
+git clone https://github.com/AnonJoey/soteria-pmo.git ~/soteria-pmo
+cd ~/soteria-pmo
+python3 -m venv .venv
+.venv/bin/pip install -e .
+.venv/bin/soteria-pmo-instalar
+```
+
+O ultimo passo copia `skills/pmo-*` para `~/.claude/skills` e
+`agents/pmo-horas.md` para `~/.claude/agents`, **sem nunca sobrescrever** o que
+voce ja tem com aquele nome: o que ja existe e mantido e reportado como mantido.
+Depois e so criar o `~/.soteria-pmo/pmo.json` (ver "Configurar" abaixo).
+
+Atualizar:
+
+```
+~/soteria-pmo/.venv/bin/soteria-pmo atualizar --verificar   # quantos commits faltam
+~/soteria-pmo/.venv/bin/soteria-pmo atualizar               # atualiza
+```
+
+O `atualizar` faz `git pull --ff-only`, reinstala o pacote e copia as skills e o
+agente novos. Troca so o que e versao nossa e intocada; o que voce alterou fica
+como esta e a versao nova vai ao lado como `.novo`. **Nao toca no
+`~/.soteria-pmo/pmo.json`**: o token e os tetos de cada pessoa nao viajam por
+git. Ele recusa rodar se houver alteracao local em arquivo rastreado, e para se
+o git nao conseguir avancar em linha reta. Quem usa uma versao fixa pode trocar
+de versao com `git checkout v1.3.0` e rodar `soteria-pmo atualizar` em seguida.
+
+Quem recebeu o pacote por zip (a wheel instalada no ambiente) migra uma vez: faz
+o clone acima e roda `soteria-pmo-instalar --atualizar`. O `pmo.json` continua
+valendo, porque mora fora da pasta do pacote.
+
+Para pedir ao Claude (cole numa sessao do Claude Code na maquina):
+
+```
+Instale ou atualize os Agentes PMO desta maquina pelo GitHub, com seguranca.
+Se ~/soteria-pmo nao existir, clone https://github.com/AnonJoey/soteria-pmo.git
+la, crie o venv, rode `.venv/bin/pip install -e .` e `.venv/bin/soteria-pmo-instalar`.
+Se existir, rode `.venv/bin/soteria-pmo atualizar --verificar`, me mostre a saida
+e, se estiver tudo certo, `.venv/bin/soteria-pmo atualizar`. Nao edite nem apague
+~/.soteria-pmo/pmo.json, nao use `--force` e pare se o git recusar.
+Termine com `.venv/bin/soteria-pmo checar` e me mostre a saida.
+```
+
+### Para desenvolver
 
 ```
 python3 -m venv .venv
@@ -20,16 +71,6 @@ python3 -m venv .venv
 O `--no-deps` no ultimo passo e por habito herdado da base de origem, onde um
 `pip install -e .` direto puxava a pilha de embeddings inteira. Aqui a unica
 dependencia de runtime e `httpx`, entao instalar sem ele tambem funciona.
-
-Depois, para deixar as skills e o agente visiveis em toda sessao do Claude Code:
-
-```
-.venv/bin/soteria-pmo-instalar
-```
-
-Ele copia `skills/pmo-*` para `~/.claude/skills` e `agents/pmo-horas.md` para
-`~/.claude/agents`, **sem nunca sobrescrever** o que voce ja tem com aquele
-nome: o que ja existe e mantido e reportado como mantido.
 
 ## Configurar
 
