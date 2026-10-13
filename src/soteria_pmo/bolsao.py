@@ -263,6 +263,14 @@ class Situacao:
         """One line for the daily digest."""
         base = (f"{self.projeto}: {self.horas_gastas:.1f}h de "
                 f"{self.horas_contratadas:.0f}h ({self.percentual:.0%}) [{self.nivel}]")
+        # Quem ja passou do teto nao "estoura em" data nenhuma: a data que a
+        # projecao daria e o proprio dia da leitura, e dizer "estoura em 13/10"
+        # de um bolsao a 280% faz parecer que ainda ha o que evitar.
+        if self.horas_gastas > self.horas_contratadas:
+            acima = self.horas_gastas - self.horas_contratadas
+            return f"{base}, ja passou do teto em {acima:.1f}h"
+        if self.horas_gastas == self.horas_contratadas:
+            return f"{base}, no teto exato"
         if self.data_estouro is not None:
             if self.fim_do_ciclo and self.data_estouro > self.fim_do_ciclo:
                 return f"{base}, no ritmo atual nao estoura ate o fim do mes"

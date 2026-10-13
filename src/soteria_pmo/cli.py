@@ -301,6 +301,10 @@ def cmd_lancamentos(args) -> int:
     q_ontem = lancamentos.apurar(entradas, [ontem], esperados, historico=entradas)
     q_semana = lancamentos.apurar(entradas, semana, esperados, historico=entradas)
     print(lancamentos.formatar(q_ontem, q_semana))
+    saida_solta = lancamentos.formatar_sem_tarefa(
+        lancamentos.apurar_sem_tarefa(entradas), (hoje - inicio).days)
+    if saida_solta:
+        print(saida_solta)
     return 0
 
 

@@ -130,6 +130,32 @@ def higiene(prazos: list[Prazo]) -> list[str]:
     return problemas
 
 
+def _recolher_filhas(grupo: list[Prazo]) -> dict:
+    """Subtarefas que vencem no mesmo dia que a tarefa mae, e a mae esta no mesmo grupo.
+
+    Quando um replanejamento inteiro espera aprovacao, cada nivel da arvore vence
+    junto, e listar os dezenove esconde o unico que e diferente dos outros. A
+    filha some da lista e a raiz diz quantas ela cobre. So se recolhe quando a
+    data e identica: uma subtarefa com data propria continua aparecendo.
+    """
+    por_id = {p.task_id: p for p in grupo}
+
+    def raiz(p: Prazo) -> Prazo:
+        atual = p
+        while atual.parent_id in por_id and por_id[atual.parent_id].vence_em == p.vence_em:
+            atual = por_id[atual.parent_id]
+        return atual
+
+    escondidas: set[str] = set()
+    por_raiz: dict[str, int] = {}
+    for p in grupo:
+        r = raiz(p)
+        if r.task_id != p.task_id:
+            escondidas.add(p.task_id)
+            por_raiz[r.task_id] = por_raiz.get(r.task_id, 0) + 1
+    return {"escondidas": escondidas, "por_raiz": por_raiz}
+
+
 def digest(prazos: list[Prazo], hoje: date, incluir_higiene: bool = True) -> str:
     """The guardian's message. Empty when there is nothing to say."""
     grupos = guardar(prazos, hoje)
@@ -141,11 +167,16 @@ def digest(prazos: list[Prazo], hoje: date, incluir_higiene: bool = True) -> str
         if not grupos[chave]:
             continue
         linhas = []
+        filhas = _recolher_filhas(grupos[chave])
         for p in grupos[chave]:
+            if p.task_id in filhas["escondidas"]:
+                continue
             d = p.dias(hoje)
             quando = (f"ha {-d}d" if d is not None and d < 0
                       else "hoje" if d == 0 else f"em {d}d")
-            linhas.append(f"  {p.nome} ({p.responsavel}, {p.status}) {quando}")
+            n = filhas["por_raiz"].get(p.task_id, 0)
+            resto = (f", mais {n} subtarefa{'s' if n != 1 else ''} com a mesma data" if n else "")
+            linhas.append(f"  {p.nome} ({p.responsavel}, {p.status}) {quando}{resto}")
         partes.append(f"{titulo}:\n" + "\n".join(linhas))
 
     if incluir_higiene:
