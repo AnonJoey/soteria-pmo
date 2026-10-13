@@ -429,6 +429,40 @@ def cmd_cadencias(args) -> int:
     return 0
 
 
+def cmd_atualizar(args) -> int:
+    """Atualiza o pacote pelo GitHub e copia as skills e o agente novos."""
+    from . import atualizacao
+
+    r = atualizacao.atualizar(so_verificar=args.verificar)
+    st = r["status"]
+    if st == "sem_checkout":
+        print(r["detalhe"] + "\nInstale clonando o repositorio (README, secao \"Instalar e atualizar pelo GitHub\").",
+              file=sys.stderr)
+        return 1
+    print(f"pasta:  {r['raiz']}")
+    print(f"versao: {r['versao_antes']}   ramo: {r['ramo']} @ {r['commit']}")
+    if st in ("sem_rede", "sem_ramo_acompanhado", "alteracao_local", "falhou"):
+        print(f"{st}: {r['detalhe']}", file=sys.stderr)
+        return 1
+    if st == "verificado":
+        atras = r["atras"] or 0
+        print(f"{atras} commit(s) para baixar." if atras else "em dia.")
+        return 0
+    for passo in r["passos"]:
+        print(f"  {'OK' if passo['ok'] else 'FALHOU'}  {passo['passo']}")
+    for tipo in ("skills", "agents"):
+        c = r["copiado"][tipo]
+        print(f"{tipo}: {len(c['installed'])} instalada(s), {len(c['updated'])} atualizada(s), "
+              f"{len(c['already_current'])} ja na versao nova, {len(c['kept_yours'])} sua(s) mantida(s)")
+        for nome in c["kept_yours"]:
+            print(f"  = {nome} (voce alterou: a versao nova ficou ao lado como .novo)")
+    if st == "atualizado":
+        print(f"atualizado: {r['versao_antes']} -> {r['versao_depois']}. O pmo.json nao foi tocado.")
+    else:
+        print("em dia. O pmo.json nao foi tocado.")
+    return 0
+
+
 def _subcomandos(pmo_sub) -> None:
     """Os tres subcomandos, pendurados no objeto de subparsers que vier.
 
@@ -444,6 +478,12 @@ def _subcomandos(pmo_sub) -> None:
                          help="formato do reporte (padrao: html, gravado em arquivo)")
     p_rodar.add_argument("--saida-html", default=None, help="grava o reporte em HTML neste arquivo (padrao: ~/.soteria-pmo/reportes/)")
     p_rodar.set_defaults(func=cmd_rodar)
+
+    p_atu = pmo_sub.add_parser(
+        "atualizar", help="Atualiza o pacote pelo GitHub (git pull) e copia as skills e o agente novos")
+    p_atu.add_argument("--verificar", action="store_true",
+                       help="So diz quantos commits faltam; nao baixa nem copia nada")
+    p_atu.set_defaults(func=cmd_atualizar)
 
     p_lanc = pmo_sub.add_parser(
         "lancamentos", help="Quem lancou horas ontem e na semana passada, e quem nao lancou (le, nao escreve)")
