@@ -137,7 +137,7 @@ def test_atualizar_troca_versao_nossa_intocada(entrega, casa, monkeypatch):
     import hashlib
     destino = casa / ".claude" / "agents"
     destino.mkdir(parents=True)
-    (destino / "pmo-horas.md").write_text("# agente velho\n", encoding="utf-8")
+    (destino / "pmo-horas.md").write_bytes(b"# agente velho\n")
     velho = hashlib.sha256(b"# agente velho\n").hexdigest()
     _versoes(monkeypatch, {"agents/pmo-horas.md": [velho]})
     r = I.instalar(entrega, atualizar=True)
@@ -170,7 +170,7 @@ def test_sem_atualizar_continua_sem_tocar_em_nada(entrega, casa, monkeypatch):
     import hashlib
     destino = casa / ".claude" / "agents"
     destino.mkdir(parents=True)
-    (destino / "pmo-horas.md").write_text("# agente velho\n", encoding="utf-8")
+    (destino / "pmo-horas.md").write_bytes(b"# agente velho\n")
     _versoes(monkeypatch, {"agents/pmo-horas.md": [hashlib.sha256(b"# agente velho\n").hexdigest()]})
     r = I.instalar(entrega)
     assert r["agents"]["kept_yours"] == ["pmo-horas"]
@@ -185,5 +185,5 @@ def test_versoes_entregues_cobrem_o_que_o_repo_entrega_hoje():
     v = I.versoes_entregues()
     assert v, "versoes_entregues.json ausente ou vazio"
     for f in sorted(list(raiz.glob("skills/*/SKILL.md")) + list(raiz.glob("agents/*.md"))):
-        rel = str(f.relative_to(raiz))
+        rel = f.relative_to(raiz).as_posix()
         assert hashlib.sha256(f.read_bytes()).hexdigest() in v.get(rel, set()), f"{rel}: regere versoes_entregues.json"
