@@ -280,8 +280,42 @@ def cmd_rodar(args) -> int:
     return 1 if digest.erros else 0
 
 
+def cmd_lancamentos(args) -> int:
+    """Quem lancou horas ontem e na semana passada, e quem nao lancou. Le o ClickUp, nao escreve."""
+    from . import lancamentos
+    hoje = date.fromisoformat(args.dia) if args.dia else date.today()
+    try:
+        cfg = carregar_config(Path(args.config).expanduser())
+    except ConfigAusente as e:
+        print(f"Sem configuracao do PMO em {e}.", file=sys.stderr)
+        return 2
+    feriados = _feriados(cfg)
+    ontem = lancamentos.dia_util_anterior(hoje, feriados)
+    semana = lancamentos.dias_da_semana_passada(hoje, feriados)
+    inicio = min([ontem, *semana, hoje - timedelta(days=lancamentos.JANELA_DE_ESPERADOS)])
+    ini_ms, fim_ms = periodo.janela(inicio, hoje)
+    with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
+        equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
+        entradas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
+    esperados = cfg.get("equipe_lancamento") or None
+    q_ontem = lancamentos.apurar(entradas, [ontem], esperados, historico=entradas)
+    q_semana = lancamentos.apurar(entradas, semana, esperados, historico=entradas)
+    print(lancamentos.formatar(q_ontem, q_semana))
+    return 0
+
+
 def cmd_reporte(args) -> int:
     """Gera o reporte executivo consolidado em HTML (com semaforo) ou Markdown."""
+    if getattr(args, "exportar_modelo", False):
+        from .template_html import exportar_modelo
+        try:
+            destino = exportar_modelo(sobrescrever=getattr(args, "forcar", False))
+        except FileExistsError as e:
+            print(e, file=sys.stderr)
+            return 2
+        print(f"Modelo gravado em {destino}. Edite estilo e blocos; mantenha os marcadores "
+              "$CARDS e $SEM_MOVIMENTO. Veja docs/GUIA-MODELO-REPORTE.md.")
+        return 0
     hoje = date.fromisoformat(args.dia) if args.dia else date.today()
     try:
         cfg = carregar_config(Path(args.config).expanduser())
@@ -343,7 +377,6 @@ def cmd_horas(args) -> int:
 
     inicio = date.fromisoformat(args.de)
     fim = date.fromisoformat(args.ate)
-    ev_cfg = cfg.get("evidencia") or {}
     pessoa = args.pessoa or cfg.get("pessoa", "")
 
     fontes = fontes_de_evidencia(cfg)
@@ -408,6 +441,12 @@ def _subcomandos(pmo_sub) -> None:
     p_rodar.add_argument("--saida-html", default=None, help="grava o reporte em HTML neste arquivo (padrao: ~/.soteria-pmo/reportes/)")
     p_rodar.set_defaults(func=cmd_rodar)
 
+    p_lanc = pmo_sub.add_parser(
+        "lancamentos", help="Quem lancou horas ontem e na semana passada, e quem nao lancou (le, nao escreve)")
+    p_lanc.add_argument("--dia", default=None, help="AAAA-MM-DD como data de referencia (hoje)")
+    p_lanc.add_argument("--config", default=str(CONFIG_PADRAO))
+    p_lanc.set_defaults(func=cmd_lancamentos)
+
     p_rep = pmo_sub.add_parser(
         "reporte", help="Gera o reporte executivo consolidado (HTML com semaforo ou Markdown)")
     p_rep.add_argument("--formato", choices=["html", "markdown"], default="html")
@@ -416,6 +455,11 @@ def _subcomandos(pmo_sub) -> None:
     p_rep.add_argument("--de", default=None, help="AAAA-MM-DD inicio do periodo")
     p_rep.add_argument("--ate", default=None, help="AAAA-MM-DD fim do periodo")
     p_rep.add_argument("--pre-analise", default="", help="Texto de pre-analise")
+    p_rep.add_argument("--exportar-modelo", action="store_true",
+                       help="Grava o modelo da pagina HTML em ~/.soteria-pmo/modelo-reporte.html "
+                            "para ser editado; o reporte passa a usar esse arquivo")
+    p_rep.add_argument("--forcar", action="store_true",
+                       help="Com --exportar-modelo, recomeca do padrao mesmo se o arquivo existir")
     p_rep.add_argument("--config", default=str(CONFIG_PADRAO))
     p_rep.set_defaults(func=cmd_reporte)
 

@@ -357,53 +357,6 @@ def montar_consolidado(tarefas: list[dict], entradas: list[dict], cliente: str,
 
 
 def gerar_consolidado(cliente, projeto: dict, inicio: date, fim: date,
-                      entradas: list[dict] | None = None) -> str:
-    """O reporte executivo de um cliente, do jeito que o Max pediu em 24/06.
-
-    Sem `space_id` no config nao ha cliente a consolidar, so uma lista, e o
-    reporte por lista continua sendo a resposta certa para esse caso.
-
-    `entradas` entra pronto quando quem chama ja leu a janela: a rotina roda
-    isso para onze clientes e reler a mesma janela onze vezes gasta onze
-    chamadas para receber a mesma resposta.
-    """
-    space_id = str(projeto.get("space_id") or "")
-    nome = str(projeto.get("nome") or "Cliente")
-    if not space_id:
-        if projeto.get("list_id"):
-            return gerar(cliente, str(projeto["list_id"]), nome, inicio, fim)
-        logger.warning("projeto %s sem space_id e sem list_id: nada a reportar", nome)
-        return ""
-
-    ini_ms, fim_ms = janela(inicio, fim)
-    if entradas is None:
-        try:
-            equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
-        except Exception as e:
-            logger.warning("nao foi possivel listar a equipe para %s: %s", nome, e)
-            equipe = None
-        try:
-            entradas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
-        except Exception as e:
-            logger.warning("nao foi possivel ler as horas de %s: %s", nome, e)
-            return ""
-
-    minhas = [e for e in entradas
-              if str(campo_objeto(e, "task_location").get("space_id") or "") == space_id]
-    tarefas = cliente.tarefas_do_espaco(space_id, desde_ms=ini_ms)
-    if not tarefas and not minhas:
-        return ""
-
-    listas_sust = {str(x) for x in (projeto.get("listas_sustentacao") or ())}
-    listas_proj = {str(x) for x in (projeto.get("listas_projeto") or ())}
-    rc = montar_consolidado(
-        tarefas, minhas, nome, inicio, fim, str(projeto.get("tipo") or ""),
-        listas_sustentacao=listas_sust or None,
-        listas_projeto=listas_proj or None)
-    return rc
-
-
-def gerar_consolidado(cliente, projeto: dict, inicio: date, fim: date,
                       entradas: list[dict] | None = None,
                       formato: str = "html",
                       bolsao_info: dict | None = None) -> str:

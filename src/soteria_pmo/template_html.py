@@ -14,12 +14,15 @@ sem alterar a logica de negocio em Python.
 
 from __future__ import annotations
 
+import logging
 from datetime import date, datetime
 from html import escape
+from pathlib import Path
+from string import Template
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .reporte import Linha, Reporte, ReporteCliente
+    from .reporte import ReporteCliente
 
 
 CSS_PADRAO = """
@@ -427,6 +430,113 @@ body {
 """
 
 
+logger = logging.getLogger(__name__)
+
+#: Onde o Max guarda a sua versao da pagina. Ausente, vale MODELO_PADRAO.
+CAMINHO_MODELO = Path.home() / ".soteria-pmo" / "modelo-reporte.html"
+
+#: Marcadores que a pagina precisa ter para mostrar o que importa. Um modelo
+#: editado que perca algum deles esconderia dado do relatorio em silencio.
+OBRIGATORIOS = ("CARDS", "SEM_MOVIMENTO")
+
+#: A pagina. Os marcadores $NOME sao trocados pelos valores; o resto e do Max.
+#: Para escrever um cifrao literal, use $$.
+MODELO_PADRAO = """<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>$TITULO</title>
+  <style>
+$CSS
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header-card">
+      <div class="header-top">
+        <div>
+          <div class="brand-title">Sotéria PMO</div>
+          <div class="brand-subtitle">Relatório Executivo Consolidado de Clientes</div>
+        </div>
+        <div class="period-pill">
+          Período: $PERIODO
+        </div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi-card">
+          <div class="kpi-label">Horas Totais</div>
+          <div class="kpi-value">$HORAS_TOTAIS</div>
+          <div class="kpi-subtext">apontadas na janela</div>
+        </div>
+        <div class="kpi-card" style="border-left-color: var(--color-verde);">
+          <div class="kpi-label">Horas Faturáveis</div>
+          <div class="kpi-value">$HORAS_FATURAVEIS</div>
+          <div class="kpi-subtext">$PCT_FATURAVEIS do total</div>
+        </div>
+        <div class="kpi-card" style="border-left-color: var(--color-amarelo);">
+          <div class="kpi-label">Não Faturáveis</div>
+          <div class="kpi-value">$HORAS_NAO_FATURAVEIS</div>
+          <div class="kpi-subtext">$PCT_NAO_FATURAVEIS do total</div>
+        </div>
+        <div class="kpi-card" style="border-left-color: var(--color-brand);">
+          <div class="kpi-label">Clientes Ativos</div>
+          <div class="kpi-value">$CLIENTES_ATIVOS</div>
+          <div class="kpi-subtext">$SEM_MOVIMENTO_QTD sem movimento</div>
+        </div>
+      </div>
+    </div>
+
+    $LEITURA
+
+    $CARDS
+
+    $SEM_MOVIMENTO
+
+    <div class="footer-card">
+      Max valida e envia (Nível 2) &bull; Documento executivo confidencial gerado pelo Sotéria PMO em $GERADO_EM.
+    </div>
+  </div>
+</body>
+</html>
+"""
+
+
+def carregar_modelo(modelo: str | Path | None = None) -> Template:
+    """O modelo da pagina: o arquivo do Max se existir e estiver inteiro, senao o padrao.
+
+    Um arquivo que nao abre, nao e texto ou perdeu um marcador obrigatorio nao
+    derruba o reporte: volta ao padrao e diz por que no log, porque o relatorio
+    que nao sai e pior do que o relatorio com a aparencia antiga.
+    """
+    caminho = Path(modelo).expanduser() if modelo else CAMINHO_MODELO
+    if not caminho.is_file():
+        return Template(MODELO_PADRAO)
+    try:
+        texto = caminho.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        logger.warning("modelo %s ilegivel (%s); usando o padrao", caminho, e)
+        return Template(MODELO_PADRAO)
+    modelo_t = Template(texto)
+    faltam = [m for m in OBRIGATORIOS if m not in modelo_t.get_identifiers()]
+    if faltam:
+        logger.warning("modelo %s sem os marcadores %s; usando o padrao",
+                       caminho, ", ".join("$" + m for m in faltam))
+        return Template(MODELO_PADRAO)
+    return modelo_t
+
+
+def exportar_modelo(destino: str | Path | None = None, sobrescrever: bool = False) -> Path:
+    """Grava o modelo padrao, com o CSS dentro, para o Max editar. Nao sobrescreve o que ele ja editou."""
+    caminho = Path(destino).expanduser() if destino else CAMINHO_MODELO
+    if caminho.exists() and not sobrescrever:
+        raise FileExistsError(f"{caminho} ja existe; apague ou use --forcar para recomecar do padrao")
+    caminho.parent.mkdir(parents=True, exist_ok=True)
+    # O estilo vai escrito dentro do arquivo: e ali que o Max troca cor e fonte.
+    caminho.write_text(MODELO_PADRAO.replace("$CSS", CSS_PADRAO), encoding="utf-8")
+    return caminho
+
+
 def _classe_semaforo(nivel: str) -> str:
     """Normaliza o nivel de bolsao ou projeto para uma classe CSS semaforica."""
     n = (nivel or "").lower().strip()
@@ -640,6 +750,7 @@ def renderizar_relatorio_html(
     fim: date,
     pre_analise: str = "",
     bolsoes: dict[str, Any] | None = None,
+    modelo: str | Path | None = None,
 ) -> str:
     """Monta o documento HTML completo com todos os clientes, metricas e semaforo."""
     bolsoes = bolsoes or {}
@@ -691,62 +802,22 @@ def renderizar_relatorio_html(
 
     gerado_em = datetime.now().strftime("%d/%m/%Y às %H:%M")
 
-    return f"""<!DOCTYPE html>
-<html lang="pt-BR">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sotéria PMO - Relatório Executivo ({inicio:%d/%m} a {fim:%d/%m})</title>
-  <style>
-{CSS_PADRAO}
-  </style>
-</head>
-<body>
-  <div class="container">
-    <div class="header-card">
-      <div class="header-top">
-        <div>
-          <div class="brand-title">Sotéria PMO</div>
-          <div class="brand-subtitle">Relatório Executivo Consolidado de Clientes</div>
-        </div>
-        <div class="period-pill">
-          Período: {inicio:%d/%m/%Y} a {fim:%d/%m/%Y}
-        </div>
-      </div>
-      <div class="kpi-grid">
-        <div class="kpi-card">
-          <div class="kpi-label">Horas Totais</div>
-          <div class="kpi-value">{total_horas:.1f}h</div>
-          <div class="kpi-subtext">apontadas na janela</div>
-        </div>
-        <div class="kpi-card" style="border-left-color: var(--color-verde);">
-          <div class="kpi-label">Horas Faturáveis</div>
-          <div class="kpi-value">{total_faturavel:.1f}h</div>
-          <div class="kpi-subtext">{(total_faturavel / total_horas * 100) if total_horas else 0:.0f}% do total</div>
-        </div>
-        <div class="kpi-card" style="border-left-color: var(--color-amarelo);">
-          <div class="kpi-label">Não Faturáveis</div>
-          <div class="kpi-value">{total_nao_faturavel:.1f}h</div>
-          <div class="kpi-subtext">{(total_nao_faturavel / total_horas * 100) if total_horas else 0:.0f}% do total</div>
-        </div>
-        <div class="kpi-card" style="border-left-color: var(--color-brand);">
-          <div class="kpi-label">Clientes Ativos</div>
-          <div class="kpi-value">{len(reportes)}</div>
-          <div class="kpi-subtext">{len(sem_movimento)} sem movimento</div>
-        </div>
-      </div>
-    </div>
-
-    {pre_analise_html}
-
-    {''.join(cards_html)}
-
-    {sem_movimento_html}
-
-    <div class="footer-card">
-      Max valida e envia (Nível 2) &bull; Documento executivo confidencial gerado pelo Sotéria PMO em {gerado_em}.
-    </div>
-  </div>
-</body>
-</html>
-"""
+    pct_fat = (total_faturavel / total_horas * 100) if total_horas else 0
+    pct_nao = (total_nao_faturavel / total_horas * 100) if total_horas else 0
+    valores = {
+        "TITULO": f"Sotéria PMO - Relatório Executivo ({inicio:%d/%m} a {fim:%d/%m})",
+        "CSS": CSS_PADRAO,
+        "PERIODO": f"{inicio:%d/%m/%Y} a {fim:%d/%m/%Y}",
+        "HORAS_TOTAIS": f"{total_horas:.1f}h",
+        "HORAS_FATURAVEIS": f"{total_faturavel:.1f}h",
+        "HORAS_NAO_FATURAVEIS": f"{total_nao_faturavel:.1f}h",
+        "PCT_FATURAVEIS": f"{pct_fat:.0f}%",
+        "PCT_NAO_FATURAVEIS": f"{pct_nao:.0f}%",
+        "CLIENTES_ATIVOS": str(len(reportes)),
+        "SEM_MOVIMENTO_QTD": str(len(sem_movimento)),
+        "LEITURA": pre_analise_html,
+        "CARDS": "".join(cards_html),
+        "SEM_MOVIMENTO": sem_movimento_html,
+        "GERADO_EM": gerado_em,
+    }
+    return carregar_modelo(modelo).safe_substitute(valores)

@@ -30,7 +30,7 @@ from typing import Protocol
 
 from .clickup import (ATIVIDADE_NAO_FATURAVEL, NAO_FATURAVEL,
                       Aprovacao, Lancamento)
-from .periodo import BRT, Intervalo, data_da_fala, fundir, horas as somar_horas, ms
+from .periodo import BRT, Intervalo, fundir, horas as somar_horas, ms
 
 logger = logging.getLogger("pmo.horas")
 

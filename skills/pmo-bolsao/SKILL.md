@@ -60,6 +60,23 @@ diz que nao ha teto, em voz alta, em vez de calar.
 
 `NAO_MAIS_CLIENTE` guarda **Conta Azul**, que saiu.
 
+### Regras de contrato ditas em 06/10/2026
+
+Vieram da reuniao de 06/10 e foram registradas aqui sem mudar nenhum numero do
+codigo. Os nomes saíram da transcricao automatica; os que estao marcados abaixo
+precisam de confirmacao antes de virar regra de verdade.
+
+| Regra dita | Onde esta hoje |
+|---|---|
+| Bolsao de horas na Yoshi, no Grupo Dimas (30h) e no Grupo Angelus | Os tres estao em `TETOS_DE_REFERENCIA` e no config com `horas_contratadas` (Yoshi 160h, Dimas 30h, Angelus 160h) |
+| Diferenciar chamado de projeto de implantacao | `tipo` do projeto (`chamado` ou `projeto`) e `listas_sustentacao`, que separa a sustentacao das listas de projeto dentro do mesmo espaco. Hoje so o Angelus tem `listas_sustentacao` |
+| A IoX e o unico cliente de escopo fechado | **Nao esta no codigo como escopo fechado.** `iox` tem 160h mensais em `TETOS_DE_REFERENCIA`, que e a regua de bolsao, e a IoX nao esta no config, entao o vigia nem a le. Escopo fechado se mede contra o total do escopo, como `TOTAIS_DE_PROJETO`, e esse total nao foi informado |
+
+**Pendente de confirmacao, nada alterado:**
+
+1. **IoX.** O nome pode estar errado na transcricao. Se o Max confirmar que e escopo fechado, o teto mensal de 160h sai de `TETOS_DE_REFERENCIA`, entra o total do escopo em `TOTAIS_DE_PROJETO` e a IoX entra no config.
+2. **Grupo Dimas.** Medido em 08/10: as horas do mes estao todas na lista de chamados (os sprints mensais de "Controle de Acionamentos" nao tem hora no mes). Nao e projeto contado como sustentacao, como foi no Angelus; o estouro contra 30h e real, a menos que parte dessas horas seja projeto. Essa fronteira e do Max.
+
 ### Duas armadilhas ja pagas
 
 O codigo carregou ate 08/09 um teto de 100h para **"Grupo Anjos"**, que nao

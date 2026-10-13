@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "soteria-pmo"
-version = "1.1.1"
+version = "1.2.0"
 description = "Agentes PMO: os sete itens de gestao de projeto e horas sobre o ClickUp"
 requires-python = ">=3.11"
 # Uma dependencia de runtime, e ela e o cliente HTTP. Nada da pilha pesada do
@@ -14,7 +14,7 @@ requires-python = ">=3.11"
 dependencies = ["httpx>=0.27"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8"]
+dev = ["pytest>=8", "ruff>=0.5"]
 
 [project.scripts]
 soteria-pmo = "soteria_pmo.cli:main"

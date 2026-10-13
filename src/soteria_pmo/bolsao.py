@@ -24,7 +24,7 @@ import re
 from dataclasses import dataclass, field
 from datetime import date, timedelta
 
-from .periodo import BRT, campo_objeto, de_ms, dias_uteis, janela
+from .periodo import campo_objeto, dias_uteis, janela
 
 logger = logging.getLogger("pmo.bolsao")
 
