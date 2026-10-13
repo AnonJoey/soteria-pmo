@@ -1,0 +1,4 @@
+# Os hashes em versoes_entregues.json sao de bytes com quebra de linha LF.
+# Sem isto o Windows faz checkout em CRLF e o instalador deixa de reconhecer
+# os arquivos como versao nossa (o CI do Windows pegou os dois testes).
+* text=auto eol=lf
