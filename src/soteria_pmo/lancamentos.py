@@ -152,3 +152,53 @@ def formatar(ontem: Quadro, semana: Quadro) -> str:
                "Ferias, feriado local e meio periodo nao aparecem: um dia util sem entrada e "
                "listado como sem lancamento."]
     return "\n".join(linhas)
+
+
+@dataclass
+class SemTarefa:
+    """Horas lancadas sem tarefa: o time inteiro, numa janela."""
+
+    horas: float
+    faturaveis: float
+    entradas: int
+    horas_sem_descricao: float
+    por_pessoa: dict[str, float]
+
+
+def _sem_tarefa(entrada: dict) -> bool:
+    """Entrada de tempo solta: sem espaco na localizacao da tarefa.
+
+    E o que o vigia de bolsao e o reporte usam para dizer de que cliente e uma
+    hora. Sem espaco, a hora nao pertence a cliente nenhum.
+    """
+    onde = campo_objeto(entrada, "task_location")
+    return not str(onde.get("space_id") or "").strip()
+
+
+def apurar_sem_tarefa(entradas: list[dict]) -> SemTarefa:
+    soltas = [e for e in entradas if _sem_tarefa(e)]
+    h = lambda L: round(sum(int(e.get("duration") or 0) for e in L) / 3_600_000, 1)
+    por_pessoa: dict[str, float] = {}
+    for e in soltas:
+        quem = _quem(e) or "(sem usuario)"
+        por_pessoa[quem] = por_pessoa.get(quem, 0.0) + int(e.get("duration") or 0) / 3_600_000
+    return SemTarefa(
+        horas=h(soltas),
+        faturaveis=h([e for e in soltas if e.get("billable")]),
+        entradas=len(soltas),
+        horas_sem_descricao=h([e for e in soltas if not (e.get("description") or "").strip()]),
+        por_pessoa={k: round(v, 1) for k, v in sorted(por_pessoa.items(), key=lambda kv: -kv[1])},
+    )
+
+
+def formatar_sem_tarefa(st: SemTarefa, dias: int) -> str:
+    if not st.entradas:
+        return ""
+    linhas = ["", f"## Horas sem tarefa (ultimos {dias} dias)", "",
+              f"{st.horas:.1f}h em {st.entradas} entradas, {st.faturaveis:.1f}h marcadas como faturaveis; "
+              f"{st.horas_sem_descricao:.1f}h sem tarefa E sem descricao.",
+              "Hora sem tarefa nao entra no bolsao de cliente nenhum nem no reporte: ela nao "
+              "tem como ser atribuida. Quem mais tem:"]
+    for quem, h in list(st.por_pessoa.items())[:8]:
+        linhas.append(f"- {quem}: {h:.1f}h")
+    return "\n".join(linhas)

@@ -679,3 +679,59 @@ def test_carregar_bolsoes_propaga_listas_projeto_e_sustentacao():
     assert bolsoes[0].listas_sustentacao == ("list_chamados",)
     assert bolsoes[0].tipo == "sustentacao"
 
+
+
+def test_bolsao_que_ja_passou_do_teto_nao_projeta_estouro():
+    """13/10: o Dimas aparecia a 280% com 'no ritmo atual estoura em 13/10',
+    como se ainda houvesse o que evitar."""
+    s = B.Situacao(projeto="Grupo Dimas", horas_contratadas=30.0, horas_gastas=84.0,
+                   faturaveis=84.0, nao_faturaveis=0.0, nivel="estourado",
+                   dias_uteis_observados=8, ritmo_diario=10.5,
+                   data_estouro=date(2026, 10, 13), dias_ate_estourar=0,
+                   fim_do_ciclo=date(2026, 10, 31))
+    assert "ja passou do teto em 54.0h" in s.linha()
+    assert "estoura em" not in s.linha()
+
+
+def _prazo(tid, nome, dia_, parent=None):
+    return D.Prazo(task_id=tid, nome=nome, responsavel="Jordan", vence_em=dia_,
+                   status="desenvolvimento", tem_descricao=True, tem_estimativa=True,
+                   parent_id=parent)
+
+
+def test_datas_recolhe_subtarefas_com_a_mesma_data_da_mae():
+    hoje = date(2026, 10, 13)
+    v = date(2026, 10, 8)
+    prazos = [_prazo("m", "5. Fase 2", v), _prazo("a", "5.1", v, "m"),
+              _prazo("b", "5.2", v, "m"), _prazo("c", "5.2.1", v, "b"),
+              _prazo("x", "Card avulso", date(2026, 9, 28))]
+    txt = D.digest(prazos, hoje, incluir_higiene=False)
+    assert "mais 3 subtarefas com a mesma data" in txt
+    assert "5.1" not in txt and "5.2.1" not in txt
+    assert "Card avulso" in txt
+
+
+def test_datas_subtarefa_com_data_propria_continua_aparecendo():
+    hoje = date(2026, 10, 13)
+    prazos = [_prazo("m", "Mae", date(2026, 10, 8)),
+              _prazo("a", "Filha com outra data", date(2026, 10, 10), "m")]
+    txt = D.digest(prazos, hoje, incluir_higiene=False)
+    assert "Filha com outra data" in txt and "subtarefa" not in txt
+
+
+def test_bolsao_no_teto_exato_nao_diz_que_passou():
+    s = B.Situacao(projeto="X", horas_contratadas=30.0, horas_gastas=30.0,
+                   faturaveis=30.0, nao_faturaveis=0.0, nivel="estourado",
+                   dias_uteis_observados=8, ritmo_diario=3.75,
+                   data_estouro=date(2026, 10, 13), dias_ate_estourar=0,
+                   fim_do_ciclo=date(2026, 10, 31))
+    assert "no teto exato" in s.linha()
+    assert "ja passou" not in s.linha()
+
+
+def test_datas_uma_subtarefa_fica_no_singular():
+    hoje = date(2026, 10, 13)
+    v = date(2026, 10, 8)
+    txt = D.digest([_prazo("m", "Mae", v), _prazo("a", "Filha", v, "m")], hoje, incluir_higiene=False)
+    assert "mais 1 subtarefa com a mesma data" in txt
+    assert "1 subtarefas" not in txt

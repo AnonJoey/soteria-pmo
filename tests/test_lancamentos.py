@@ -112,3 +112,53 @@ def test_o_texto_diz_quando_todos_lancaram():
 def test_o_texto_sempre_diz_o_limite_de_quem_ve():
     t = _textos(com_falta=False)
     assert "NAO aparece" in t and "nao ter lancado o suficiente" in t
+
+
+# ── horas sem tarefa (13/10/2026) ────────────────────────────────────────────
+
+def _e(user, horas, space="90171138758", desc="x", billable=True):
+    return {"user": {"username": user}, "duration": int(horas * 3_600_000),
+            "billable": billable, "description": desc,
+            "task_location": {"space_id": space, "list_id": "1"} if space else
+            {"list_id": None, "folder_id": None, "space_id": None},
+            "start": "1790000000000"}
+
+
+def test_sem_tarefa_separa_o_que_nao_tem_espaco():
+    st = L.apurar_sem_tarefa([
+        _e("ana", 2.0, space=None, desc=""),
+        _e("ana", 1.0, space=None, desc="Daily", billable=False),
+        _e("bia", 4.0),
+    ])
+    assert st.entradas == 2
+    assert st.horas == 3.0
+    assert st.faturaveis == 2.0
+    assert st.horas_sem_descricao == 2.0
+    assert st.por_pessoa == {"ana": 3.0}
+
+
+def test_sem_tarefa_aceita_task_location_ausente_ou_none():
+    e = {"user": {"username": "c"}, "duration": 3_600_000, "billable": True}
+    assert L.apurar_sem_tarefa([e]).entradas == 1
+    assert L.apurar_sem_tarefa([{**e, "task_location": None}]).entradas == 1
+
+
+def test_sem_tarefa_vazio_nao_imprime_nada():
+    assert L.formatar_sem_tarefa(L.apurar_sem_tarefa([_e("bia", 4.0)]), 30) == ""
+
+
+def test_sem_tarefa_diz_que_a_hora_nao_entra_em_bolsao():
+    txt = L.formatar_sem_tarefa(L.apurar_sem_tarefa([_e("ana", 2.0, space=None, desc="")]), 30)
+    assert "nao entra no bolsao" in txt and "ana: 2.0h" in txt
+
+
+def test_sem_tarefa_lista_quem_mais_tem_primeiro():
+    st = L.apurar_sem_tarefa([_e("ana", 1.0, space=None), _e("bia", 5.0, space=None),
+                              _e("caio", 3.0, space=None)])
+    assert list(st.por_pessoa) == ["bia", "caio", "ana"]
+
+
+def test_sem_tarefa_faturaveis_e_horas_por_pessoa_em_horas_certas():
+    st = L.apurar_sem_tarefa([_e("ana", 1.5, space=None, billable=True),
+                              _e("ana", 0.5, space=None, billable=False)])
+    assert st.faturaveis == 1.5 and st.por_pessoa["ana"] == 2.0
