@@ -5,9 +5,9 @@ emergencia, e-mail e telefone pessoais, endereco e respostas sobre saude: o test
 garante que so nome e nascimento atravessam.
 """
 
-import csv
 import os
 import stat
+import sys
 from datetime import date, datetime, timezone
 
 import pytest
@@ -127,7 +127,8 @@ def test_nenhum_dado_pessoal_alem_de_nome_e_nascimento_chega_ao_arquivo(tmp_path
 
 def test_o_arquivo_sai_com_permissao_600_e_volta_pelo_carregador(tmp_path):
     destino = rh.escrever_roster([rh.Pessoa("Maria Exemplo", nascimento=date(1994, 9, 5))], tmp_path / "x" / "rh.csv")
-    assert stat.S_IMODE(os.stat(destino).st_mode) == 0o600
+    if sys.platform != "win32":  # o Windows nao guarda bits de permissao POSIX: o stat devolve 0o666
+        assert stat.S_IMODE(os.stat(destino).st_mode) == 0o600
     assert [(p.nome, p.nascimento) for p in rh.carregar(destino)] == [("Maria Exemplo", date(1994, 9, 5))]
     assert list(destino.parent.glob(".rh-*")) == [], "nao deixa arquivo temporario"
 
