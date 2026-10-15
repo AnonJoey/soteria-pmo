@@ -44,9 +44,27 @@ git. Ele recusa rodar se houver alteracao local em arquivo rastreado, e para se
 o git nao conseguir avancar em linha reta. Quem usa uma versao fixa pode trocar
 de versao com `git checkout v1.3.0` e rodar `soteria-pmo atualizar` em seguida.
 
-Quem recebeu o pacote por zip (a wheel instalada no ambiente) migra uma vez: faz
-o clone acima e roda `soteria-pmo-instalar --atualizar`. O `pmo.json` continua
-valendo, porque mora fora da pasta do pacote.
+Quem recebeu o pacote por zip (a wheel instalada no ambiente, inclusive com
+`uv tool install`) migra uma vez: faz o clone acima e roda
+`soteria-pmo-instalar --atualizar`. O `pmo.json` continua valendo, porque mora
+fora da pasta do pacote.
+
+**Depois, aponte o comando do PATH para o clone.** A instalacao antiga continua
+dona do `soteria-pmo` que o terminal acha (`which soteria-pmo`), e as skills e o
+agente chamam o comando pelo nome. Sem este passo uma skill nova chama `lancar` ou
+`lancamentos` num programa que nao os conhece e morre com `invalid choice`
+(medido num ensaio a frio de 1.0.0 para 1.4.0):
+
+```
+ln -sf ~/soteria-pmo/.venv/bin/soteria-pmo ~/.local/bin/soteria-pmo
+ln -sf ~/soteria-pmo/.venv/bin/soteria-pmo-instalar ~/.local/bin/soteria-pmo-instalar
+which soteria-pmo          # tem de mostrar o caminho do clone
+```
+
+Se o `which` mostrar outra pasta que nao `~/.local/bin`, troque o destino do `ln`
+por ela. O `soteria-pmo-instalar` e o `soteria-pmo atualizar` avisam quando o
+comando do PATH nao e o da instalacao que esta rodando, e dizem o `ln` a usar.
+No Windows, ponha `.venv\Scripts` do clone antes da instalacao antiga no PATH.
 
 Para pedir ao Claude (cole numa sessao do Claude Code na maquina):
 

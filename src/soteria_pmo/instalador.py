@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -152,6 +153,44 @@ def raiz_provavel(root: Path | None = None) -> Path:
     return candidatas[0]
 
 
+def aviso_do_comando_no_path(nome: str = "soteria-pmo") -> str | None:
+    """Avisa quando o `soteria-pmo` que o PATH resolve nao e o desta instalacao.
+
+    As skills e o agente chamam `soteria-pmo` pelo NOME, e quem resolve o nome e o
+    PATH, nao a pasta de onde se instalou. Medido em 15/10/2026 num ensaio a frio
+    de 1.0.0 (instalada com `uv tool`) para 1.4.0 (clone do GitHub): depois do
+    `soteria-pmo-instalar --atualizar` as skills eram as novas, mas o comando do
+    PATH continuava o da 1.0.0, que so conhece `rodar`, `horas`, `cadencias` e
+    `checar`. Uma skill nova chamando `lancar` ou `lancamentos` morria com
+    `invalid choice`, e nada na instalacao dizia por que.
+
+    Devolve o texto do aviso, ou `None` quando esta tudo certo ou quando nao ha
+    como saber (o executavel desta instalacao nao existe ao lado do interprete).
+    """
+    exe = nome + (".exe" if os.name == "nt" else "")
+    # sem resolve(): o python de um venv e um link para o do sistema, e a pasta
+    # que interessa e a do venv, onde moram os comandos desta instalacao.
+    este = Path(sys.executable).parent / exe
+    if not este.exists():
+        return None
+    achado = shutil.which(nome)
+    if achado is None:
+        return (f"ATENCAO: `{nome}` nao esta no PATH. As skills e o agente chamam o comando pelo nome. "
+                f"O desta instalacao e {este}: ponha a pasta dele no PATH ou ligue um link em uma pasta que ja esteja.")
+    if Path(achado).resolve() == este.resolve():
+        return None
+    if os.name == "nt":
+        return (f"ATENCAO: o `{nome}` que o PATH resolve e outro ({achado}); o desta instalacao e {este}. "
+                f"As skills e o agente chamam o comando pelo nome e rodariam a versao errada. "
+                f"Ponha {este.parent} antes dele no PATH.")
+    outro_instalar = Path(achado).with_name("soteria-pmo-instalar")
+    return (f"ATENCAO: o `{nome}` que o PATH resolve e outro ({achado}); o desta instalacao e {este}. "
+            f"As skills e o agente chamam o comando pelo nome e rodariam a versao errada "
+            f"(comandos que a nova tem e a velha nao, como `lancar` e `lancamentos`, falham com invalid choice). "
+            f"Para usar esta: ln -sf {este} {achado}"
+            f" && ln -sf {este.with_name('soteria-pmo-instalar')} {outro_instalar}")
+
+
 def instalar(root: Path | None = None, atualizar: bool = False) -> dict:
     """As duas de uma vez, para o comando de instalacao chamar."""
     raiz = raiz_provavel(root)
@@ -195,6 +234,9 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"  = {nome} (ja existia, nao foi tocada; use --atualizar para trocar as versoes nossas)")
         for erro in parte.get("errors", ()):
             print(f"  ! {erro}")
+    aviso = aviso_do_comando_no_path()
+    if aviso:
+        print("\n" + aviso)
     return 0
 
 
