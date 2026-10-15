@@ -114,3 +114,16 @@ def test_sem_nenhum_projeto_sem_teto_a_linha_nao_ganha_sufixo():
                  modelo="http://127.0.0.1:1")
     item = next(i for i in c.itens if i.nome == "Projetos configurados")
     assert item.detalhe == "1 cliente(s), 1 com teto"
+
+
+def test_projeto_acompanhado_pelo_total_nao_conta_como_sem_teto():
+    """Reviver e Unimed nao tem teto mensal (Abner, 14/10/2026). Quem declara
+    `listas_total` e vigiado pelo total, e dizer "sem teto" dele seria inventar uma falta."""
+    projetos = [
+        {"nome": "China Gate", "space_id": "1"},
+        {"nome": "Concessionaria Reviver", "space_id": "4", "listas_total": ["L1"]},
+        {"nome": "Unimed Londrina", "space_id": "5"},   # total de referencia, sem lista: segue "sem"
+    ]
+    c = C.checar(cfg_minimo(projetos=projetos), modelo="http://127.0.0.1:1")
+    item = next(i for i in c.itens if i.nome == "Projetos configurados")
+    assert item.detalhe == "3 cliente(s), 1 com teto, 1 pelo total do projeto, 1 sem"

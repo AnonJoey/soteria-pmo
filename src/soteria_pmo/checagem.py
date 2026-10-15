@@ -125,6 +125,9 @@ def checar(cfg: dict, modelo: str = "", dailies: Path | None = None) -> Checagem
     # mesma regra derivam, e a correcao e nao ter duas.
     vigiados, sem_teto = bolsao.carregar_bolsoes(projetos)
     detalhe_projetos = f"{len(projetos)} cliente(s), {len(vigiados)} com teto"
+    pelo_total = bolsao.carregar_totais(projetos)
+    if pelo_total:
+        detalhe_projetos += f", {len(pelo_total)} pelo total do projeto"
     if sem_teto:
         detalhe_projetos += f", {len(sem_teto)} sem"
     c.itens.append(Item(
