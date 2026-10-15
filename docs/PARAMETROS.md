@@ -43,6 +43,17 @@ Arquivo `roster_rh` (padrão `~/.soteria-pmo/rh.csv`), uma linha por pessoa. Só
 
 Sem o arquivo, o item de RH diz que não há roster, em vez de devolver uma lista vazia, porque os dois casos são indistinguíveis. **Quem fornece os dados é o Abner, o Max e o Marcos**, e é a pendência B16.
 
+**O nascimento já está no ClickUp (confirmado em 14/10/2026):** a lista de cadastro de pessoas tem o campo "Data de nascimento". `soteria-pmo rh-importar --lista ID` lê só o nome da tarefa (cada tarefa é uma pessoa) e esse campo, mescla no roster (o nascimento do ClickUp vence; as outras datas de quem já estava ficam) e grava com permissão 600; sem `--real` só simula e nunca imprime datas. A mesma lista guarda contato de emergência, e-mail e telefone pessoais, endereço e respostas sobre saúde: nada disso é lido nem gravado. Início e fim de contrato e último feedback não estão no ClickUp e seguem dependendo de quem cuida dos contratos. `rh_lista` no config guarda o ID para não precisar repetir.
+
+## Quem lança horas
+
+Regra confirmada em 14/10/2026: **todos devem lançar horas**, e algumas pessoas lançam só hora não faturável, por enquanto. Duas chaves do config, com os nomes como aparecem nas entradas de tempo (o `username`, ou o e-mail se a pessoa não tem `username`). Os nomes ficam só no config local, nunca no repositório, que é público.
+
+| Chave | O que é | Se faltar |
+|---|---|---|
+| `equipe_lancamento` | Quem é esperado no quadro de `soteria-pmo lancamentos`. Inclui quem lança só hora não faturável | Valem os autores dos últimos 30 dias, e o quadro avisa que quem nunca lançou não aparece |
+| `nao_faturam` | Quem lança só hora não faturável. Não isenta de lançar: o comando acrescenta ao quadro as horas **faturáveis** que essas pessoas lançaram, que são sinal de etiqueta errada | Nada é checado |
+
 ## Outros parâmetros
 
 | Chave | O que é | Padrão |

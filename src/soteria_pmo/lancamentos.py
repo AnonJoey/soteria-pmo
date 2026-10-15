@@ -154,6 +154,38 @@ def formatar(ontem: Quadro, semana: Quadro) -> str:
     return "\n".join(linhas)
 
 
+def faturaveis_de_quem_nao_fatura(entradas: list[dict], nao_faturam: list[str],
+                                  dias: list[date]) -> dict[str, float]:
+    """Horas FATURAVEIS lancadas, nos `dias`, por quem so lanca hora nao faturavel.
+
+    Regra confirmada em 14/10/2026: todos devem lancar horas, e algumas pessoas lancam
+    so hora nao faturavel, por enquanto. Quem esta em `nao_faturam` continua sendo
+    cobrado de lancar (e `equipe_lancamento` que decide quem e esperado), mas uma entrada
+    faturavel dessa pessoa e um sinal de que a etiqueta saiu errada, e e isso que esta
+    funcao devolve. Os nomes ficam no config local, nunca no repositorio. Nao julga: so soma. A regra vale "por
+    enquanto" e por isso mora no config, nao no codigo.
+    """
+    alvo = {_sem_acento(n) for n in nao_faturam if n}
+    achado: dict[str, float] = {}
+    for e in entradas:
+        quem, dia = _quem(e), _dia_da(e)
+        if not quem or dia is None or dia not in dias or _sem_acento(quem) not in alvo:
+            continue
+        if e.get("billable"):
+            achado[quem] = round(achado.get(quem, 0.0) + int(e.get("duration") or 0) / 3_600_000, 2)
+    return achado
+
+
+def formatar_faturaveis_indevidos(achado: dict[str, float], nao_faturam: list[str]) -> str:
+    cabecalho = f"## Faturavel de quem lanca so nao faturavel ({len(nao_faturam)} pessoa(s) em nao_faturam)"
+    if not achado:
+        return f"{cabecalho}\n\nNenhuma entrada faturavel no periodo."
+    linhas = [cabecalho, ""]
+    for pessoa, horas in sorted(achado.items(), key=lambda kv: (-kv[1], kv[0].lower())):
+        linhas.append(f"- {pessoa}: {_hm(horas)} h faturaveis (a regra diz que as horas dessa pessoa sao sempre nao faturaveis)")
+    return "\n".join(linhas)
+
+
 # Hora que nao tem cliente por natureza: reuniao do time, daily, folga. Medido em
 # 13/10/2026 sobre o time inteiro, isso explica so 53,7 h + 70 h das 964 h sem
 # tarefa; o resto e hora que alguem lancou sem escolher a tarefa.

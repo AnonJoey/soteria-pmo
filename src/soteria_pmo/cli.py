@@ -311,10 +311,48 @@ def cmd_lancamentos(args) -> int:
     q_ontem = lancamentos.apurar(entradas, [ontem], esperados, historico=entradas)
     q_semana = lancamentos.apurar(entradas, semana, esperados, historico=entradas)
     print(lancamentos.formatar(q_ontem, q_semana))
+    nao_faturam = cfg.get("nao_faturam") or []
+    if nao_faturam:
+        # Regra de 14/10/2026: quem esta em nao_faturam lanca, mas so hora nao faturavel.
+        print("\n" + lancamentos.formatar_faturaveis_indevidos(
+            lancamentos.faturaveis_de_quem_nao_fatura(entradas, nao_faturam, [ontem, *semana]), nao_faturam))
     saida_solta = lancamentos.formatar_sem_tarefa(
         lancamentos.apurar_sem_tarefa(entradas), (hoje - inicio).days)
     if saida_solta:
         print(saida_solta)
+    return 0
+
+
+def cmd_rh_importar(args) -> int:
+    """Le o nascimento de cada pessoa da lista de cadastro do ClickUp e grava o roster local de RH.
+
+    So leitura no ClickUp. Sem `--real` nada e gravado. Imprime contagens e nomes sem data,
+    nunca datas: o roster e dado pessoal de colegas e fica so no arquivo local (permissao 600).
+    """
+    from . import rh
+    try:
+        cfg = carregar_config(Path(args.config).expanduser())
+    except ConfigAusente as e:
+        print(f"Sem configuracao do PMO em {e}.", file=sys.stderr)
+        return 2
+    lista = args.lista or cfg.get("rh_lista")
+    if not lista:
+        print("Informe a lista de cadastro com --lista ID ou `rh_lista` no config.", file=sys.stderr)
+        return 2
+    destino = Path(args.saida or cfg.get("roster_rh") or "~/.soteria-pmo/rh.csv").expanduser()
+    with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
+        tarefas = cliente.tarefas_da_lista(str(lista), incluir_fechadas=True, subtarefas=False)
+    lidas, sem_data = rh.pessoas_do_clickup(tarefas)
+    existentes = rh.carregar(destino) if destino.exists() else []
+    final = rh.mesclar(existentes, lidas)
+    print(f"{len(lidas)} pessoa(s) na lista {lista}, {len(lidas) - len(sem_data)} com nascimento; "
+          f"{len(existentes)} ja no roster; roster final com {len(final)}.")
+    if sem_data:
+        print("Sem nascimento na lista: " + ", ".join(sem_data) + ".")
+    if not args.real:
+        print(f"Simulacao: nada foi gravado. Para gravar em {destino}: --real")
+        return 0
+    print(f"Gravado em {rh.escrever_roster(final, destino)} (permissao 600).")
     return 0
 
 
@@ -500,6 +538,14 @@ def _subcomandos(pmo_sub) -> None:
     p_lanc.add_argument("--dia", default=None, help="AAAA-MM-DD como data de referencia (hoje)")
     p_lanc.add_argument("--config", default=str(CONFIG_PADRAO))
     p_lanc.set_defaults(func=cmd_lancamentos)
+
+    p_rhi = pmo_sub.add_parser(
+        "rh-importar", help="Importa o nascimento da lista de cadastro do ClickUp para o roster de RH (simula por padrao)")
+    p_rhi.add_argument("--config", default=str(CONFIG_PADRAO))
+    p_rhi.add_argument("--lista", help="ID da lista de cadastro (ou rh_lista no config)")
+    p_rhi.add_argument("--saida", help="roster de destino (padrao: roster_rh do config, ou ~/.soteria-pmo/rh.csv)")
+    p_rhi.add_argument("--real", action="store_true", help="grava o arquivo (sem isto so simula)")
+    p_rhi.set_defaults(func=cmd_rh_importar)
 
     p_rep = pmo_sub.add_parser(
         "reporte", help="Gera o reporte executivo consolidado (HTML com semaforo ou Markdown)")
