@@ -479,7 +479,7 @@ def cmd_cadencias(args) -> int:
 
 def cmd_atualizar(args) -> int:
     """Atualiza o pacote pelo GitHub e copia as skills e o agente novos."""
-    from . import atualizacao
+    from . import atualizacao, instalador
 
     r = atualizacao.atualizar(so_verificar=args.verificar)
     st = r["status"]
@@ -492,9 +492,12 @@ def cmd_atualizar(args) -> int:
     if st in ("sem_rede", "sem_ramo_acompanhado", "alteracao_local", "falhou"):
         print(f"{st}: {r['detalhe']}", file=sys.stderr)
         return 1
+    aviso = instalador.aviso_do_comando_no_path()
     if st == "verificado":
         atras = r["atras"] or 0
         print(f"{atras} commit(s) para baixar." if atras else "em dia.")
+        if aviso:
+            print("\n" + aviso)
         return 0
     for passo in r["passos"]:
         print(f"  {'OK' if passo['ok'] else 'FALHOU'}  {passo['passo']}")
@@ -508,6 +511,8 @@ def cmd_atualizar(args) -> int:
         print(f"atualizado: {r['versao_antes']} -> {r['versao_depois']}. O pmo.json nao foi tocado.")
     else:
         print("em dia. O pmo.json nao foi tocado.")
+    if aviso:
+        print("\n" + aviso)
     return 0
 
 
