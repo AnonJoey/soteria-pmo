@@ -91,7 +91,13 @@ EXEMPLO = {
         {"nome": "Soteria", "list_id": "901716443542", "space_id": "90070084485",
          "horas_contratadas": 1800, "tipo": "projeto"},
         {"nome": "China Gate", "space_id": "90070091337",
-         "horas_contratadas": 100, "tipo": "chamado"}
+         "horas_contratadas": 100, "tipo": "chamado"},
+        # Projeto sem teto mensal, acompanhado pelo TOTAL de horas: "listas_total"
+        # sao as listas do ClickUp que formam o projeto (o previsto e o lancado
+        # vem das tarefas delas). "horas_totais" e opcional; sem ele o previsto
+        # e a soma das estimativas das tarefas.
+        {"nome": "Projeto sem teto mensal", "space_id": "id do espaco do cliente",
+         "listas_total": ["id da lista do projeto"], "tipo": "chamado"}
     ],
     "roster_rh": "~/.soteria-pmo/rh.csv",
     "feriados": ["2026-09-07"],
@@ -176,6 +182,10 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
     # teto de referencia quando o config nao traz horas, e que devolve os
     # projetos sem teto nenhum para o digest dizer que ficaram de fora.
     bolsoes, bolsoes_sem_teto = bolsao.carregar_bolsoes(projetos)
+    # Projetos sem teto mensal que se acompanham pelo total de horas (Reviver e
+    # Unimed, a pedido do Abner em 14/10/2026). So o digest interno os le: o
+    # reporte ao cliente nao recebe total de projeto.
+    totais = bolsao.carregar_totais(projetos)
     primeiro = projetos[0] if projetos else None
 
     inicio_semana = hoje - timedelta(days=hoje.weekday() + 7)
@@ -197,7 +207,7 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
         "bolsao": lambda: bolsao.digest(
             bolsao.vigiar(cliente, bolsoes, hoje.replace(day=1), hoje,
                           feriados, sem_teto=bolsoes_sem_teto,
-                          fim_do_ciclo=periodo.fim_do_mes(hoje))),
+                          fim_do_ciclo=periodo.fim_do_mes(hoje), totais=totais)),
         "datas": (lambda: datas.vigiar(cliente, str(com_lista["list_id"]), hoje)) if com_lista else (lambda: ""),
         # Item 2 le TODOS os projetos, nao so o primeiro: a regua de 03/09 e
         # por projeto, e avaliar um de uma lista de nove nao e acompanhar
@@ -301,10 +311,48 @@ def cmd_lancamentos(args) -> int:
     q_ontem = lancamentos.apurar(entradas, [ontem], esperados, historico=entradas)
     q_semana = lancamentos.apurar(entradas, semana, esperados, historico=entradas)
     print(lancamentos.formatar(q_ontem, q_semana))
+    nao_faturam = cfg.get("nao_faturam") or []
+    if nao_faturam:
+        # Regra de 14/10/2026: quem esta em nao_faturam lanca, mas so hora nao faturavel.
+        print("\n" + lancamentos.formatar_faturaveis_indevidos(
+            lancamentos.faturaveis_de_quem_nao_fatura(entradas, nao_faturam, [ontem, *semana]), nao_faturam))
     saida_solta = lancamentos.formatar_sem_tarefa(
         lancamentos.apurar_sem_tarefa(entradas), (hoje - inicio).days)
     if saida_solta:
         print(saida_solta)
+    return 0
+
+
+def cmd_rh_importar(args) -> int:
+    """Le o nascimento de cada pessoa da lista de cadastro do ClickUp e grava o roster local de RH.
+
+    So leitura no ClickUp. Sem `--real` nada e gravado. Imprime contagens e nomes sem data,
+    nunca datas: o roster e dado pessoal de colegas e fica so no arquivo local (permissao 600).
+    """
+    from . import rh
+    try:
+        cfg = carregar_config(Path(args.config).expanduser())
+    except ConfigAusente as e:
+        print(f"Sem configuracao do PMO em {e}.", file=sys.stderr)
+        return 2
+    lista = args.lista or cfg.get("rh_lista")
+    if not lista:
+        print("Informe a lista de cadastro com --lista ID ou `rh_lista` no config.", file=sys.stderr)
+        return 2
+    destino = Path(args.saida or cfg.get("roster_rh") or "~/.soteria-pmo/rh.csv").expanduser()
+    with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
+        tarefas = cliente.tarefas_da_lista(str(lista), incluir_fechadas=True, subtarefas=False)
+    lidas, sem_data = rh.pessoas_do_clickup(tarefas)
+    existentes = rh.carregar(destino) if destino.exists() else []
+    final = rh.mesclar(existentes, lidas)
+    print(f"{len(lidas)} pessoa(s) na lista {lista}, {len(lidas) - len(sem_data)} com nascimento; "
+          f"{len(existentes)} ja no roster; roster final com {len(final)}.")
+    if sem_data:
+        print("Sem nascimento na lista: " + ", ".join(sem_data) + ".")
+    if not args.real:
+        print(f"Simulacao: nada foi gravado. Para gravar em {destino}: --real")
+        return 0
+    print(f"Gravado em {rh.escrever_roster(final, destino)} (permissao 600).")
     return 0
 
 
@@ -490,6 +538,14 @@ def _subcomandos(pmo_sub) -> None:
     p_lanc.add_argument("--dia", default=None, help="AAAA-MM-DD como data de referencia (hoje)")
     p_lanc.add_argument("--config", default=str(CONFIG_PADRAO))
     p_lanc.set_defaults(func=cmd_lancamentos)
+
+    p_rhi = pmo_sub.add_parser(
+        "rh-importar", help="Importa o nascimento da lista de cadastro do ClickUp para o roster de RH (simula por padrao)")
+    p_rhi.add_argument("--config", default=str(CONFIG_PADRAO))
+    p_rhi.add_argument("--lista", help="ID da lista de cadastro (ou rh_lista no config)")
+    p_rhi.add_argument("--saida", help="roster de destino (padrao: roster_rh do config, ou ~/.soteria-pmo/rh.csv)")
+    p_rhi.add_argument("--real", action="store_true", help="grava o arquivo (sem isto so simula)")
+    p_rhi.set_defaults(func=cmd_rh_importar)
 
     p_rep = pmo_sub.add_parser(
         "reporte", help="Gera o reporte executivo consolidado (HTML com semaforo ou Markdown)")

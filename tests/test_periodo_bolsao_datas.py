@@ -479,10 +479,11 @@ def test_cliente_encerrado_e_reconhecido_como_encerrado():
 
 
 def test_cliente_sem_teto_fixado_nao_ganha_um_numero_inventado():
-    """A Concessionaria Reviver e projeto, sem media de bolsao. O Max ficou de
-    mandar a previsao mensal, e ate la nao se inventa numero para ela."""
+    """A Concessionaria Reviver e projeto, sem media de bolsao. O Abner confirmou
+    em 14/10/2026 que nao ha teto mensal; ela se acompanha pelo total do projeto,
+    e nao se inventa teto mensal para ela."""
     assert B.teto_sugerido("Concessionaria Reviver") is None
-    assert "previsao mensal" in B.teto_a_confirmar("Concessionaria Reviver")
+    assert "teto mensal" in B.teto_a_confirmar("Concessionaria Reviver")
 
 
 def test_o_cliente_se_chama_angelus_e_nao_anjos():
@@ -540,7 +541,7 @@ def test_projeto_sem_teto_sai_nomeado_em_vez_de_sumir_do_digest():
     assert [b.projeto for b in bolsoes] == ["Yoshii"]
     assert any("Concessionaria Reviver" in t and "sem teto configurado" in t
                for t in sem_teto)
-    assert any("previsao mensal" in t for t in sem_teto), "diz o que se sabe"
+    assert any("teto mensal" in t and "listas_total" in t for t in sem_teto), "diz o que se sabe e o que falta"
 
 
 def test_cliente_encerrado_nao_e_vigiado_nem_cobrado_por_teto():

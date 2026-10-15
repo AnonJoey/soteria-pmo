@@ -21,8 +21,11 @@ from __future__ import annotations
 import csv
 import json
 import logging
-from dataclasses import dataclass
-from datetime import date, timedelta
+import os
+import tempfile
+import unicodedata
+from dataclasses import dataclass, replace
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 
 logger = logging.getLogger("pmo.rh")
@@ -234,3 +237,85 @@ def digest(pessoas: list[Pessoa], hoje: date) -> str:
 def rodar(caminho: str | Path, hoje: date) -> str:
     """Read the roster and produce today's message."""
     return digest(carregar(caminho), hoje)
+
+
+# ── nascimento vindo da lista de cadastro do ClickUp ─────────────────────────
+
+#: Nome do campo de data na lista de cadastro de pessoas do ClickUp, que traz o nascimento. Inicio e
+#: fim de contrato e ultimo feedback nao estao la: vem de quem cuida dos contratos (confirmado em 14/10/2026).
+CAMPO_NASCIMENTO = "Data de nascimento"
+COLUNAS_ROSTER = ("nome", "nascimento", "inicio_contrato", "fim_contrato", "interrupcao_inicio", "ultimo_feedback")
+
+
+def _chave(nome: str) -> str:
+    base = unicodedata.normalize("NFKD", nome or "")
+    return "".join(c for c in base if not unicodedata.combining(c)).casefold().strip()
+
+
+def pessoas_do_clickup(tarefas: list[dict], campo: str = CAMPO_NASCIMENTO) -> tuple[list[Pessoa], list[str]]:
+    """Nome e nascimento de cada tarefa de uma lista de cadastro. Devolve (pessoas, nomes sem data).
+
+    So dois campos sao lidos: quem e a pessoa e o campo de nascimento. Na lista de cadastro real
+    (visto em 15/10/2026) cada tarefa e UMA PESSOA: o nome da tarefa e o nome dela, e o
+    responsavel da tarefa e a mesma pessoa para as 17 (quem cuida do cadastro), entao o
+    responsavel nao serve para dizer quem e quem. A mesma lista guarda contato de emergencia, e-mail e
+    telefone pessoais, endereco e respostas sobre saude; nada disso e lido nem sai daqui, e
+    `tests/test_regras_do_abner.py` confere isso.
+
+    O valor da data vem em milissegundos. O ClickUp grava a data sem hora como meia-noite do
+    fuso de quem preencheu (visto em 15/10/2026: 03:00, 06:00 e 07:00 UTC), entao a data
+    certa e a data em UTC, nunca a do dia anterior.
+    """
+    pessoas, sem_data = [], []
+    for t in tarefas:
+        nome = (t.get("name") or "").strip()
+        if not nome:
+            continue
+        valor = next((f.get("value") for f in (t.get("custom_fields") or [])
+                      if _chave(f.get("name") or "") == _chave(campo)), None)
+        nascimento = None
+        if valor not in (None, ""):
+            try:
+                nascimento = datetime.fromtimestamp(int(valor) / 1000, tz=timezone.utc).date()
+            except (TypeError, ValueError, OverflowError, OSError):
+                logger.warning("nascimento ilegivel na lista de cadastro de %s", nome)
+        if nascimento is None:
+            sem_data.append(nome)
+        pessoas.append(Pessoa(nome=nome, nascimento=nascimento))
+    return pessoas, sem_data
+
+
+def mesclar(existentes: list[Pessoa], lidas: list[Pessoa]) -> list[Pessoa]:
+    """O roster com o nascimento do ClickUp por cima. As outras datas de quem ja estava ficam.
+
+    Casa por nome sem acento e sem caixa. Quem so existe no roster antigo continua nele, porque
+    sair do cadastro do ClickUp nao diz que a pessoa saiu do time.
+    """
+    por_chave = {_chave(p.nome): p for p in existentes}
+    for nova in lidas:
+        velha = por_chave.get(_chave(nova.nome))
+        if velha is None:
+            por_chave[_chave(nova.nome)] = nova
+        elif nova.nascimento is not None:
+            por_chave[_chave(nova.nome)] = replace(velha, nascimento=nova.nascimento)
+    return sorted(por_chave.values(), key=lambda p: _chave(p.nome))
+
+
+def escrever_roster(pessoas: list[Pessoa], caminho: str | Path) -> Path:
+    """Grava o roster em CSV com permissao 600, por arquivo temporario, sem deixar meio escrito."""
+    destino = Path(caminho).expanduser()
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(dir=destino.parent, prefix=".rh-", suffix=".csv")
+    try:
+        with os.fdopen(fd, "w", newline="", encoding="utf-8") as fh:
+            w = csv.writer(fh)
+            w.writerow(COLUNAS_ROSTER)
+            for p in pessoas:
+                w.writerow([p.nome] + [d.isoformat() if d else "" for d in
+                                       (p.nascimento, p.inicio_contrato, p.fim_contrato, p.interrupcao_inicio, p.ultimo_feedback)])
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, destino)
+    except BaseException:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+    return destino

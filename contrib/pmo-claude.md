@@ -41,6 +41,9 @@ soteria-pmo cadencias                 # o que roda hoje e o que não
 soteria-pmo horas --de AAAA-MM-DD --ate AAAA-MM-DD   # só propõe, não grava
 soteria-pmo reporte --saida reporte.html   # reporte em HTML com semáforo (o padrão)
 soteria-pmo reporte --formato markdown     # o mesmo conteúdo em texto, para ler
+soteria-pmo lancamentos               # quem lançou horas ontem e na semana passada (só lê)
+soteria-pmo rh-importar --lista ID    # lê o nascimento da lista de cadastro do ClickUp (só simula)
+soteria-pmo atualizar --verificar     # quantos commits do GitHub faltam
 soteria-pmo lancar --arquivo proposta.json --aprovado-por NOME          # simula
 soteria-pmo lancar --arquivo proposta.json --aprovado-por NOME --real   # grava no ClickUp
 ```
@@ -71,8 +74,20 @@ antigo, é registro encerrado, não cliente ativo.
 
 Tetos mensais de sustentação, fechados com o Max e o André em 08/09: Angelus
 160h, IoX 160h, China Gate 100h, BM2 100h (gatilho, sem contrato), APET 60h,
-Gazin 40h, Dimas 30h. Unimed Londrina tem 390h, mas é **total de projeto**, não
-teto mensal. Reviver está sem teto até o Max mandar o cronograma.
+Gazin 40h, Dimas 30h. O Abner confirmou em 14/10/2026 os números do Angelus, China
+Gate, A.Yoshii, APET e Dimas; o Gazin segue com o Max. O BM2 tem 100h como média,
+não como limite contratado.
+
+Reviver e Unimed Londrina **não têm teto mensal**: são acompanhadas pelo **total de
+horas do projeto** (chave `listas_total` do config). O previsto vem de `horas_totais`,
+da soma das estimativas das tarefas no ClickUp ou, por último, de uma tabela do código
+(390h para a Unimed). O resumo diz qual está em uso, e o vigia do total não projeta
+data de estouro. Sem `listas_total` no config, os dois saem como "sem teto configurado".
+
+**Quem lança horas** (regra de 14/10/2026): todos devem lançar, e algumas pessoas
+lançam só hora não faturável, por enquanto (chave `nao_faturam`). O `lancamentos`
+mostra, para elas, as horas faturáveis que apareceram, que são sinal de etiqueta
+errada, não de má-fé.
 
 ## Três regras que não se negociam
 
@@ -118,7 +133,11 @@ tipo "3 em rascunho, 6 em análise", nem estado de cronograma dentro do relatór
 
 **Item 6, RH.** Informa os 20 dias de interrupção acumulados por ano de
 contrato. Não sabe quantos dias a pessoa já tirou, porque não há registro de
-consumo. Não há saldo. E sem o `rh.csv` preenchido o item declara que não roda.
+consumo. Não há saldo. E sem o `rh.csv` preenchido o item declara que não roda. O
+nascimento pode ser importado da lista de cadastro do ClickUp com `rh-importar`;
+início e fim de contrato e último feedback não estão no ClickUp e continuam
+dependendo de quem cuida dos contratos. Nunca imprima datas de nascimento de
+colegas em resposta, nem em resumo.
 
 **Não existe ainda:** camada de rotina e orquestração (as coisas rodam quando
 alguém pede), canal de notificação (o resultado só aparece aqui, não vai para

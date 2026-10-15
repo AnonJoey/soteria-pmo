@@ -71,10 +71,21 @@ TETOS_DE_REFERENCIA: dict[str, float] = {
 # BM2 nao tem bolsao contratado. Os 100.0 sao o numero base que o Max pediu para
 # usar como gatilho, porque "se passar de 100 horas e poucas, certamente o
 # William vai chiar". Um gatilho sem contrato ainda e melhor que silencio.
+# O Abner confirmou em 14/10/2026: "100h e uma media, nao necessariamente o
+# limite. Mas e bom sermos alertados quando passamos de 100h".
+#
+# Conferidos pelo Abner em 14/10/2026: Angelus 160, China Gate 100 (sustentacao),
+# A.Yoshii, Apet e Dimas como estao aqui. O Gazin ele nao conhece: a informacao
+# de 40h veio do Max ou do Andre, e segue sem segunda confirmacao.
 
 # Totais de PROJETO, nao mensais. Ficam separados de proposito: somar um total
 # de implantacao junto com um teto mensal de sustentacao daria um alerta que
 # dispara no mes errado.
+#
+# Esta tabela e o ULTIMO recurso. O previsto de um projeto mora no ClickUp, nas
+# estimativas das tarefas, e e la que `apurar_total` o le primeiro. O Abner
+# confirmou em 14/10/2026 que Reviver e Unimed nao tem teto mensal e que o
+# acompanhamento e pelo total do projeto.
 TOTAIS_DE_PROJETO: dict[str, float] = {
     "unimed londrina": 390.0,
     "unimed": 390.0,
@@ -90,8 +101,9 @@ NAO_MAIS_CLIENTE: frozenset[str] = frozenset({"conta azul", "contaazul"})
 # O Angelus saiu daqui em 08/09: o Max e o Andre fecharam 160h de sustentacao
 # na reuniao, e o valor foi para TETOS_DE_REFERENCIA.
 TETOS_A_CONFIRMAR: dict[str, str] = {
-    "reviver": ("projeto, sem media de bolsao; o Max tem uma previsao mensal de "
-                "horas e ficou de mandar o cronograma"),
+    "reviver": ("projeto, sem teto mensal (o Abner confirmou em 14/10/2026); "
+                "acompanha-se pelo total de horas: ponha em `listas_total` a lista "
+                "do projeto para o vigia ler o previsto e o lancado"),
 }
 
 
@@ -204,6 +216,34 @@ class Bolsao:
         return True
 
 
+@dataclass(frozen=True)
+class TotalProjeto:
+    """Um projeto que se acompanha pelo TOTAL de horas, nao por teto mensal.
+
+    O Abner explicou em 14/10/2026 que Reviver e Unimed nao tem limite mensal:
+    o projeto, como um todo, tem uma quantidade de horas previstas, e o que
+    ajuda e vigiar a porcentagem consumida desse total.
+
+    `listas` e quem manda no que e "o projeto": as listas do ClickUp cujas
+    tarefas carregam o previsto e o lancado. Nao se usa o espaco inteiro porque
+    ele mistura frentes. Medido em 15/10/2026 no espaco do Reviver: o espaco
+    todo soma bem mais horas lancadas que a lista do projeto, e so a
+    soma da lista bate com o numero que o Abner le na tela.
+
+    `horas_previstas` vazio quer dizer "ler das estimativas das tarefas".
+    """
+
+    projeto: str
+    listas: tuple[str, ...]
+    horas_previstas: float | None = None
+
+    def __post_init__(self) -> None:
+        if not self.listas:
+            raise ValueError(f"total de {self.projeto} sem lista do projeto")
+        if self.horas_previstas is not None and self.horas_previstas <= 0:
+            raise ValueError(f"total de {self.projeto} com horas previstas nao positivas")
+
+
 @dataclass
 class Vigilancia:
     """A watch pass: what it saw, and what it could not read.
@@ -242,6 +282,12 @@ class Situacao:
     #: comparado com o consumo do proprio mes. Sem isto, uma projecao pode
     #: apontar estouro para depois da virada, quando o bolsao ja resetou.
     fim_do_ciclo: date | None = None
+    #: "mes" (teto mensal, o caso de sempre) ou "total" (total de horas de um
+    #: projeto inteiro, sem janela e sem projecao de data).
+    escopo: str = "mes"
+    #: De onde veio o previsto de um total: soma das estimativas das tarefas,
+    #: `horas_totais` do config ou a tabela de referencia.
+    origem_previsto: str = ""
 
     @property
     def percentual(self) -> float:
@@ -261,6 +307,8 @@ class Situacao:
 
     def linha(self) -> str:
         """One line for the daily digest."""
+        if self.escopo == "total":
+            return self._linha_total()
         base = (f"{self.projeto}: {self.horas_gastas:.1f}h de "
                 f"{self.horas_contratadas:.0f}h ({self.percentual:.0%}) [{self.nivel}]")
         # Quem ja passou do teto nao "estoura em" data nenhuma: a data que a
@@ -278,6 +326,19 @@ class Situacao:
         if self.ritmo_diario is None:
             return f"{base}, sem ritmo medido ainda"
         return f"{base}, nao estoura no horizonte medido"
+
+
+    def _linha_total(self) -> str:
+        """Total de um projeto: sem data de estouro. Um previsto de milhares de
+        horas, a um ritmo mensal, daria uma data de anos adiante escrita como
+        dia e mes, e isso se leria como prazo."""
+        base = (f"{self.projeto} (total do projeto): {self.horas_gastas:.1f}h de "
+                f"{self.horas_contratadas:.0f}h previstas ({self.percentual:.0%}) [{self.nivel}]")
+        if self.horas_gastas > self.horas_contratadas:
+            return f"{base}, ja passou do previsto em {self.horas_gastas - self.horas_contratadas:.1f}h"
+        if self.origem_previsto:
+            return f"{base}; previsto: {self.origem_previsto}"
+        return base
 
 
 def _nivel(percentual: float) -> str:
@@ -349,10 +410,49 @@ def apurar(entradas: list[dict], bolsao: Bolsao, inicio: date, fim: date,
     )
 
 
+def apurar_total(tarefas: list[dict], total: TotalProjeto) -> Situacao | None:
+    """O total de um projeto, lido das tarefas dele no ClickUp.
+
+    Soma `time_estimate` (o previsto) e `time_spent` (o lancado) das tarefas e
+    das subtarefas, uma vez cada: uma tarefa que mora em duas listas entra uma
+    vez so. Medido em 15/10/2026 numa lista de projeto do Reviver: a soma
+    das estimativas e a soma do tempo lancado bateram, as duas, ao minuto, com os
+    numeros que o Abner leu na tela em 14/10. O `time_spent` da API e o da propria
+    tarefa, nao o das subtarefas somado, senao a soma contaria duas vezes.
+
+    O previsto vem, nesta ordem, de `horas_previstas` do config, da soma das
+    estimativas e da tabela de referencia. Devolve None quando nenhum dos tres
+    existe: sem previsto nao ha contra o que medir, e o chamador diz isso.
+
+    Nao projeta data de estouro: ver `Situacao._linha_total`.
+    """
+    por_id: dict[str, dict] = {}
+    for tarefa in tarefas:
+        if tarefa.get("id"):
+            por_id[str(tarefa["id"])] = tarefa
+    lancado = sum(int(t.get("time_spent") or 0) for t in por_id.values()) / 3_600_000
+    estimado = sum(int(t.get("time_estimate") or 0) for t in por_id.values()) / 3_600_000
+
+    if total.horas_previstas:
+        previsto, origem = total.horas_previstas, "horas_totais do config"
+    elif estimado > 0:
+        previsto, origem = estimado, "soma das estimativas das tarefas no ClickUp"
+    elif (ref := total_de_projeto(total.projeto)):
+        previsto, origem = ref, "tabela de referencia, sem estimativa nas tarefas"
+    else:
+        return None
+    return Situacao(
+        projeto=total.projeto, horas_contratadas=previsto, horas_gastas=lancado,
+        faturaveis=0.0, nao_faturaveis=0.0,  # `time_spent` nao separa
+        nivel=_nivel(lancado / previsto), dias_uteis_observados=0, ritmo_diario=None,
+        data_estouro=None, dias_ate_estourar=None, escopo="total", origem_previsto=origem)
+
+
 def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
            feriados: frozenset[date] = frozenset(),
            sem_teto: list[str] | None = None,
-           fim_do_ciclo: date | None = None) -> Vigilancia:
+           fim_do_ciclo: date | None = None,
+           totais: list[TotalProjeto] | None = None) -> Vigilancia:
     """Read the window once per project and report each position.
 
     Entries are fetched per project list rather than for the whole workspace
@@ -380,6 +480,25 @@ def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
         do_projeto = [e for e in todas if b.pertence(e)]
         v.situacoes.append(apurar(do_projeto, b, inicio, fim, feriados,
                                   fim_do_ciclo=fim_do_ciclo))
+    for tp in totais or ():
+        # Uma falha de leitura sai nomeada, como no caso mensal: projeto que some
+        # do digest e indistinguivel de projeto saudavel.
+        try:
+            tarefas: list[dict] = []
+            for lista in tp.listas:
+                tarefas.extend(cliente.tarefas_da_lista(lista, incluir_fechadas=True,
+                                                        subtarefas=True))
+            situacao = apurar_total(tarefas, tp)
+        except Exception as e:
+            logger.warning("nao foi possivel ler o total de %s: %s", tp.projeto, e)
+            v.falhas.append(f"{tp.projeto} (total do projeto): {type(e).__name__}: {e}")
+            continue
+        if situacao is None:
+            v.sem_teto.append(f"{tp.projeto}: total do projeto sem previsto; as tarefas das "
+                              f"listas configuradas nao tem estimativa e o config nao "
+                              f"traz `horas_totais`")
+            continue
+        v.situacoes.append(situacao)
     return v
 
 
@@ -460,8 +579,44 @@ def carregar_bolsoes(dados: list[dict] | dict) -> tuple[list[Bolsao], list[str]]
                                     listas_projeto=listas_proj,
                                     tipo=tipo))
             continue
+        if item.get("listas_total"):
+            continue  # acompanhado pelo total do projeto: ver carregar_totais
         incerto = teto_a_confirmar(nome)
+        total_ref = total_de_projeto(nome)
+        if total_ref and not incerto:
+            incerto = (f"total do projeto de {total_ref:.0f}h (tabela de referencia), "
+                       f"mas sem `listas_total` no config: nao ha de onde ler o lancado")
         sem_teto.append(f"{nome}: sem teto configurado"
                         + (f"; {incerto}" if incerto else ""))
     return resultado, sem_teto
+
+
+def carregar_totais(dados: list[dict] | dict) -> list[TotalProjeto]:
+    """Os projetos do config que se acompanham pelo total de horas.
+
+    Entra quem traz `listas_total` (as listas do ClickUp que formam o projeto) e
+    nao tem teto mensal. `horas_totais` e opcional: sem ele o previsto e a soma
+    das estimativas das tarefas. Um projeto com as duas coisas, teto mensal e
+    lista de total, e vigiado nas duas; so entra aqui o que declara a lista.
+    """
+    itens = dados.get("bolsoes", []) if isinstance(dados, dict) else dados
+    resultado: list[TotalProjeto] = []
+    for item in itens:
+        nome = item.get("projeto") or item.get("nome") or ""
+        listas = tuple(str(x) for x in (item.get("listas_total") or ()))
+        if not (nome and listas) or encerrado(nome):
+            continue
+        bruto = item.get("horas_totais")
+        try:
+            previstas = float(bruto) if bruto else None
+        except (TypeError, ValueError):
+            previstas = None
+        if previstas is not None and previstas <= 0:
+            previstas = None
+        if bruto and previstas is None:
+            # Config torto nao derruba a rotina inteira, mas tambem nao passa calado:
+            # o previsto cai para a soma das estimativas, e o digest diz de onde veio.
+            logger.warning("horas_totais invalido para %s (%r): o previsto vem das estimativas", nome, bruto)
+        resultado.append(TotalProjeto(projeto=nome, listas=listas, horas_previstas=previstas))
+    return resultado
 
