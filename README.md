@@ -104,6 +104,30 @@ saida, e qualquer outro produtor do mesmo formato serve.
 `tests/test_independencia.py` e a guarda: falha se um modulo importar algo de
 fora ou trouxer escrito o caminho, a porta ou a pasta de outro projeto.
 
+### Depois de atualizar para a 1.4.0
+
+O `atualizar` troca o codigo e as skills, mas **nao mexe no `pmo.json`**. A 1.4.0
+le quatro chaves novas, todas opcionais: sem elas o comportamento antigo continua.
+O detalhe de cada uma esta em `docs/PARAMETROS.md`.
+
+| Chave | O que faz | Sem ela |
+|---|---|---|
+| `listas_total` (dentro do projeto) | As listas do ClickUp que formam um projeto sem teto mensal, como a Reviver e a Unimed. O vigia soma a estimativa e o tempo lancado das tarefas e das subtarefas e avisa em 75, 90 e 100% do total | O projeto sai como "sem teto configurado" |
+| `horas_totais` (dentro do projeto) | Fixa o previsto, e vale antes de qualquer outra fonte | O previsto e a soma das estimativas das tarefas; sem estimativa, a tabela de referencia do codigo. O resumo diz qual das tres esta em uso |
+| `nao_faturam` | Nomes de quem lanca so hora nao faturavel. O `lancamentos` mostra as horas faturaveis dessas pessoas, que sao sinal de etiqueta errada | Nada e checado |
+| `rh_lista` | ID da lista de cadastro de pessoas do ClickUp, usada pelo `rh-importar` | O `rh-importar` pede `--lista` |
+
+Os nomes de `nao_faturam` ficam so no config local, porque este repositorio e
+publico. O ID de uma lista e o numero depois de `/v/l/li/` na URL dela no ClickUp.
+
+Passos depois do `soteria-pmo atualizar`:
+
+1. Acrescentar `listas_total` ao projeto da Reviver e ao da Unimed no `~/.soteria-pmo/pmo.json`.
+2. Acrescentar `nao_faturam`, se houver quem lance so hora nao faturavel.
+3. Rodar `soteria-pmo checar` e `soteria-pmo rodar --forcar bolsao`, e conferir
+   que os dois projetos aparecem com a porcentagem do total, e nao como "sem teto
+   configurado".
+
 ## O que e obrigatorio, e o que e so aproveitado
 
 ```
@@ -141,6 +165,8 @@ soteria-pmo lancar --arquivo proposta.json --aprovado-por "Nome" --real  # grava
 soteria-pmo reporte --saida reporte.html                  # reporte em HTML (padrao)
 soteria-pmo reporte --formato markdown                    # o mesmo conteudo em texto
 soteria-pmo lancamentos                                   # quem lancou horas ontem e na semana passada
+soteria-pmo rh-importar --lista ID                        # le o nascimento da lista de cadastro do ClickUp (so simula)
+soteria-pmo rh-importar --lista ID --real                 # grava no roster local de RH, com permissao 600
 soteria-pmo-instalar --atualizar                          # atualiza skills e agente instalados
 ```
 
@@ -152,7 +178,14 @@ ela ficou; `--formato markdown` volta ao texto puro.
 ultimo dia util, quem nao lancou e as horas por dia da semana passada. O limite vem
 impresso em todo quadro: **quem nunca lancou nao aparece**, porque os esperados sao quem
 lancou ao menos uma vez nos ultimos 30 dias. Para fixar a lista, ponha `equipe_lancamento`
-(lista de nomes, como aparecem no ClickUp) no config.
+(lista de nomes, como aparecem no ClickUp) no config. A regra de 14/10/2026 e que todos
+lancam horas, e algumas pessoas lancam so hora nao faturavel: com `nao_faturam` no config,
+o quadro acrescenta as horas faturaveis que essas pessoas lancaram.
+
+`rh-importar` le, da lista de cadastro de pessoas do ClickUp, so o nome de cada tarefa e o
+campo de data de nascimento, e mescla no roster de RH. Sem `--real` so simula e nunca
+imprime datas. Contato de emergencia, e-mail e telefone pessoais, endereco e respostas
+sobre saude, que a mesma lista guarda, nao sao lidos nem gravados.
 
 Os quatro primeiros nao escrevem no ClickUp. `lancar` e o unico que escreve, e
 so com `--real` e o nome de quem aprovou: ele grava uma proposta que uma pessoa
@@ -217,7 +250,7 @@ muito diferente de um agente caro fazendo a mesma coisa.
 | 2 | `cronograma.py` | Log de projetos sem horas apontadas, na regua por tipo de trabalho | continua |
 | 3 | `auditor.py` | Confere o que foi lancado contra a evidencia e as entradas entre si | diaria, mais o mes fechado |
 | 4 | `horas.py` | Propoe lancamentos a partir de evidencia, e pergunta pelo resto | diaria |
-| 5 | `bolsao.py` | Consumo do bolsao e projecao de estouro | diaria |
+| 5 | `bolsao.py` | Consumo do bolsao e projecao de estouro, e o total de horas dos projetos sem teto mensal | diaria |
 | 6 | `rh.py` | Datas de aniversario, tempo de casa, experiencia, contrato e ferias | diaria |
 | 7 | `datas.py` | Guardiao dos prazos das tarefas, mais higiene do card | continua |
 
@@ -352,7 +385,7 @@ O que foi medido contra o workspace real, e nao lido na documentacao:
 python -m pytest -q
 ```
 
-269 testes, nenhum toca a rede: `httpx.MockTransport` responde por todas as
+499 testes, nenhum toca a rede: `httpx.MockTransport` responde por todas as
 chamadas e o interprete do modelo entra por `Protocol`.
 
 Os comportamentos criticos foram conferidos por mutacao, e um deles expos um

@@ -70,6 +70,23 @@ no ClickUp ou seguem na planilha. O aniversario **ja existe** no ClickUp e e lid
 de la; os demais campos o Abner nao tem, e ele ficou de confirmar com o Max e o
 Marcos se sao sequer desejados. Enquanto nao decidirem, a planilha e a fonte.
 
+### Importar o nascimento do ClickUp
+
+A lista de cadastro de pessoas do ClickUp tem o campo de data de nascimento (o Abner
+confirmou em 14/10/2026). O comando le so o nome de cada tarefa e esse campo:
+
+```bash
+soteria-pmo rh-importar --lista ID           # simula, nada e gravado
+soteria-pmo rh-importar --lista ID --real    # grava no roster, com permissao 600
+```
+
+O nascimento do ClickUp vence o que ja estava no roster; as outras datas de quem ja
+estava ficam como estao. O comando nunca imprime datas, so contagens e nomes. Contato
+de emergencia, e-mail e telefone pessoais, endereco e respostas sobre saude, que a mesma
+lista guarda, nao sao lidos nem gravados. Inicio e fim de contrato e ultimo feedback nao
+estao no ClickUp e seguem dependendo de quem cuida dos contratos. `rh_lista` no config
+guarda o ID para nao repetir o `--lista`.
+
 ## Quem usa
 
 Qualquer pessoa da Soteria com acesso ao roster. A skill nao assume um operador

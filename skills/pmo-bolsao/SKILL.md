@@ -43,20 +43,42 @@ Confirmados pelo Max na reuniao de homologacao de 08/09/2026, em
 | Grupo Dimas | 30h |
 
 O BM2 nao tem bolsao contratado. Os 100h sao o numero base que o Max pediu para
-usar como gatilho. O Dimas tem 30h de sustentacao mais projetos em paralelo, e a
+usar como gatilho. O Abner confirmou em 14/10/2026 que e uma media, nao um limite
+contratado, e que e bom ser alertado ao passar de 100h; se os avisos antes disso,
+em 75h e 90h, ficam ou saem e decisao do Max, e hoje eles ficam. O Abner tambem
+confirmou em 14/10 os numeros do Angelus, China Gate, A.Yoshii, APET e Dimas. O Dimas tem 30h de sustentacao mais projetos em paralelo, e a
 media real fica em torno de 100h: as duas coisas precisam ser controladas, e cada
 cliente tem lista de sustentacao separada das listas de projeto.
 
-### O que nao e teto mensal
+### O que nao e teto mensal: o total do projeto
 
-`TOTAIS_DE_PROJETO` guarda **Unimed Londrina, 390h**, que e o total de um projeto
-de implantacao. Fica separado de proposito: um total de projeto nao reseta na
-virada do mes, e compara-lo com consumo mensal daria um alerta que nunca dispara
-ou que dispara sempre.
+Reviver e Unimed nao tem teto mensal (Abner, 14/10/2026). O acompanhamento e pelo
+**total de horas do projeto**, que nao reseta na virada do mes. Compara-lo com
+consumo mensal daria um alerta que nunca dispara ou que dispara sempre, entao o
+codigo guarda os dois em tabelas separadas.
 
-`TETOS_A_CONFIRMAR` guarda **Concessionaria Reviver**, que e projeto sem media de
-bolsao. O Max ficou de mandar o cronograma com a previsao mensal. Ate la o vigia
-diz que nao ha teto, em voz alta, em vez de calar.
+Como funciona, com a chave `listas_total` no projeto do config:
+
+- `listas_total` e a lista de IDs das listas do ClickUp que formam o projeto. Nao
+  use o espaco inteiro: ele mistura frentes.
+- O **previsto** vem, nesta ordem, de `horas_totais` do config (opcional), da soma
+  das estimativas das tarefas e das subtarefas dessas listas, e por ultimo da tabela
+  de referencia do codigo. O resumo diz qual das tres esta em uso. O **lancado** e a
+  soma do tempo lancado nas tarefas.
+- As faixas sao as mesmas, 75, 90 e 100% do total. **O vigia do total nao projeta
+  data de estouro**: com milhares de horas, a um ritmo mensal, a data sairia anos
+  adiante e escrita como dia e mes se leria como prazo. Ele so diz a porcentagem
+  e a faixa.
+- So o resumo interno traz o total. O reporte ao cliente nao recebe total de projeto.
+
+`TOTAIS_DE_PROJETO` guarda **Unimed Londrina, 390h**, mas e o **ultimo recurso**:
+so vale se as tarefas da lista nao tiverem estimativa nem houver `horas_totais`.
+O previsto de verdade mora no ClickUp, e o vigia o le antes da tabela. Se o numero
+da tabela e o do ClickUp divergirem, diga os dois e qual esta em uso.
+
+Sem `listas_total`, a Reviver e a Unimed saem como "sem teto configurado", em voz
+alta, em vez de calar. `TETOS_A_CONFIRMAR` guarda **Concessionaria Reviver** por
+esse motivo.
 
 `NAO_MAIS_CLIENTE` guarda **Conta Azul**, que saiu.
 
@@ -101,4 +123,6 @@ Quem recebe o alerta e quem responde pelo contrato, hoje o Max e o Abner.
 
 ## Codigo
 
-`src/soteria_pmo/bolsao.py`, testes em `tests/test_periodo_bolsao_datas.py`.
+`src/soteria_pmo/bolsao.py`, testes em `tests/test_periodo_bolsao_datas.py` e, para
+o total de projeto, `tests/test_bolsao_total.py`. Os parametros do config estao em
+`docs/PARAMETROS.md`.
