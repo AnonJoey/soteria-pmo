@@ -186,6 +186,24 @@ def transcricoes(pasta: str | Path, inicio: date, fim: date) -> list[Transcricao
     return achadas
 
 
+def dias_sem_daily(pasta: str | Path, inicio: date, fim: date,
+                   feriados: frozenset[date] = frozenset()) -> list[date]:
+    """Dias uteis da janela sem transcricao da daily na pasta.
+
+    Sem transcricao a apuracao de horas roda cega: no teste de 02/09 a mesma
+    evidencia de maquina deu 68% de cobertura sem a daily e 98% com ela. Uma nota
+    que so resume a reuniao, sem as falas, nao e transcricao e nao conta: e a
+    mesma regra de `ler_transcricao`, que ignora o que nao tem fala.
+    """
+    com = {t.dia for t in transcricoes(pasta, inicio, fim) if e_daily(t)}
+    faltam, d = [], inicio
+    while d <= fim:
+        if d.weekday() < 5 and d not in feriados and d not in com:
+            faltam.append(d)
+        d += timedelta(days=1)
+    return faltam
+
+
 # ── interpretacao ────────────────────────────────────────────────────────────
 
 SISTEMA = (

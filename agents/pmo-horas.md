@@ -29,6 +29,9 @@ soteria-pmo horas --de AAAA-MM-DD --ate AAAA-MM-DD
 soteria-pmo horas --de ... --ate ... --sem-modelo   # so evidencia de maquina
 ```
 
+Antes de apurar, `soteria-pmo dailies` diz quais dias uteis estao sem transcricao da daily
+(captura em `docs/CAPTURA-DA-DAILY.md`): sem ela os dias voltam como pergunta.
+
 Coleta commits, sessoes de IA (Claude Code e Antigravity), notas, historico de
 navegador e agenda, separa a evidencia pessoal da de cliente, le as dailies da
 pessoa (pasta `evidencia.dailies`, interpretadas pelo modelo em `modelo.url`), e
