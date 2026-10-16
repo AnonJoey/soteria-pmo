@@ -78,3 +78,21 @@ As quatro primeiras são de código.
 2. A tabela de faturável da seção 4 cobre os casos reais do time, ou há mais exceções?
 3. Quem mantém a lista de projetos pessoais de cada pessoa, e o pacote deve avisar quando achar uma pasta nova?
 4. Basta exigir descrição não vazia, ou o André e o Max querem um padrão de descrição?
+5. O MVP de fontes da seção 9 é o certo para o teste com um dev, ou falta ou sobra alguma fonte?
+
+## 9. MVP de fontes (proposta de 16/10/2026, para validar na conversa a três)
+
+Critério: a menor lista de fontes que dá **horário real** ao trabalho, **nomeia a atividade** com as palavras de quem a fez e **funciona para um dev que não usa o Claude**, que é o caso do teste com um dev. A proposta sai de uma apuração de quatro dias (12 a 15/10) lançada com a pessoa conferindo cada bloco.
+
+| Fonte | MVP? | O que se mediu |
+|---|---|---|
+| Transcrição da daily e declaração na daily | **Sim** | Em 02/09 a mesma evidência de máquina deu 68% de cobertura sem a daily e 98% com ela, e a atividade passou de "não identificada" a nomeada. Custa uma captura por dia útil (`soteria-pmo dailies` diz o que falta). |
+| Commit | **Sim** | A âncora firme de 7 dos 16 blocos lançados, com instante e repositório. Sozinho não dá duração: a janela sai dos vizinhos e continua sendo inferida. |
+| Sessão do Claude | **Sim, para quem usa** | A fonte de maior peso e de mais janelas medidas. Não vale pelo **título da sessão**: uma sessão cobriu três assuntos (trabalho, hardware e estudo pessoal). Vale pelo diretório de trabalho e pelo horário de cada janela. |
+| Agenda do Outlook | **Sim, só como pergunta e como nome** | Um evento isolado não prova nada: a daily estava na agenda em dia de feriado e um compromisso pessoal caiu sobre uma janela de trabalho. Entra na proposta para a pessoa confirmar, como já descreve a seção 2. |
+| Nota do vault | **Não, a não ser as escritas por pessoa** | 17 janelas de 0,2 h (3,4 h) eram notas gravadas por um vigia automático local: evidência falsa, com confiança 0,05. Precisa de exclusão por origem antes de entrar. |
+| Histórico do navegador | **Não** | Peso 0,30 e janelas de confiança 0,05 a 0,34: cada visita ao Teams virou uma janela. |
+| Salesforce do cliente | **Não** | Só com a autorização do dev, como decidido antes. |
+| Arquivo | **Não no MVP** | Sem dado novo que mude uma decisão. |
+
+O que o MVP **não** resolve, e continua virando pergunta: trabalho sem rastro (reunião fora do Teams, leitura, planejamento), e dois assuntos em paralelo na mesma máquina, que a evidência não separa. A atividade dos cards do ClickUp (comentários e mudanças de status) não é lida hoje e é a candidata a entrar depois do MVP, porque existe para todo dev, usando o Claude ou não.
