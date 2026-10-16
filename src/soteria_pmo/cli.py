@@ -477,6 +477,43 @@ def cmd_cadencias(args) -> int:
     return 0
 
 
+_DIAS_CURTOS = ("seg", "ter", "qua", "qui", "sex", "sab", "dom")
+
+
+def cmd_dailies(args) -> int:
+    """Quais dias uteis estao sem transcricao da daily na pasta do vault.
+
+    So le. Sai com 2 quando falta algum dia, pelo mesmo motivo do `horas`: um
+    agendador precisa notar a diferenca entre "em dia" e "tem dia faltando".
+    A captura em si precisa de um Chrome com a sessao do Teams aberta, e esta em
+    docs/CAPTURA-DA-DAILY.md.
+    """
+    try:
+        cfg = carregar_config(Path(args.config).expanduser())
+    except ConfigAusente as e:
+        print(f"Sem configuracao do PMO em {e}.", file=sys.stderr)
+        return 2
+    fim = date.fromisoformat(args.ate) if args.ate else date.today() - timedelta(days=1)
+    inicio = fim - timedelta(days=args.dias - 1)
+    feriados = _feriados(cfg)
+    pasta = pasta_dailies(cfg)
+    faltam = set(daily.dias_sem_daily(pasta, inicio, fim, feriados))
+    print(f"Dailies de {inicio:%d/%m} a {fim:%d/%m}, em {pasta}\n")
+    d = inicio
+    while d <= fim:
+        if d.weekday() < 5:
+            rotulo = ("feriado" if d in feriados else "FALTA" if d in faltam else "ok")
+            print(f"  {rotulo:8} {_DIAS_CURTOS[d.weekday()]} {d:%d/%m}")
+        d += timedelta(days=1)
+    if not faltam:
+        print("\nTodos os dias uteis da janela tem transcricao.")
+        return 0
+    lista = ", ".join(f"{x:%d/%m}" for x in sorted(faltam))
+    print(f"\nFaltam {len(faltam)} dia(s): {lista}. "
+          "Como capturar: docs/CAPTURA-DA-DAILY.md")
+    return 2
+
+
 def cmd_atualizar(args) -> int:
     """Atualiza o pacote pelo GitHub e copia as skills e o agente novos."""
     from . import atualizacao, instalador
@@ -593,6 +630,13 @@ def _subcomandos(pmo_sub) -> None:
     p_cad.add_argument("--dia", default=None)
     p_cad.add_argument("--config", default=str(CONFIG_PADRAO))
     p_cad.set_defaults(func=cmd_cadencias)
+
+    p_dly = pmo_sub.add_parser(
+        "dailies", help="Quais dias uteis estao sem transcricao da daily (so le)")
+    p_dly.add_argument("--dias", type=int, default=14, help="tamanho da janela (padrao 14)")
+    p_dly.add_argument("--ate", default=None, help="AAAA-MM-DD; padrao: ontem")
+    p_dly.add_argument("--config", default=str(CONFIG_PADRAO))
+    p_dly.set_defaults(func=cmd_dailies)
 
     p_chk = pmo_sub.add_parser(
         "checar", help="O que e obrigatorio, o que e opcional, e o que falta agora")
