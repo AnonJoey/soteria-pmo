@@ -213,9 +213,10 @@ def test_vigiar_sobrevive_a_falha_de_leitura():
 # ── guardiao das datas ───────────────────────────────────────────────────────
 
 
-def tarefa(nome, due=None, status="ideia", desc="", est=None, quem="Jordan"):
+def tarefa(nome, due=None, status="ideia", desc="", est=None, quem="Jordan", tipo=None):
     return {"id": "t1", "name": nome, "due_date": due, "description": desc,
-            "time_estimate": est, "status": {"status": status},
+            "time_estimate": est,
+            "status": {"status": status, **({"type": tipo} if tipo else {})},
             "assignees": [{"username": quem}] if quem else []}
 
 
@@ -245,6 +246,37 @@ def test_status_ideia_perto_do_prazo_nao_e_filtrado():
     """E exatamente a tarefa que vale sinalizar."""
     saida = D.digest(D.ler([tarefa("3.4 Lancamento", due=em(1), status="ideia")]), HOJE)
     assert "3.4 Lancamento" in saida and "ideia" in saida
+
+
+@pytest.mark.parametrize("tipo", ["closed", "done", "Closed"])
+def test_tarefa_finalizada_nao_aparece_como_vencida(tipo):
+    """Um card fechado nao tem data a perder: listar como vencido enterra os reais."""
+    prazos = D.ler([tarefa("Card concluido", due=em(-18),
+                           status="publicado/finalizado", tipo=tipo)])
+    assert prazos == []
+    assert D.digest(prazos, HOJE) == ""
+
+
+@pytest.mark.parametrize("tipo", [None, "open", "custom"])
+def test_status_aberto_continua_vigiado_mesmo_vencido(tipo):
+    """So o tipo que o ClickUp marca como acabado sai; o nome do status nao decide."""
+    saida = D.digest(D.ler([tarefa("3.4 Lancamento", due=em(-2), status="publicado/finalizado",
+                                   tipo=tipo)]), HOJE)
+    assert "3.4 Lancamento" in saida and "Vencidos" in saida
+
+
+def test_finalizada_sai_tambem_da_higiene():
+    """Card fechado sem estimativa e historia: nao entra na contagem do 'de N'."""
+    prazos = D.ler([tarefa("aberta", due=em(10), desc="tem"),
+                    tarefa("fechada", due=em(-18), status="publicado/finalizado", tipo="closed")])
+    assert len(prazos) == 1
+    assert D.higiene(prazos) == ["1 de 1 sem estimativa de tempo"]
+
+
+def test_status_que_nao_e_dicionario_nao_conta_como_finalizado():
+    t = tarefa("x", due=em(-3))
+    t["status"] = "closed"
+    assert len(D.ler([t])) == 1
 
 
 def test_vencidos_saem_do_mais_atrasado_para_o_menos():
@@ -277,6 +309,70 @@ def test_datas_vigiar_sobrevive_a_falha_de_leitura():
             raise RuntimeError("api fora")
 
     assert D.vigiar(Quebrado(), "901716443542", HOJE) == ""
+
+
+class _ListasFalsas:
+    """Cliente que devolve tarefas por lista e anota quais listas foram lidas."""
+
+    def __init__(self, por_lista):
+        self.por_lista = por_lista
+        self.lidas = []
+
+    def tarefas_da_lista(self, lista, **_k):
+        self.lidas.append(lista)
+        if isinstance(self.por_lista[lista], Exception):
+            raise self.por_lista[lista]
+        return self.por_lista[lista]
+
+
+def test_montar_tarefas_liga_o_guardiao_a_todas_as_listas_do_config():
+    """A ligacao pegava so o primeiro projeto com list_id; o segundo nunca era lido."""
+    from soteria_pmo import cli
+    c = _ListasFalsas({"L1": [tarefa("do primeiro", due=em(-4))],
+                       "L2": [tarefa("do segundo", due=em(-2))]})
+    cfg = {"projetos": [{"nome": "Alfa", "list_id": "L1"}, {"nome": "Beta", "space_id": "S"},
+                        {"nome": "Gama", "list_id": "L2"}]}
+    saida = cli.montar_tarefas(cfg, c, HOJE)["datas"]()
+    assert c.lidas == ["L1", "L2"] and "do segundo" in saida
+
+
+def test_uma_lista_sai_igual_ao_vigiar_de_sempre():
+    tarefas = [tarefa("atrasada", due=em(-4))]
+    c = _ListasFalsas({"L1": tarefas})
+    projetos = [{"nome": "A", "list_id": "L1"}, {"nome": "B", "space_id": "S"}]
+    assert D.vigiar_projetos(c, projetos, HOJE) == D.vigiar(_ListasFalsas({"L1": tarefas}), "L1", HOJE)
+    assert c.lidas == ["L1"]
+
+
+def test_cada_projeto_com_lista_e_lido_e_o_bloco_leva_o_nome():
+    c = _ListasFalsas({"L1": [tarefa("do primeiro", due=em(-4))],
+                       "L2": [tarefa("do segundo", due=em(-2))]})
+    projetos = [{"nome": "Alfa", "list_id": "L1"}, {"nome": "Beta", "space_id": "S"},
+                {"nome": "Gama", "list_id": "L2"}]
+    saida = D.vigiar_projetos(c, projetos, HOJE)
+    assert c.lidas == ["L1", "L2"]
+    assert "Guardiao das datas, Alfa" in saida and "do primeiro" in saida
+    assert "Guardiao das datas, Gama" in saida and "do segundo" in saida
+    assert "Beta" not in saida
+
+
+def test_lista_repetida_no_config_e_lida_uma_vez():
+    c = _ListasFalsas({"L1": [tarefa("x", due=em(-1))]})
+    D.vigiar_projetos(c, [{"nome": "A", "list_id": "L1"}, {"nome": "B", "list_id": "L1"}], HOJE)
+    assert c.lidas == ["L1"]
+
+
+def test_sem_nenhuma_lista_o_guardiao_nao_diz_nada():
+    c = _ListasFalsas({})
+    assert D.vigiar_projetos(c, [{"nome": "A", "space_id": "S"}], HOJE) == ""
+    assert D.vigiar_projetos(c, [], HOJE) == "" and c.lidas == []
+
+
+def test_lista_que_falha_nao_derruba_a_outra():
+    c = _ListasFalsas({"L1": RuntimeError("api fora"), "L2": [tarefa("viva", due=em(-2))]})
+    saida = D.vigiar_projetos(
+        c, [{"nome": "Alfa", "list_id": "L1"}, {"nome": "Gama", "list_id": "L2"}], HOJE)
+    assert "viva" in saida and "Gama" in saida
 
 
 # ── defeitos que a revisao do modelo local encontrou ─────────────────────────

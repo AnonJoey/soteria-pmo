@@ -13,6 +13,11 @@ has touched and false for one that is late but already re-planned.
 A deliberate omission: this does not read task status to guess whether a date
 still matters. A task in `ideia` two days before its due date is exactly the
 one worth flagging, and filtering by status would hide it.
+
+The one exception is work that is already finished. That is read from the
+status TYPE ClickUp assigns, not from the status name, which changes from space
+to space ("publicado/finalizado", "Done"). A finished card has no date left to
+miss, so listing it as overdue is noise that buries the real ones.
 """
 
 from __future__ import annotations
@@ -27,6 +32,10 @@ logger = logging.getLogger("pmo.datas")
 
 # Days out at which a date starts being worth mentioning.
 HORIZONTE = 3
+
+# Status types ClickUp uses for finished work. `closed` is what this workspace
+# returns for "publicado/finalizado"; `done` is the other finished type.
+TIPOS_FINALIZADOS = frozenset({"closed", "done"})
 
 
 @dataclass(frozen=True)
@@ -57,10 +66,27 @@ class Prazo:
         return "proximo" if d <= HORIZONTE else "ok"
 
 
+def _finalizada(t: dict) -> bool:
+    """True when ClickUp itself says the task is finished.
+
+    A payload without a status type is not finished: guessing from the name
+    would reintroduce the status filter this module refuses to have.
+    """
+    status = t.get("status")
+    return (isinstance(status, dict)
+            and str(status.get("type") or "").lower() in TIPOS_FINALIZADOS)
+
+
 def ler(tarefas: list[dict]) -> list[Prazo]:
-    """Turn ClickUp task payloads into deadlines."""
+    """Turn ClickUp task payloads into deadlines, leaving finished work out.
+
+    Finished tasks leave every count, the hygiene totals included: a closed
+    card without an estimate is history, and nobody can fix it.
+    """
     prazos = []
     for t in tarefas:
+        if _finalizada(t):
+            continue
         vence = de_ms(t.get("due_date"))
         responsaveis = t.get("assignees") or []
         pid = t.get("parent")
@@ -195,3 +221,29 @@ def vigiar(cliente, list_id: str, hoje: date) -> str:
         logger.warning("nao foi possivel ler a lista %s: %s", list_id, e)
         return ""
     return digest(ler(tarefas), hoje)
+
+
+def vigiar_projetos(cliente, projetos: list[dict], hoje: date) -> str:
+    """The guardian over every configured project that names a list.
+
+    `list_id` is documented as the list this item reads, per project. The wiring
+    used to take the first project that had one and stop, so a second list in the
+    config was never read. One list reads exactly as `vigiar` always did; with
+    several, each block carries the project name, since a task name alone does
+    not say whose it is. A list named twice is read once.
+    """
+    listas: list[tuple[str, str]] = []
+    vistas: set[str] = set()
+    for p in projetos:
+        lista = str(p.get("list_id") or "").strip()
+        if lista and lista not in vistas:
+            vistas.add(lista)
+            listas.append((p.get("nome") or lista, lista))
+    if len(listas) <= 1:
+        return vigiar(cliente, listas[0][1], hoje) if listas else ""
+    blocos = []
+    for nome, lista in listas:
+        texto = vigiar(cliente, lista, hoje)
+        if texto:
+            blocos.append(texto.replace("Guardiao das datas", f"Guardiao das datas, {nome}", 1))
+    return "\n\n".join(blocos)
