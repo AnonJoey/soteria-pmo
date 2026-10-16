@@ -208,7 +208,7 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
             bolsao.vigiar(cliente, bolsoes, hoje.replace(day=1), hoje,
                           feriados, sem_teto=bolsoes_sem_teto,
                           fim_do_ciclo=periodo.fim_do_mes(hoje), totais=totais)),
-        "datas": (lambda: datas.vigiar(cliente, str(com_lista["list_id"]), hoje)) if com_lista else (lambda: ""),
+        "datas": lambda: datas.vigiar_projetos(cliente, projetos, hoje),
         # Item 2 le TODOS os projetos, nao so o primeiro: a regua de 03/09 e
         # por projeto, e avaliar um de uma lista de nove nao e acompanhar
         # cronograma nenhum.

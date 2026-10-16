@@ -18,7 +18,10 @@ soteria-pmo rodar --forcar datas
 
 ## O que vigia
 
-- **Prazos**: o que vence em ate 3 dias e o que ja venceu.
+- **Prazos**: o que vence em ate 3 dias e o que ja venceu. Card finalizado nao
+  entra, nem nos prazos nem na higiene: vale o tipo de status que o ClickUp marca
+  como acabado (`closed` ou `done`), nao o nome do status. Status aberto, como
+  `ideia`, continua vigiado.
 - **Higiene do card**: tarefa sem descricao e tarefa sem estimativa. Sao as duas
   faltas que quebram todo o resto do pacote, porque sem estimativa nao da para
   julgar tamanho e sem descricao a entrada some do relatorio de horas faturaveis.
@@ -28,8 +31,11 @@ soteria-pmo rodar --forcar datas
 
 ## Quem usa
 
-Qualquer pessoa da Soteria. A skill le os prazos do workspace inteiro, e nao a
-agenda de ninguem em particular: quem roda ve o que vence para o time.
+Qualquer pessoa da Soteria. A skill le os prazos das listas do time, e nao a
+agenda de ninguem em particular: quem roda ve o que vence para o time. Le a
+lista de cada projeto que tem `list_id` no config (hoje so a lista interna dos
+Agentes PMO). Os espacos dos clientes nao sao lidos, porque o config deles so
+traz `space_id`; com mais de uma lista, cada bloco leva o nome do projeto.
 
 ## Codigo
 
