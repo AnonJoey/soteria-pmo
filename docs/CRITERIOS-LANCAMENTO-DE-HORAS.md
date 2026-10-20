@@ -80,7 +80,7 @@ As quatro primeiras são de código.
 4. Basta exigir descrição não vazia, ou o André e o Max querem um padrão de descrição?
 5. O MVP de fontes da seção 9 é o certo para o teste com um dev, ou falta ou sobra alguma fonte?
 
-## 9. MVP de fontes (proposta de 16/10/2026, para validar na conversa a três)
+## 9. MVP de fontes (proposta de 16/10/2026; aprovada pelo Jordan em 20/10 com um ajuste, a regra da nuance; falta validar na conversa a três)
 
 Critério: a menor lista de fontes que dá **horário real** ao trabalho, **nomeia a atividade** com as palavras de quem a fez e **funciona para um dev que não usa o Claude**, que é o caso do teste com um dev. A proposta sai de uma apuração de quatro dias (12 a 15/10) lançada com a pessoa conferindo cada bloco.
 
@@ -94,5 +94,7 @@ Critério: a menor lista de fontes que dá **horário real** ao trabalho, **nome
 | Histórico do navegador | **Não** | Peso 0,30 e janelas de confiança 0,05 a 0,34: cada visita ao Teams virou uma janela. |
 | Salesforce do cliente | **Não** | Só com a autorização do dev, como decidido antes. |
 | Arquivo | **Não no MVP** | Sem dado novo que mude uma decisão. |
+
+**Regra da nuance (decisão do Jordan em 12/10, incluída no MVP em 20/10).** Nem toda hora tem evidência ligada a um horário. Entre um prompt e outro, ou entre duas ações, existem mensagens, conversa e pesquisa que não deixam marca própria. Por isso, no MVP, a janela de uma fonte não termina na última evidência: duas evidências do mesmo assunto separadas por uma lacuna curta formam um bloco contínuo, e a lacuna é anexada ao bloco, sem cortar o meio. O limite proposto para "lacuna curta" é de **30 minutos**, o mesmo usado na apuração de 13/10, quando cada lacuna foi anexada ao bloco seguinte. Lacuna acima de 30 minutos, lacuna entre assuntos diferentes e lacuna que cruza uma janela de trabalho pessoal continuam virando pergunta. O limite de 30 minutos é proposta e entra na validação com o André e o Max (seção 8, pergunta 5). Hoje o código ainda agrupa por 20 minutos (`INTERVALO_DE_CLUSTER` em `coletor.py`); aplicar os 30 minutos no código é mudança à parte, depois dessa validação.
 
 O que o MVP **não** resolve, e continua virando pergunta: trabalho sem rastro (reunião fora do Teams, leitura, planejamento), e dois assuntos em paralelo na mesma máquina, que a evidência não separa. A atividade dos cards do ClickUp (comentários e mudanças de status) não é lida hoje e é a candidata a entrar depois do MVP, porque existe para todo dev, usando o Claude ou não.
