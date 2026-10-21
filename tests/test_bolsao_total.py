@@ -88,6 +88,19 @@ def test_sem_estimativa_cai_na_tabela_de_referencia_e_diz_que_caiu():
     assert "tabela de referencia" in s.origem_previsto
 
 
+def test_total_oficial_do_max_vence_a_soma_das_estimativas():
+    """Reviver: o Max disse 2.950 h; as nove fases somam 3.510 h no ClickUp."""
+    s = B.apurar_total([tarefa(1, previsto=3510, gasto=300)], total("Concessionaria Reviver"))
+    assert s.horas_contratadas == 2950.0
+    assert "tabela de referencia" in s.origem_previsto
+    assert s.horas_gastas == pytest.approx(300.0)
+
+
+def test_projeto_fora_da_tabela_continua_pela_soma_das_estimativas():
+    s = B.apurar_total([tarefa(1, previsto=150, gasto=60)], total("Projeto Novo"))
+    assert s.horas_contratadas == 150.0 and "estimativas" in s.origem_previsto
+
+
 def test_sem_nenhum_previsto_devolve_none_em_vez_de_inventar():
     assert B.apurar_total([tarefa(1, gasto=39)], total("Projeto Desconhecido")) is None
     assert B.apurar_total([], total("Projeto Desconhecido")) is None
@@ -175,8 +188,8 @@ def test_total_dentro_da_faixa_nao_polui_o_digest():
 
 def test_total_acima_da_faixa_aparece_no_digest():
     c = ClienteFalso({"L1": [tarefa(1, previsto=100, gasto=91)]})
-    texto = B.digest(vigiar(c, [total("Reviver Exemplo")]))
-    assert "Vigia de bolsao" in texto and "Reviver Exemplo (total do projeto)" in texto and "[critico]" in texto
+    texto = B.digest(vigiar(c, [total("Projeto Exemplo")]))
+    assert "Vigia de bolsao" in texto and "Projeto Exemplo (total do projeto)" in texto and "[critico]" in texto
 
 
 def test_falha_de_leitura_do_total_sai_nomeada_e_nao_calada():
@@ -198,10 +211,10 @@ def test_o_teto_mensal_continua_sendo_vigiado_junto_com_o_total():
     entradas = [{"duration": 30 * H, "billable": True, "task_location": {"space_id": "S1", "list_id": "X"}}]
     c = ClienteFalso({"L1": [tarefa(1, previsto=100, gasto=80)]}, entradas=entradas)
     mensal = B.Bolsao(projeto="China Gate", list_id="", horas_contratadas=100.0, space_id="S1")
-    v = vigiar(c, [total("Reviver Exemplo")], bolsoes=[mensal])
+    v = vigiar(c, [total("Projeto Exemplo")], bolsoes=[mensal])
     por = {s.projeto: s for s in v.situacoes}
     assert por["China Gate"].escopo == "mes" and por["China Gate"].horas_gastas == pytest.approx(30.0)
-    assert por["Reviver Exemplo"].escopo == "total" and por["Reviver Exemplo"].nivel == "atencao"
+    assert por["Projeto Exemplo"].escopo == "total" and por["Projeto Exemplo"].nivel == "atencao"
 
 
 def test_sem_totais_o_comportamento_de_antes_e_o_mesmo():
@@ -214,14 +227,14 @@ def test_sem_totais_o_comportamento_de_antes_e_o_mesmo():
 
 def test_carregar_totais_so_pega_quem_declara_a_lista_do_projeto():
     totais = B.carregar_totais([
-        {"nome": "Reviver Exemplo", "space_id": "1", "listas_total": ["L9", 77]},
+        {"nome": "Projeto Exemplo", "space_id": "1", "listas_total": ["L9", 77]},
         {"nome": "China Gate", "space_id": "2", "horas_contratadas": 100},
         {"nome": "Unimed Londrina", "space_id": "3"},                      # tem referencia, nao tem lista
         {"nome": "Outro", "space_id": "4", "listas_total": ["L1"], "horas_totais": 500},
         {"nome": "Conta Azul", "space_id": "5", "listas_total": ["L1"]},   # cliente que saiu
     ])
     assert [(t.projeto, t.listas, t.horas_previstas) for t in totais] == [
-        ("Reviver Exemplo", ("L9", "77"), None), ("Outro", ("L1",), 500.0)]
+        ("Projeto Exemplo", ("L9", "77"), None), ("Outro", ("L1",), 500.0)]
 
 
 def test_projeto_acompanhado_pelo_total_nao_e_cobrado_por_teto_mensal():
@@ -251,6 +264,6 @@ def test_total_com_horas_nao_positivas_e_recusado_na_construcao():
 
 @pytest.mark.parametrize("bruto", [-5, "abc", [], {"x": 1}])
 def test_horas_totais_torto_nao_derruba_a_rotina_e_cai_nas_estimativas(bruto):
-    totais = B.carregar_totais([{"nome": "Reviver Exemplo", "space_id": "1", "listas_total": ["L1"],
+    totais = B.carregar_totais([{"nome": "Projeto Exemplo", "space_id": "1", "listas_total": ["L1"],
                                  "horas_totais": bruto}])
-    assert [(t.projeto, t.horas_previstas) for t in totais] == [("Reviver Exemplo", None)]
+    assert [(t.projeto, t.horas_previstas) for t in totais] == [("Projeto Exemplo", None)]

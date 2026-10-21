@@ -425,9 +425,13 @@ def apurar_total(tarefas: list[dict], total: TotalProjeto) -> Situacao | None:
     numeros que o Abner leu na tela em 14/10. O `time_spent` da API e o da propria
     tarefa, nao o das subtarefas somado, senao a soma contaria duas vezes.
 
-    O previsto vem, nesta ordem, de `horas_previstas` do config, da soma das
-    estimativas e da tabela de referencia. Devolve None quando nenhum dos tres
-    existe: sem previsto nao ha contra o que medir, e o chamador diz isso.
+    O previsto vem, nesta ordem, de `horas_previstas` do config, da tabela de
+    referencia (o total oficial que o Max confirmou em 21/10/2026: Unimed 390 h e
+    Reviver 2.950 h) e da soma das estimativas. A tabela vem antes das estimativas
+    de proposito: o total oficial do Reviver (2.950 h) nao e a soma das nove fases
+    no ClickUp (3.510 h), e o vigia da maquina do Max nao tem `horas_totais` no
+    config. Devolve None quando nenhum dos tres existe: sem previsto nao ha contra
+    o que medir, e o chamador diz isso.
 
     Nao projeta data de estouro: ver `Situacao._linha_total`.
     """
@@ -440,10 +444,10 @@ def apurar_total(tarefas: list[dict], total: TotalProjeto) -> Situacao | None:
 
     if total.horas_previstas:
         previsto, origem = total.horas_previstas, "horas_totais do config"
+    elif (ref := total_de_projeto(total.projeto)):
+        previsto, origem = ref, "tabela de referencia (total oficial confirmado pelo Max em 21/10/2026)"
     elif estimado > 0:
         previsto, origem = estimado, "soma das estimativas das tarefas no ClickUp"
-    elif (ref := total_de_projeto(total.projeto)):
-        previsto, origem = ref, "tabela de referencia, sem estimativa nas tarefas"
     else:
         return None
     return Situacao(
