@@ -26,7 +26,7 @@ where = ["src"]
 # Os hashes das versoes entregues: sem eles na wheel, `soteria-pmo-instalar
 # --atualizar` nao reconhece nada como versao nossa e nunca atualiza.
 [tool.setuptools.package-data]
-soteria_pmo = ["versoes_entregues.json"]
+soteria_pmo = ["versoes_entregues.json", "painel_modelo.html"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

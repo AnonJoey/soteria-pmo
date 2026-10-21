@@ -45,6 +45,7 @@ CADENCIAS: dict[str, str] = {
     "horas": DIARIA,           # item 4, sempre com aprovacao humana
     "bolsao": DIARIA,          # item 5, era tempo real ate 31/08
     "rh": DIARIA,              # item 6, regra de calendario
+    "painel": DIARIA,          # a carteira inteira em HTML, no modelo do Max (21/10/2026)
     "datas": CONTINUA,         # item 7, guardiao das datas
 }
 

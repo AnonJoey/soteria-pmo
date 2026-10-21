@@ -20,7 +20,7 @@ DOM = date(2026, 9, 6)
 
 def test_cada_item_tem_cadencia_declarada():
     assert set(R.CADENCIAS) == {"reporte", "cronograma", "auditor", "fechamento",
-                                "horas", "bolsao", "rh", "datas"}
+                                "horas", "bolsao", "rh", "datas", "painel"}
     assert set(R.CADENCIAS.values()) == {R.DIARIA, R.SEMANAL, R.MENSAL, R.CONTINUA}
 
 

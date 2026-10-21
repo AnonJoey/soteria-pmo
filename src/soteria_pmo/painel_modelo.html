@@ -1,0 +1,595 @@
+<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body>
+<meta charset="utf-8">
+<title>Painel PMO Soteria</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400&display=swap">
+<style>
+
+/* Tokens: Soteria Design System (colors_and_type.css). Monocromatico, sem cor de destaque. */
+:root{
+  --canvas:#F4F4F4;        /* soteria-paper: canvas de UI de produto */
+  --surface:#F4F4F4;
+  --ink:#000000;           /* soteria-black */
+  --ink-90:rgba(0,0,0,.90);
+  --ink-65:rgba(0,0,0,.65);
+  --ink-40:rgba(0,0,0,.40);
+  --ink-12:rgba(0,0,0,.12);
+  --ink-06:rgba(0,0,0,.06);
+  --gray:#9D9D9D;          /* soteria-gray */
+  --inv-bg:#000000;
+  --inv-fg:#E1E1E1;        /* soteria-off-white */
+  --tip-bg:#000000;
+  --tip-fg:#E1E1E1;
+  --f:'Soteria Diatype','Hanken Grotesk',ui-sans-serif,system-ui,sans-serif;
+  --ease:cubic-bezier(0.2,0.7,0.2,1);
+  --line:3px;              /* espessura do motivo das tres linhas */
+  /* Cores de situacao (opcao A, terrosa). Excecao aprovada pelo Max em 28/09/2026,
+     restrita ao painel interno: a marca nao usa cor semantica em pecas institucionais. */
+  --st-ok:#5E7D66;--st-at:#A8832A;--st-cr:#C0573E;--st-es:#8E2A22;--st-on:#F4F4F4;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    color-scheme:dark;
+    --canvas:#000000;--surface:#000000;--ink:#E1E1E1;
+    --ink-90:rgba(225,225,225,.90);--ink-65:rgba(225,225,225,.65);--ink-40:rgba(225,225,225,.40);
+    --ink-12:rgba(225,225,225,.14);--ink-06:rgba(225,225,225,.07);
+    --gray:#9D9D9D;--inv-bg:#E1E1E1;--inv-fg:#000000;--tip-bg:#E1E1E1;--tip-fg:#000000;
+    --st-ok:#8DB199;--st-at:#D4B155;--st-cr:#E08066;--st-es:#D0605A;--st-on:#000000;
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme:dark;
+  --canvas:#000000;--surface:#000000;--ink:#E1E1E1;
+  --ink-90:rgba(225,225,225,.90);--ink-65:rgba(225,225,225,.65);--ink-40:rgba(225,225,225,.40);
+  --ink-12:rgba(225,225,225,.14);--ink-06:rgba(225,225,225,.07);
+  --gray:#9D9D9D;--inv-bg:#E1E1E1;--inv-fg:#000000;--tip-bg:#E1E1E1;--tip-fg:#000000;
+  --st-ok:#8DB199;--st-at:#D4B155;--st-cr:#E08066;--st-es:#D0605A;--st-on:#000000;
+}
+*{box-sizing:border-box}
+html{background:var(--canvas)}
+body{background:var(--canvas);color:var(--ink);font-family:var(--f);font-weight:400;font-size:15px;line-height:1.45;margin:0;-webkit-font-smoothing:antialiased;font-feature-settings:'ss01','ss02','cv11'}
+b,strong,em{font-weight:400;font-style:normal}
+.wrap{max-width:1200px;margin:0 auto;padding-inline:clamp(16px,3.2vw,40px);padding-block:28px 72px}
+button{font:inherit;color:inherit;border-radius:0}
+:focus-visible{outline:1px solid var(--ink);outline-offset:3px}
+.num,td.n,th.n{font-variant-numeric:tabular-nums}
+
+/* masthead */
+.mast{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
+.logo{display:block;width:88px;height:auto;color:var(--ink)}
+.logo .ln{transform-box:fill-box;transform-origin:left center;animation:draw .52s var(--ease) both}
+.logo .ln:nth-of-type(2){animation-delay:.08s}.logo .ln:nth-of-type(3){animation-delay:.16s}
+@keyframes draw{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+.mast .meta{display:grid;gap:3px;justify-items:end;font-size:11px;letter-spacing:.16em;color:var(--ink-65);text-align:right;text-transform:uppercase}
+.mast .meta span:last-child{color:var(--ink)}
+
+/* hero */
+.hero{padding-block:56px 40px;display:grid;gap:18px;border-bottom:1px solid var(--ink-12)}
+.eyebrow,.sec-label{font-size:11px;letter-spacing:.16em;color:var(--ink-65);text-transform:uppercase}
+h1{font-weight:400;font-size:clamp(36px,5.6vw,64px);letter-spacing:-.02em;line-height:1.02;margin:0;text-wrap:balance}
+h1 .soft{color:var(--gray)}
+.lede{color:var(--ink-65);max-width:66ch;line-height:1.65;margin:0;font-size:17px}
+.lede b{color:var(--ink)}
+.mark{text-decoration:underline;text-decoration-thickness:var(--line);text-underline-offset:5px;color:var(--ink)}
+
+section{padding-block:40px;border-bottom:1px solid var(--ink-12);display:grid;gap:24px}
+.sec-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.sec-title{display:grid;gap:8px}
+h2{font-weight:400;font-size:clamp(24px,2.8vw,30px);letter-spacing:-.012em;line-height:1.12;margin:0;text-wrap:balance}
+h3{font-weight:400;font-size:11px;letter-spacing:.16em;color:var(--ink-65);margin:0;text-transform:uppercase}
+.note{font-size:12px;color:var(--ink-65);line-height:1.6;max-width:84ch;margin:0}
+
+/* kpis */
+.kpis{display:grid;grid-template-columns:repeat(6,minmax(0,1fr));border-top:1px solid var(--ink)}
+.kpi{padding:14px 16px 6px;border-right:1px solid var(--ink-12);display:grid;gap:6px;align-content:start}
+.kpi:first-child{padding-left:0}
+.kpi:last-child{border-right:0}
+.kpi .l{font-size:11px;letter-spacing:.16em;color:var(--ink-65);text-transform:uppercase}
+.kpi .v{font-size:36px;line-height:1;letter-spacing:-.012em;font-variant-numeric:tabular-nums;justify-self:start}
+.kpi .v small{font-size:15px;color:var(--ink-65);letter-spacing:0}
+.kpi .s{font-size:12px;color:var(--ink-65)}
+.kpi.alert .v{color:var(--st-es);text-decoration:underline;text-decoration-thickness:var(--line);text-underline-offset:7px}
+@media (max-width:900px){.kpis{grid-template-columns:repeat(3,minmax(0,1fr))}.kpi:nth-child(3){border-right:0}.kpi:nth-child(4){padding-left:0}.kpi:nth-child(n+4){border-top:1px solid var(--ink-12)}}
+@media (max-width:520px){.kpis{grid-template-columns:repeat(2,minmax(0,1fr))}.kpi{border-right:1px solid var(--ink-12)!important;padding-left:16px!important}.kpi:nth-child(odd){padding-left:0!important}.kpi:nth-child(even){border-right:0!important}.kpi:nth-child(n+3){border-top:1px solid var(--ink-12)}}
+
+/* controles */
+.seg{display:inline-flex;border:1px solid var(--ink)}
+.seg button{background:transparent;border:0;color:var(--ink-65);padding:7px 13px;font-size:12px;cursor:pointer;transition:background .18s var(--ease),color .18s var(--ease)}
+.seg button+button{border-left:1px solid var(--ink)}
+.seg button[aria-pressed="true"]{background:var(--inv-bg);color:var(--inv-fg)}
+.seg button:hover:not([aria-pressed="true"]){color:var(--ink)}
+.ctl{display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:11px;letter-spacing:.16em;color:var(--ink-65);text-transform:uppercase}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{background:transparent;border:1px solid var(--ink-12);color:var(--ink-65);padding:6px 11px;font-size:13px;cursor:pointer;display:inline-flex;gap:8px;align-items:center;transition:border-color .18s var(--ease),color .18s var(--ease)}
+.chip:hover{color:var(--ink);border-color:var(--ink)}
+.chip[aria-pressed="true"]{background:var(--inv-bg);color:var(--inv-fg);border-color:var(--inv-bg)}
+.chip .dot{width:7px;height:7px;border-radius:999px;border:1px solid currentColor}
+.chip .dot.full{background:currentColor}
+.chip .dot.c0{color:var(--st-ok)}.chip .dot.c1{color:var(--st-at)}.chip .dot.c2,.chip .dot.c3{color:var(--st-cr)}.chip .dot.c4{color:var(--st-es)}
+.chip[aria-pressed="true"] .dot{outline:1px solid var(--inv-fg);outline-offset:1px}
+
+/* tabela */
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{width:100%;border-collapse:collapse;min-width:940px}
+thead th{background:transparent;color:var(--ink-65);font-weight:400;font-size:10px;letter-spacing:.16em;text-align:left;padding:8px 12px 8px 0;border-bottom:1px solid var(--ink);white-space:nowrap;text-transform:uppercase}
+thead th.sort{cursor:pointer;user-select:none}
+thead th.sort:hover{color:var(--ink)}
+thead th .ar{display:inline-block;width:10px;color:var(--ink)}
+tbody td{border-bottom:1px solid var(--ink-12);padding:12px 12px 12px 0;vertical-align:middle}
+tbody tr.row{cursor:pointer;transition:background .18s var(--ease)}
+tbody tr.row:hover td{background:var(--ink-06)}
+tbody tr.row.sel td{background:var(--ink-06)}
+tbody tr.row.sel td:first-child{box-shadow:inset var(--line) 0 0 var(--ink);padding-left:12px}
+td.n,th.n{text-align:right}
+.cname{font-size:16px}
+.csub{font-size:11px;color:var(--ink-65)}
+.u{color:var(--st-es);text-decoration:underline;text-decoration-thickness:var(--line);text-underline-offset:5px}
+.dim{color:var(--ink-40)}
+
+/* selos de situacao: forma e peso, nunca cor */
+.badge{display:inline-block;font-size:10px;letter-spacing:.16em;text-transform:uppercase;padding:3px 8px;white-space:nowrap;border:1px solid var(--ink-40);color:var(--ink-65)}
+.badge.s4{background:var(--st-es);color:var(--st-on);border-color:var(--st-es)}
+.badge.s3{border:var(--line) solid var(--st-cr);color:var(--st-cr);padding:1px 6px}
+.badge.s2{border:var(--line) solid var(--st-cr);color:var(--st-cr);padding:1px 6px}
+.badge.s1{border:1px solid var(--st-at);color:var(--st-at)}
+.badge.s0{border-color:var(--st-ok);color:var(--st-ok)}
+.badge.st{border-color:var(--ink-12);color:var(--ink-65)}
+.badge.sx{border:1px dashed var(--ink-40);color:var(--ink-40)}
+
+/* medidor */
+.meter{position:relative;height:8px;background:var(--ink-06);min-width:160px}
+.meter i{position:absolute;left:0;top:0;bottom:0;background:var(--mc,var(--ink))}
+.meter i.over{background:repeating-linear-gradient(-45deg,var(--st-es) 0 2px,transparent 2px 5px);outline:1px solid var(--st-es);outline-offset:-1px}
+.meter b{position:absolute;top:-5px;bottom:-5px;width:1px;background:var(--ink)}
+.meter u{position:absolute;top:0;bottom:0;border:1px dashed var(--ink-40);border-left:0;text-decoration:none}
+
+/* detalhe */
+.detail-top{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:40px;align-items:start}
+@media (max-width:860px){.detail-top{grid-template-columns:1fr}}
+.panel{display:grid;gap:12px;align-content:start;border-top:1px solid var(--ink);padding-top:12px}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:40px}
+@media (max-width:860px){.grid2{grid-template-columns:1fr}}
+svg{display:block;width:100%;height:auto;overflow:visible}
+svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
+.legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;color:var(--ink-65)}
+.legend span{display:inline-flex;align-items:center;gap:6px}
+.legend i{display:inline-block;width:10px;height:10px}
+.legend i.line{height:0;border-top:1px dashed var(--ink);width:14px}
+.legend i.hatch{background:repeating-linear-gradient(-45deg,var(--st-es) 0 2px,transparent 2px 4px);outline:1px solid var(--st-es);outline-offset:-1px}
+.legend i.hsel{background:repeating-linear-gradient(-45deg,var(--ink) 0 2px,transparent 2px 4px);outline:1px solid var(--ink);outline-offset:-1px}
+.list-rows{display:grid;gap:10px}
+.lr{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;align-items:baseline}
+.lr .t{font-size:13px;overflow-wrap:anywhere}
+.lr .t small{color:var(--ink-40);font-size:11px;margin-left:6px}
+.lr .h{font-variant-numeric:tabular-nums;font-size:13px}
+.lr .bar{grid-column:1/-1;height:4px;background:var(--ink-06);position:relative}
+.lr .bar i{position:absolute;left:0;top:0;bottom:0}
+.tiny-tbl table{min-width:0}
+.tiny-tbl td.n,.tiny-tbl th.n{white-space:nowrap;padding-right:0}
+.tiny-tbl td:first-child{min-width:12ch}
+.tiny-tbl tbody td{font-size:13px;padding:9px 12px 9px 0}
+.empty{color:var(--ink-65);font-size:13px;padding:8px 0}
+.heat-wrap{overflow-x:auto}
+
+/* tooltip */
+#tip{position:fixed;z-index:9;pointer-events:none;background:var(--tip-bg);color:var(--tip-fg);padding:9px 11px;font-size:12px;line-height:1.5;max-width:290px;opacity:0;transition:opacity .18s var(--ease)}
+#tip.on{opacity:1}
+#tip .k{opacity:.7;font-size:10px;letter-spacing:.16em;text-transform:uppercase;display:block;margin-bottom:2px}
+
+.method{display:grid;gap:10px}
+.foot{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding-top:22px}
+.triad{font-size:clamp(18px,2.2vw,24px);letter-spacing:-.012em;line-height:1.2}
+.foot .r{font-size:11px;letter-spacing:.16em;color:var(--ink-65);text-transform:uppercase}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+</style>
+
+<div class="wrap">
+  <header class="mast">
+    <span class="logo-texto">soteria</span>
+    <div class="meta"><span>painel pmo · carteira de clientes</span><span id="m-gerado"></span></div>
+  </header>
+
+  <div class="hero">
+    <div class="eyebrow" id="h-eyebrow"></div>
+    <h1 id="h-titulo"></h1>
+    <p class="lede" id="h-lede"></p>
+  </div>
+
+  <section id="carteira" aria-labelledby="t-carteira">
+    <div class="sec-head">
+      <div class="sec-title"><span class="sec-label">carteira</span><h2 id="t-carteira">O mês até aqui</h2></div>
+      <div class="ctl"><span>teto medido contra</span>
+        <div class="seg" role="group" aria-label="base do teto">
+          <button id="b-auto" aria-pressed="true">sustentação quando houver</button>
+          <button id="b-total" aria-pressed="false">espaço inteiro</button>
+        </div>
+      </div>
+    </div>
+    <div class="kpis" id="kpis"></div>
+    <div class="tbl-wrap">
+      <table id="tbl">
+        <thead><tr>
+          <th class="sort" data-k="nome">cliente <span class="ar"></span></th>
+          <th>consumo × teto do mês</th>
+          <th class="sort n" data-k="pct">% teto <span class="ar"></span></th>
+          <th class="sort n" data-k="proj" id="th-proj">projeção <span class="ar"></span></th>
+          <th>12 semanas</th>
+          <th class="sort n" data-k="semhora">dias sem hora <span class="ar"></span></th>
+          <th class="sort n" data-k="venc">vencidas <span class="ar"></span></th>
+          <th class="sort" data-k="nivel">situação <span class="ar"></span></th>
+        </tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="legend"><span><span class="badge s4">estourado</span></span><span><span class="badge s3">crítico</span></span><span><span class="badge s1">atenção</span></span><span><span class="badge s0">dentro</span></span><span><span class="badge sx">sem teto</span></span><span><i class="hatch"></i>acima do teto</span><span><i class="line"></i>projeção</span></div>
+    <p class="note" id="n-base"></p>
+  </section>
+
+  <section id="cliente" aria-labelledby="t-cliente">
+    <div class="sec-head">
+      <div class="sec-title"><span class="sec-label">cliente</span><h2 id="t-cliente"></h2></div>
+    </div>
+    <div class="chips" id="chips" role="group" aria-label="escolher cliente"></div>
+    <div class="kpis" id="c-kpis"></div>
+
+    <div class="detail-top">
+      <div class="panel">
+        <h3>bolsão no mês · consumo acumulado</h3>
+        <div id="burn"></div>
+        <div class="legend" id="burn-leg"></div>
+      </div>
+      <div class="panel">
+        <h3>horas por semana · últimas 12</h3>
+        <div id="weeks"></div>
+        <div class="legend"><span><i style="background:var(--ink)"></i>sustentação</span><span><i style="background:var(--gray)"></i>implantação</span><span id="wk-leg-teto"><i class="line"></i>teto mensal ÷ 4,33</span></div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>ritmo diário · cada quadrado é um dia</h3>
+      <div class="heat-wrap"><div id="heat"></div></div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel"><h3>onde as horas foram · listas no mês</h3><div class="list-rows" id="listas"></div></div>
+      <div class="panel"><h3>quem lançou · pessoas no mês</h3><div class="list-rows" id="pessoas"></div></div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel"><h3 id="t-venc">prazos vencidos</h3><div class="tbl-wrap tiny-tbl" id="vencidas"></div></div>
+      <div class="panel"><h3>vence nos próximos 7 dias</h3><div class="tbl-wrap tiny-tbl" id="avencer"></div></div>
+    </div>
+
+    <div class="panel"><h3 id="t-sp">semana passada</h3><div class="tbl-wrap tiny-tbl" id="semana"></div></div>
+  </section>
+
+  <section id="equipe" aria-labelledby="t-equipe">
+    <div class="sec-head">
+      <div class="sec-title"><span class="sec-label">equipe</span><h2 id="t-equipe">Carga lançada por pessoa</h2></div>
+      <div class="legend"><span><i class="hsel"></i><span id="eq-sel"></span></span><span><i class="line"></i><span id="eq-ref"></span></span></div>
+    </div>
+    <div id="carga"></div>
+    <p class="note">Horas lançadas no ClickUp no mês, somadas entre clientes. Não mede capacidade nem desempenho. Quem lança pouco pode ter trabalhado sem apontar, e quem passa da referência pode ter lançado em lote. O gráfico mostra onde a mesma pessoa está repartida entre clientes.</p>
+  </section>
+
+  <section class="method" aria-label="como ler">
+    <span class="sec-label">como ler</span>
+    <p class="note" id="n-metodo"></p>
+    <p class="note">Silêncio no ClickUp é igual para trabalho que não andou e para trabalho que andou e não foi apontado. O painel não separa as duas hipóteses e não aponta responsáveis. O relatório ao cliente segue no nível 2: o Max valida e envia.</p>
+  </section>
+
+  <footer class="foot"><span class="triad">orchestrating. the transition. to the future.</span><span class="r" id="f-dir"></span></footer>
+</div>
+<div id="tip" role="tooltip"></div>
+
+<script>
+const D = __DADOS_DO_PAINEL__;
+(function(){
+const $ = s => document.querySelector(s);
+const nf1 = new Intl.NumberFormat('pt-BR',{maximumFractionDigits:1,minimumFractionDigits:0});
+const nf0 = new Intl.NumberFormat('pt-BR',{maximumFractionDigits:0});
+const H = x => nf1.format(Math.round(x*10)/10)+'h';
+const P = x => nf0.format(Math.round(x*100))+'%';
+const dt = s => { const [y,m,d]=s.split('-'); return `${d}/${m}`; };
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const MESES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
+const HATCH = (id,cor='var(--st-es)') => `<defs><pattern id="${id}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="var(--canvas)"/><rect width="2" height="5" fill="${cor}"/></pattern></defs>`;
+const COR={0:'var(--st-ok)',1:'var(--st-at)',2:'var(--st-cr)',3:'var(--st-cr)',4:'var(--st-es)'};
+
+let modo='auto', sel=null, sortK='pct', sortDir=-1;
+try{ modo=localStorage.getItem('pmo-modo')||'auto'; sel=localStorage.getItem('pmo-sel'); }catch(e){}
+
+const DU=D.mes.dias_uteis_passados, DUM=D.mes.dias_uteis_mes;
+const hoje=new Date(D.hoje+'T12:00:00');
+const fimMes=D.mes.fim;
+
+// Base do teto decidida pelo MES corrente: um cliente que teve sustentacao em
+// meses anteriores e nenhuma agora (um cliente de sustentação em um mês parado) era medido contra zero.
+const temSust=c=>c.mes.sust>0;
+const teveSust=c=>c.semanas.some(s=>s.sust>0);
+// Regra fixa por cliente (config.json) vence a automatica; o botao 'espaco inteiro' vence as duas.
+const base=c=>modo==='total'?'total':(c.base_fixa||(temSust(c)?'sust':'total'));
+const consumo=c=>base(c)==='sust'?c.mes.sust:c.mes.total;
+const projecao=c=>DU?consumo(c)/DU*DUM:0;
+const temTeto=c=>c.teto>0;
+const pct=c=>temTeto(c)?consumo(c)/c.teto:null;
+function nivel(c){
+  if(!temTeto(c)) return {k:'sem teto',cls:'sx',ord:-1};
+  const p=pct(c);
+  if(p>=1) return {k:'estourado',cls:'s4',ord:4};
+  if(p>=.9) return {k:'crítico',cls:'s3',ord:3};
+  if(projecao(c)>c.teto) return {k:'projeta estouro',cls:'s2',ord:2};
+  if(p>=.75) return {k:'atenção',cls:'s1',ord:1};
+  return {k:'dentro',cls:'s0',ord:0};
+}
+const alerta=c=>nivel(c).ord>=2;
+function motivoSemTeto(c){
+  if(c.total_projeto) return `total de projeto de ${nf0.format(c.total_projeto)}h, não teto mensal`;
+  return c.motivo_sem_teto||'sem teto configurado';
+}
+const baseNome=c=>base(c)==='sust'?'sustentação':'espaço inteiro';
+
+/* tooltip */
+const tip=$('#tip');
+document.addEventListener('mousemove',e=>{
+  const t=e.target.closest('[data-tip]');
+  if(!t){tip.classList.remove('on');return;}
+  tip.innerHTML=t.getAttribute('data-tip'); tip.classList.add('on');
+  const w=tip.offsetWidth,h=tip.offsetHeight;
+  let x=e.clientX+14,y=e.clientY+14;
+  if(x+w>innerWidth-8)x=e.clientX-w-14;
+  if(y+h>innerHeight-8)y=e.clientY-h-14;
+  tip.style.left=x+'px'; tip.style.top=y+'px';
+});
+document.addEventListener('scroll',()=>tip.classList.remove('on'),{passive:true});
+const svg=(w,h,inner,style='')=>`<svg viewBox="0 0 ${w} ${h}" preserveAspectRatio="xMinYMin meet" style="${style}">${inner}</svg>`;
+
+function hero(){
+  const g=new Date(D.gerado_em);
+  $('#m-gerado').textContent=`atualizado ${g.toLocaleDateString('pt-BR')} ${g.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+  $('#h-eyebrow').textContent=`agentes pmo · ${MESES[hoje.getMonth()]} ${hoje.getFullYear()} · dia útil ${DU} de ${DUM}`;
+  const C=D.clientes, total=C.reduce((a,c)=>a+c.mes.total,0);
+  $('#h-titulo').innerHTML=`${nf0.format(total)} horas em ${C.length} clientes. <span class="soft">Até ${dt(D.hoje)}.</span>`;
+  const est=C.filter(c=>temTeto(c)&&pct(c)>=1);
+  const proj=C.filter(c=>temTeto(c)&&pct(c)<1&&projecao(c)>c.teto);
+  const venc=C.reduce((a,c)=>a+c.tarefas.vencidas,0), vencC=C.filter(c=>c.tarefas.vencidas>0).length;
+  const parados=C.filter(c=>(c.dias_uteis_sem_hora??0)>=4);
+  let s=`<span class="mark">${est.length} de ${C.filter(temTeto).length}</span> clientes com teto já passaram dele no mês`;
+  if(est.length) s+=`: ${est.map(c=>esc(c.nome)).join(', ')}`;
+  s+=proj.length?`. Mais <b>${proj.length}</b> projeta${proj.length>1?'m':''} estouro até ${dt(fimMes)}. `:'. ';
+  s+=`<b>${venc}</b> tarefas estão com prazo vencido em ${vencC} clientes.`;
+  if(parados.length) s+=` ${parados.map(c=>esc(c.nome)).join(' e ')} ${parados.length>1?'estão':'está'} há quatro ou mais dias úteis sem hora lançada.`;
+  $('#h-lede').innerHTML=s;
+}
+
+function kpis(){
+  const C=D.clientes;
+  const tot=C.reduce((a,c)=>a+c.mes.total,0), su=C.reduce((a,c)=>a+c.mes.sust,0), im=C.reduce((a,c)=>a+c.mes.impl,0), fat=C.reduce((a,c)=>a+c.mes.fat,0);
+  const est=C.filter(c=>temTeto(c)&&pct(c)>=1).length, venc=C.reduce((a,c)=>a+c.tarefas.vencidas,0);
+  const k=[
+    ['horas no mês',nf0.format(tot)+'<small>h</small>',`${nf1.format(tot/DU)}h por dia útil`],
+    ['sustentação',nf0.format(su)+'<small>h</small>',`${P(su/tot)} do total`],
+    ['implantação',nf0.format(im)+'<small>h</small>',`${P(im/tot)} do total`],
+    ['faturável',P(fat/tot),`${nf0.format(tot-fat)}h não faturáveis`,fat/tot<.8],
+    ['acima do teto',`${est}<small> de ${C.filter(temTeto).length}</small>`,'clientes com teto',est>0],
+    ['prazos vencidos',venc,`${C.reduce((a,c)=>a+(c.tarefas.vencidas_espera||0),0)} em espera (homologação, deploy, bloqueio)`,venc>0],
+  ];
+  $('#kpis').innerHTML=k.map(([l,v,s,a])=>`<div class="kpi${a?' alert':''}"><span class="l">${l}</span><span class="v">${v}</span><span class="s">${s}</span></div>`).join('');
+}
+
+function spark(c){
+  const W=120,Hh=26,xs=c.semanas,m=Math.max(1,...xs.map(s=>s.sust+s.impl)),bw=W/xs.length;
+  let r='';
+  xs.forEach((s,i)=>{
+    const t=s.sust+s.impl,h=t/m*(Hh-2),hs=s.sust/m*(Hh-2),cur=i===xs.length-1;
+    r+=`<g data-tip="<span class='k'>semana de ${dt(s.semana)}${cur?' · em curso':''}</span>${H(t)} · sustentação ${H(s.sust)} · implantação ${H(s.impl)}"><rect x="${i*bw}" y="0" width="${bw}" height="${Hh}" fill="transparent"/>`;
+    r+=`<rect x="${i*bw+1}" y="${Hh-h}" width="${bw-2}" height="${h-hs}" fill="var(--gray)" ${cur?'fill-opacity=".5"':''}/>`;
+    r+=`<rect x="${i*bw+1}" y="${Hh-hs}" width="${bw-2}" height="${hs}" fill="var(--ink)" ${cur?'fill-opacity=".45"':''}/></g>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${Hh}" style="width:${W}px">${r}</svg>`;
+}
+function meter(c){
+  if(!temTeto(c)) return `<span class="csub">${esc(motivoSemTeto(c))}</span>`;
+  const cons=consumo(c),pr=projecao(c),cap=Math.max(c.teto,cons,pr)*1.02,w=v=>Math.min(100,v/cap*100);
+  const nv=nivel(c);
+  return `<div class="meter" style="--mc:${COR[nv.ord]||'var(--ink)'}" data-tip="<span class='k'>${esc(c.nome)} · base ${baseNome(c)}</span>${H(cons)} de ${H(c.teto)}<br>projeção ${H(pr)} até ${dt(fimMes)}">
+    ${pr>cons?`<u style="left:${w(cons)}%;width:${w(pr)-w(cons)}%"></u>`:''}
+    <i style="width:${w(Math.min(cons,c.teto))}%"></i>
+    ${cons>c.teto?`<i class="over" style="left:${w(c.teto)}%;width:${w(cons)-w(c.teto)}%"></i>`:''}
+    <b style="left:${w(c.teto)}%"></b></div>
+    <div class="csub" style="margin-top:7px">${H(cons)} de ${nf0.format(c.teto)}h · ${baseNome(c)}</div>`;
+}
+function tabela(){
+  $('#th-proj').firstChild.textContent=`projeção ${dt(fimMes)} `;
+  const rows=D.clientes.map(c=>({c,nome:c.nome,pct:pct(c)??-1,proj:temTeto(c)?projecao(c)/c.teto:-1,semhora:c.dias_uteis_sem_hora??99,venc:c.tarefas.vencidas,nivel:nivel(c).ord}));
+  rows.sort((a,b)=>{const x=a[sortK],y=b[sortK];return (typeof x==='string'?x.localeCompare(y):x-y)*sortDir;});
+  $('#tbody').innerHTML=rows.map(({c})=>{
+    const n=nivel(c),p=pct(c),sh=c.dias_uteis_sem_hora,pr=projecao(c);
+    return `<tr class="row${c.nome===sel?' sel':''}" data-c="${esc(c.nome)}" tabindex="0">
+      <td><div class="cname">${esc(c.nome)}</div><div class="csub">${nf0.format(c.mes.total)}h no mês · ${nf0.format(c.mes.sust)} sust · ${nf0.format(c.mes.impl)} impl${modo==='auto'&&c.base_fixa?' · regra fixa: '+(c.base_fixa==='total'?'espaço inteiro':'sustentação'):(modo==='auto'&&!temSust(c)&&teveSust(c)?' · sem sustentação no mês':'')}</div></td>
+      <td>${meter(c)}</td>
+      <td class="n">${p==null?'<span class="dim">—</span>':`<span class="${p>=1?'u':''}">${P(p)}</span>`}</td>
+      <td class="n">${temTeto(c)?`<span class="${pr>c.teto?'u':''}">${H(pr)}</span>`:`<span class="dim">${H(pr)}</span>`}</td>
+      <td>${spark(c)}</td>
+      <td class="n">${sh==null?'<span class="dim">sem hora</span>':`<span class="${sh>=4?'u':''}">${sh}</span>`}</td>
+      <td class="n"><span class="${c.tarefas.vencidas?'u':''}">${c.tarefas.vencidas}</span></td>
+      <td><span class="badge ${n.cls}">${n.k}</span></td></tr>`;
+  }).join('');
+  document.querySelectorAll('#tbl th.sort').forEach(th=>{th.querySelector('.ar').textContent=th.dataset.k===sortK?(sortDir<0?'↓':'↑'):'';});
+  const fixos=D.clientes.filter(c=>c.base_fixa);
+  const semBase=D.clientes.filter(c=>!c.base_fixa&&!temSust(c)&&temTeto(c)).map(c=>c.nome);
+  $('#n-base').textContent=modo==='auto'
+    ?`${fixos.length?`Regra fixa: ${fixos.map(c=>`${c.nome} pelo ${c.base_fixa==='total'?'espaço inteiro':'só sustentação'}`).join(', ')}. `:''}Clientes com hora de sustentação no mês (${D.clientes.filter(c=>!c.base_fixa&&temSust(c)).map(c=>c.nome).join(', ')}) são medidos só pela sustentação. ${semBase.join(', ')} não têm hora de sustentação no mês e são medidos pelo espaço inteiro, a mesma base do vigia de bolsão do soteria-pmo. O trecho tracejado é a projeção até ${dt(fimMes)} no ritmo de dias úteis do mês; o traço vertical é o teto.`
+    :`Todos os clientes medidos pelo espaço inteiro do ClickUp, projetos e sustentação somados. É a mesma base que o vigia de bolsão do soteria-pmo usa hoje.`;
+}
+document.querySelectorAll('#tbl th.sort').forEach(th=>th.addEventListener('click',()=>{const k=th.dataset.k; if(sortK===k) sortDir*=-1; else {sortK=k; sortDir=(k==='nome'?1:-1);} tabela();}));
+const irCliente=()=>document.getElementById('cliente').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});
+$('#tbody').addEventListener('click',e=>{const r=e.target.closest('tr.row'); if(r){escolher(r.dataset.c); irCliente();}});
+$('#tbody').addEventListener('keydown',e=>{if(e.key==='Enter'){const r=e.target.closest('tr.row'); if(r){escolher(r.dataset.c); irCliente();}}});
+function setModo(m){ modo=m; try{localStorage.setItem('pmo-modo',m)}catch(e){} $('#b-auto').setAttribute('aria-pressed',m==='auto'); $('#b-total').setAttribute('aria-pressed',m==='total'); tudo(); }
+$('#b-auto').onclick=()=>setModo('auto'); $('#b-total').onclick=()=>setModo('total');
+
+function chips(){
+  $('#chips').innerHTML=D.clientes.map(c=>`<button class="chip" aria-pressed="${c.nome===sel}" data-c="${esc(c.nome)}"><span class="dot ${nivel(c).ord>=0?'full c'+nivel(c).ord:''}"></span>${esc(c.nome)}</button>`).join('');
+}
+$('#chips').addEventListener('click',e=>{const b=e.target.closest('.chip'); if(b) escolher(b.dataset.c);});
+function escolher(nome){ sel=nome; try{localStorage.setItem('pmo-sel',nome)}catch(e){} detalhe(); tabela(); carga(); }
+
+function burn(c){
+  const W=560,Hh=230,L=40,R=16,T=16,B=26;
+  const nd=new Date(fimMes+'T12:00:00').getDate(), mm=D.mes.inicio.slice(5,7);
+  const serie=base(c)==='sust'?(c.diario_sust||{}):c.diario, today=hoje.getDate();
+  const pts=[]; let acc=0;
+  for(let d=1; d<=today; d++){ const iso=`${D.mes.inicio.slice(0,8)}${String(d).padStart(2,'0')}`, v=serie[iso]||0; acc+=v; pts.push([d,acc,iso,v]); }
+  const cons=consumo(c), pr=projecao(c), ymax=Math.max(c.teto||0,pr,cons,1)*1.1;
+  const x=d=>L+(d-1)/(nd-1)*(W-L-R), y=v=>T+(1-v/ymax)*(Hh-T-B);
+  let g=HATCH('hb');
+  const step=ymax>400?100:ymax>150?50:ymax>60?20:10;
+  for(let v=0; v<=ymax; v+=step) g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--ink-06)"/><text x="${L-6}" y="${y(v)+3}" text-anchor="end">${v}h</text>`;
+  [1,8,15,22,nd].forEach(d=>g+=`<text x="${x(d)}" y="${Hh-8}" text-anchor="middle">${String(d).padStart(2,'0')}/${mm}</text>`);
+  if(pts.length){
+    const last=pts[pts.length-1];
+    const area=`M${x(1)},${y(0)} `+pts.map(p=>`L${x(p[0])},${y(p[1])}`).join(' ')+` L${x(last[0])},${y(0)} Z`;
+    g+=`<path d="${area}" fill="var(--ink-06)"/>`;
+    if(c.teto&&cons>c.teto){
+      g+=`<clipPath id="ov"><rect x="0" y="0" width="${W}" height="${y(c.teto)}"/></clipPath><path d="${area}" fill="url(#hb)" clip-path="url(#ov)" opacity=".55"/>`;
+    }
+    g+=`<path d="${pts.map((p,i)=>`${i?'L':'M'}${x(p[0])},${y(p[1])}`).join(' ')}" fill="none" stroke="var(--ink)" stroke-width="1.6"/>`;
+    const pOver=c.teto&&pr>c.teto;
+    g+=`<line x1="${x(last[0])}" y1="${y(last[1])}" x2="${x(nd)}" y2="${y(pr)}" stroke="${pOver?'var(--st-cr)':'var(--ink)'}" stroke-dasharray="4 4" stroke-width="${pOver?2:1}"/>`;
+    g+=`<circle cx="${x(nd)}" cy="${y(pr)}" r="3.5" fill="var(--canvas)" stroke="${pOver?'var(--st-cr)':'var(--ink)'}"/>`;
+    g+=`<text x="${x(nd)-8}" y="${y(pr)+(y(pr)<T+14?14:-8)}" text-anchor="end" style="fill:${pOver?'var(--st-cr)':'var(--ink)'}">projeção ${H(pr)}</text>`;
+    g+=`<circle cx="${x(last[0])}" cy="${y(last[1])}" r="4" fill="${c.teto&&cons>c.teto?'var(--st-es)':'var(--ink)'}"/>`;
+    const cw=(W-L-R)/(nd-1);
+    pts.forEach(p=>g+=`<rect x="${x(p[0])-cw/2}" y="${T}" width="${cw}" height="${Hh-T-B}" fill="transparent" data-tip="<span class='k'>${dt(p[2])}</span>${H(p[3])} no dia<br>acumulado ${H(p[1])}${c.teto?` de ${H(c.teto)}`:''}"/>`);
+  }
+  if(c.teto) g+=`<line x1="${L}" x2="${W-R}" y1="${y(c.teto)}" y2="${y(c.teto)}" stroke="var(--ink)" stroke-dasharray="2 3"/><text x="${L+6}" y="${y(c.teto)-6}" style="fill:var(--ink)">teto ${nf0.format(c.teto)}h</text>`;
+  $('#burn').innerHTML=svg(W,Hh,g);
+  $('#burn-leg').innerHTML=`<span><i style="background:var(--ink);height:2px"></i>acumulado · ${baseNome(c)}</span>`+(c.teto?`<span><i class="line"></i>teto</span><span><i class="hatch"></i>acima do teto</span>`:`<span class="dim">${esc(motivoSemTeto(c))}</span>`)+`<span><i style="border-top:1px dashed var(--ink);height:0;width:14px"></i>projeção no ritmo atual</span>`+(c.base_fixa&&modo==='auto'?`<span class="dim">regra fixa: ${esc(c.base_origem||'base definida no config')}</span>`:(base(c)==='total'&&modo==='auto'&&teveSust(c)?`<span class="dim">sem hora de sustentação no mês; medido pelo espaço inteiro</span>`:''));
+}
+
+function weeks(c){
+  const W=560,Hh=230,L=40,R=10,T=16,B=26,xs=c.semanas,tw=c.teto?c.teto*12/52:0,bb=base(c);
+  const m=Math.max(1,...xs.map(s=>s.sust+s.impl),tw)*1.1, bw=(W-L-R)/xs.length, y=v=>T+(1-v/m)*(Hh-T-B);
+  let g=HATCH('hw');
+  const step=m>200?50:m>80?20:m>30?10:5;
+  for(let v=0; v<=m; v+=step) g+=`<line x1="${L}" x2="${W-R}" y1="${y(v)}" y2="${y(v)}" stroke="var(--ink-06)"/><text x="${L-6}" y="${y(v)+3}" text-anchor="end">${v}h</text>`;
+  xs.forEach((s,i)=>{
+    const x0=L+i*bw+3,w=bw-6,t=s.sust+s.impl,cur=i===xs.length-1,bv=bb==='sust'?s.sust:t,over=tw&&bv>tw;
+    g+=`<g data-tip="<span class='k'>semana de ${dt(s.semana)}${cur?' · em curso':''}</span>total ${H(t)}<br>sustentação ${H(s.sust)} · implantação ${H(s.impl)}<br>faturável ${H(s.fat)}${tw?`<br>teto semanal equivalente ${H(tw)}`:''}"><rect x="${L+i*bw}" y="${T}" width="${bw}" height="${Hh-T-B}" fill="transparent"/>`;
+    g+=`<rect x="${x0}" y="${y(t)}" width="${w}" height="${y(0)-y(s.impl)}" fill="var(--gray)" ${cur?'fill-opacity=".5"':''}/>`;
+    g+=`<rect x="${x0}" y="${y(s.sust)}" width="${w}" height="${y(0)-y(s.sust)}" fill="var(--ink)" ${cur?'fill-opacity=".45"':''}/>`;
+    if(over){ const top=bb==='sust'?s.sust:t; g+=`<rect x="${x0}" y="${y(top)}" width="${w}" height="${y(tw)-y(top)}" fill="url(#hw)" stroke="var(--ink)" stroke-width="1"/>`; }
+    g+=`</g>`;
+    if(i%2===0||cur) g+=`<text x="${x0+w/2}" y="${Hh-8}" text-anchor="middle">${dt(s.semana)}</text>`;
+  });
+  if(tw) g+=`<line x1="${L}" x2="${W-R}" y1="${y(tw)}" y2="${y(tw)}" stroke="var(--ink)" stroke-dasharray="2 3"/>`;
+  $('#weeks').innerHTML=svg(W,Hh,g);
+  $('#wk-leg-teto').hidden=!tw;
+}
+
+function heat(c){
+  const start=new Date(D.inicio+'T12:00:00'), weeksN=c.semanas.length, cell=13, gap=3, L=28, T=16;
+  const W=L+weeksN*(cell+gap), Hh=T+7*(cell+gap)+4, m=Math.max(1,...Object.values(c.diario));
+  let g='';
+  ['seg','ter','qua','qui','sex','sáb','dom'].forEach((d,i)=>{ if(i%2===0) g+=`<text x="0" y="${T+i*(cell+gap)+10}">${d}</text>`; });
+  for(let w=0; w<weeksN; w++){
+    const wd=new Date(start); wd.setDate(start.getDate()+w*7);
+    if(w%2===0) g+=`<text x="${L+w*(cell+gap)}" y="10">${String(wd.getDate()).padStart(2,'0')}/${String(wd.getMonth()+1).padStart(2,'0')}</text>`;
+    for(let d=0; d<7; d++){
+      const day=new Date(start); day.setDate(start.getDate()+w*7+d);
+      if(day>hoje) continue;
+      const iso=`${day.getFullYear()}-${String(day.getMonth()+1).padStart(2,'0')}-${String(day.getDate()).padStart(2,'0')}`;
+      const v=c.diario[iso]||0, fds=d>=5, a=v?(.15+.85*Math.sqrt(v/m)):0;
+      const xx=L+w*(cell+gap), yy=T+d*(cell+gap);
+      const attrs = v ? `fill="var(--ink)" fill-opacity="${a.toFixed(3)}"` : (fds ? `fill="var(--ink-06)" fill-opacity=".5"` : `fill="transparent" stroke="var(--st-at)" stroke-width="1" stroke-dasharray="2 2"`);
+      g+=`<rect x="${xx+(v||fds?0:.5)}" y="${yy+(v||fds?0:.5)}" width="${cell-(v||fds?0:1)}" height="${cell-(v||fds?0:1)}" ${attrs} data-tip="<span class='k'>${day.toLocaleDateString('pt-BR',{weekday:'long',day:'2-digit',month:'2-digit'})}</span>${v?H(v)+' lançadas':(fds?'fim de semana':'dia útil sem hora lançada')}"/>`;
+    }
+  }
+  $('#heat').innerHTML=`<svg viewBox="0 0 ${W} ${Hh}" style="max-width:${W*1.6}px;min-width:${Math.min(W,520)}px">${g}</svg>
+  <div class="legend" style="margin-top:10px"><span><i style="background:var(--ink);opacity:.25"></i>poucas horas</span><span><i style="background:var(--ink)"></i>dia mais cheio (${H(m)})</span><span><i style="border:1px dashed var(--st-at)"></i>dia útil sem hora</span></div>`;
+}
+
+function rows(el,items,key,fmt){
+  if(!items.length){ $(el).innerHTML='<div class="empty">nenhuma hora no mês</div>'; return; }
+  const m=Math.max(...items.map(key));
+  $(el).innerHTML=items.slice(0,10).map(it=>fmt(it,m)).join('')+(items.length>10?`<div class="csub">mais ${items.length-10} com menos horas</div>`:'');
+}
+function listas(c){
+  rows('#listas',c.listas.filter(l=>l.h>0),l=>l.h,(l,m)=>`<div class="lr" data-tip="<span class='k'>${esc(l.pasta||'sem pasta')}</span>${H(l.h)} · faturável ${H(l.fat)}<br>${l.nat==='sust'?'sustentação':'implantação'}"><span class="t">${esc(l.lista)}<small>${l.nat==='sust'?'sust':'impl'}</small></span><span class="h">${H(l.h)}</span><span class="bar"><i style="width:${l.h/m*100}%;background:${l.nat==='sust'?'var(--ink)':'var(--gray)'}"></i></span></div>`);
+}
+function pessoas(c){
+  rows('#pessoas',c.pessoas,p=>p.sust+p.impl,(p,m)=>`<div class="lr" data-tip="<span class='k'>${esc(p.nome)}</span>sustentação ${H(p.sust)} · implantação ${H(p.impl)}"><span class="t">${esc(p.nome)}</span><span class="h">${H(p.sust+p.impl)}</span><span class="bar"><i style="width:${p.sust/m*100}%;background:var(--ink)"></i><i style="left:${p.sust/m*100}%;width:${p.impl/m*100}%;background:var(--gray)"></i></span></div>`);
+}
+function prazoTbl(el,items,vencido){
+  if(vencido) items=[...items].sort((a,b)=>(a.espera-b.espera)||a.vence.localeCompare(b.vence));
+  if(!items.length){ $(el).innerHTML=`<div class="empty">${vencido?'nenhum prazo vencido':'nada vence nos próximos 7 dias'}</div>`; return; }
+  const dias=s=>Math.round((hoje-new Date(s+'T12:00:00'))/864e5);
+  $(el).innerHTML=`<table><thead><tr><th>tarefa</th><th>responsável</th><th>status</th><th class="n">${vencido?'venceu':'vence'}</th></tr></thead><tbody>${items.slice(0,12).map(t=>`<tr><td>${esc(t.tarefa)}<div class="csub">${esc(t.lista)}</div></td><td>${esc(t.resp)}</td><td><span class="badge ${t.espera?'sx':'s1'}">${esc(t.status)}</span>${t.espera?'<div class="csub">em espera</div>':''}</td><td class="n">${dt(t.vence)}${vencido?`<div class="csub">há ${dias(t.vence)} dias</div>`:''}</td></tr>`).join('')}</tbody></table>${items.length>12?`<div class="csub" style="margin-top:8px">mais ${items.length-12} ${vencido?'vencidas':'a vencer'}</div>`:''}`;
+}
+function semana(c){
+  const it=c.semana_passada;
+  $('#t-sp').textContent=`semana passada · ${dt(D.semana_passada.inicio)} a ${dt(D.semana_passada.fim)} · tarefas com hora`;
+  if(!it.length){ $('#semana').innerHTML='<div class="empty">nenhuma hora lançada na semana passada</div>'; return; }
+  $('#semana').innerHTML=`<table><thead><tr><th>tarefa</th><th>lista</th><th>quem</th><th>status</th><th class="n">horas</th></tr></thead><tbody>${it.slice(0,15).map(t=>`<tr><td>${esc(t.tarefa)}</td><td class="csub">${esc(t.lista)} · ${t.nat}</td><td>${esc(t.pessoas.join(', '))}</td><td><span class="badge st">${esc(t.status)}</span></td><td class="n">${H(t.h)}</td></tr>`).join('')}</tbody></table>`;
+}
+function cKpis(c){
+  const p=pct(c),pr=projecao(c),sh=c.dias_uteis_sem_hora;
+  const k=[
+    [temTeto(c)?'consumo × teto':'consumo no mês', temTeto(c)?P(p):H(consumo(c)), temTeto(c)?`${H(consumo(c))} de ${nf0.format(c.teto)}h · ${baseNome(c)}`:esc(motivoSemTeto(c)), p>=1],
+    ['projeção '+dt(fimMes), H(pr), temTeto(c)?(pr>c.teto?`passa ${H(pr-c.teto)} do teto`:`sobra ${H(c.teto-pr)}`):`${nf1.format(DU?consumo(c)/DU:0)}h por dia útil`, temTeto(c)&&pr>c.teto],
+    ['sustentação', H(c.mes.sust), `implantação ${H(c.mes.impl)}`],
+    ['faturável', c.mes.total?P(c.mes.fat/c.mes.total):'—', `${H(c.mes.naofat)} não faturáveis`],
+    ['última hora', c.ultima_hora?dt(c.ultima_hora):'—', sh==null?'sem hora em 12 semanas':(sh===0?'lançou ontem ou hoje':`${sh} ${sh>1?'dias úteis':'dia útil'} sem hora`), sh>=4],
+    ['prazos vencidos', c.tarefas.vencidas, `${c.tarefas.vencidas-(c.tarefas.vencidas_espera||0)} em desenvolvimento · ${c.tarefas.vencidas_espera||0} em espera · ${c.tarefas.a_vencer_7d} vencem em 7 dias`, c.tarefas.vencidas>0],
+  ];
+  $('#c-kpis').innerHTML=k.map(([l,v,s,a])=>`<div class="kpi${a?' alert':''}"><span class="l">${l}</span><span class="v">${v}</span><span class="s">${s}</span></div>`).join('');
+}
+function detalhe(){
+  const c=D.clientes.find(k=>k.nome===sel)||D.clientes[0]; sel=c.nome;
+  const n=nivel(c);
+  $('#t-cliente').innerHTML=`${esc(c.nome)} <span class="badge ${n.cls}" style="vertical-align:middle;margin-left:10px">${n.k}</span>`;
+  chips(); cKpis(c); burn(c); weeks(c); heat(c); listas(c); pessoas(c);
+  prazoTbl('#vencidas',c.tarefas.lista_vencidas,true); prazoTbl('#avencer',c.tarefas.lista_a_vencer,false);
+  $('#t-venc').textContent=`prazos vencidos · ${c.tarefas.vencidas} · ${c.tarefas.vencidas-(c.tarefas.vencidas_espera||0)} em desenvolvimento, ${c.tarefas.vencidas_espera||0} em espera`;
+  semana(c);
+}
+
+function carga(){
+  const ps=D.pessoas.filter(p=>p.total>0), ref=8*DU;
+  $('#eq-sel').textContent=sel||''; $('#eq-ref').textContent=`referência 8h × ${DU} dias úteis = ${ref}h`;
+  const W=900,rowH=26,L=210,R=70,T=6,Hh=T+ps.length*rowH+22, m=Math.max(ref,...ps.map(p=>p.total))*1.04;
+  const x=v=>L+v/m*(W-L-R), ordem=D.clientes.map(c=>c.nome);
+  let g=HATCH('he','var(--ink)');
+  for(let v=0; v<=m; v+=40) g+=`<line x1="${x(v)}" x2="${x(v)}" y1="${T}" y2="${Hh-20}" stroke="var(--ink-06)"/><text x="${x(v)}" y="${Hh-6}" text-anchor="middle">${v}h</text>`;
+  ps.forEach((p,i)=>{
+    const yy=T+i*rowH;
+    g+=`<text x="${L-10}" y="${yy+15}" text-anchor="end" style="fill:var(--ink);font-size:11px">${esc(p.nome.length>30?p.nome.slice(0,29)+'…':p.nome)}</text>`;
+    let acc=0;
+    const cs=Object.entries(p.clientes).sort((a,b)=>ordem.indexOf(a[0])-ordem.indexOf(b[0]));
+    cs.forEach(([cl,h],j)=>{
+      const isSel=cl===sel;
+      const fill=isSel?'url(#he)':(j%2?'var(--gray)':'var(--ink)');
+      g+=`<rect x="${x(acc)}" y="${yy+5}" width="${Math.max(0,x(acc+h)-x(acc)-1)}" height="${rowH-12}" fill="${fill}" ${isSel?'stroke="var(--ink)" stroke-width="1"':''} ${!isSel&&j%2===0?'fill-opacity=".78"':''} data-tip="<span class='k'>${esc(p.nome)}</span>${esc(cl)}: ${H(h)} de ${H(p.total)} no mês<br>${cs.length} cliente${cs.length>1?'s':''} no mês" style="cursor:pointer" data-cl="${esc(cl)}"/>`;
+      acc+=h;
+    });
+    g+=`<text x="${x(p.total)+6}" y="${yy+15}" style="font-size:11px">${H(p.total)} · ${cs.length} cl.</text>`;
+  });
+  g+=`<line x1="${x(ref)}" x2="${x(ref)}" y1="${T}" y2="${Hh-20}" stroke="var(--ink)" stroke-dasharray="2 3"/>`;
+  $('#carga').innerHTML=`<div class="tbl-wrap">${svg(W,Hh,g,'min-width:640px')}</div>`;
+}
+$('#carga').addEventListener('click',e=>{const r=e.target.closest('[data-cl]'); if(r) escolher(r.dataset.cl);});
+
+function metodo(){
+  $('#n-metodo').textContent=`Dados lidos do ClickUp em ${new Date(D.gerado_em).toLocaleString('pt-BR')}: ${nf0.format(D.entradas_lidas)} apontamentos de ${D.equipe_consultada} membros, de ${dt(D.inicio)} a ${dt(D.hoje)}. Sustentação e implantação são separadas pelo nome da lista e da pasta (chamado, sustentação, suporte, atendimento, SLA). Os tetos mensais vêm do soteria-pmo, fechados com o Max e o André em 08/09. A projeção divide o consumo do mês pelos ${DU} dias úteis passados e multiplica pelos ${DUM} do mês. Prazos consideram tarefas do espaço atualizadas nos últimos 90 dias; tarefas publicadas, finalizadas, concluídas ou canceladas saem da conta. Homologação, aguardando deploy, bloqueado e falta de informação contam como abertas, marcadas como em espera, porque dependem de algo fora do desenvolvimento.`;
+  $('#f-dir').textContent=`painel pmo · ${MESES[hoje.getMonth()]} ${hoje.getFullYear()}`;
+}
+
+function tudo(){ hero(); kpis(); tabela(); detalhe(); carga(); metodo(); }
+if(!sel||!D.clientes.some(c=>c.nome===sel)){ sel=[...D.clientes].sort((a,b)=>(pct(b)??-1)-(pct(a)??-1))[0].nome; }
+$('#b-auto').setAttribute('aria-pressed',modo==='auto'); $('#b-total').setAttribute('aria-pressed',modo==='total');
+tudo();
+})();
+</script>
+
+</body></html>
+</body></html>
