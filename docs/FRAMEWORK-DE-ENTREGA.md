@@ -34,15 +34,19 @@ Uma tabela com: critério, como se mede, valor esperado, valor medido, atende ou
 - Tudo o que foi pedido para ele colar ou rodar fica anotado: é o roteiro de atualização do próximo.
 - O dev relata o que estranhou. Sem relato, o teste não conta.
 
-## Perguntas em aberto
+## Decisões do Max (21/10/2026)
 
-1. **Quanto dura o teste com um dev?** Na transcrição da reunião saiu "23 dias", que é quase certamente "2 ou 3 dias". Confirmar com o Max.
-2. **Quem é o dev do teste dos Agentes PMO?** Foi sugerido alguém com máquina da Sotéria, por ser um ambiente representativo.
-3. **O que bloqueia a produção?** Só o aceite do Max, ou também o relato do dev?
-4. **O fluxo vale para o que já está em homologação** (cards 3.x e 5.x), ou só para o que começar daqui em diante?
+O Max respondeu as quatro perguntas do rascunho no formulário de 21/10, na reunião Agentes PMO. A aprovação do André ao documento inteiro continua pendente.
+
+1. **Quanto dura o teste com um dev?** **Pelo menos 15 dias.** O "23 dias" da transcrição de 06/10 não era "2 ou 3 dias": a duração mínima da etapa 5 é de 15 dias.
+2. **Quem é o dev do teste dos Agentes PMO?** **O Gildo, se tiver máquina da Sotéria.** O Jordan já conversou com ele.
+3. **O que bloqueia a produção?** **O aceite do Max e o relato do dev, e também a aprovação do André.** A etapa 6 só começa com os três.
+4. **O fluxo vale para o que já está em homologação** (cards 3.x e 5.x)? **Sim, também para o que já está em homologação**, não só para o que começar daqui em diante.
 
 ## O que isto muda no que já existe
 
 - Os critérios de aceite dos Agentes PMO existem em forma de medição, não de documento: falta escrevê-los como a tabela acima.
 - O roteiro de atualização (`ATUALIZAR.md`) já cumpre o papel do artefato da etapa 6.
 - A etapa 5 ainda não aconteceu para nenhum dos sete itens.
+- Como o fluxo vale também para o que já está em homologação, os cards 3.x e 5.x passam a precisar dos artefatos que faltam: o projeto técnico aprovado pelo André (etapa 2) e o documento de critérios de aceite (etapa 4), escritos agora e não antes da construção.
+- A etapa 5 leva pelo menos 15 dias com o Gildo. Isso empurra a produção dos Agentes PMO para depois desse teste e depende de ele ter máquina da Sotéria; o prazo da Fase 2 precisa ser revisto com essa duração na conta.
