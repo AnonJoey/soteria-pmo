@@ -39,6 +39,7 @@ soteria-pmo rodar                     # o que é devido hoje
 soteria-pmo rodar --forcar reporte    # um item fora da cadência
 soteria-pmo cadencias                 # o que roda hoje e o que não
 soteria-pmo horas --de AAAA-MM-DD --ate AAAA-MM-DD   # só propõe, não grava
+soteria-pmo painel                         # a carteira inteira em HTML, no modelo do Max (todo dia útil, pelo rodar)
 soteria-pmo reporte --saida reporte.html   # reporte em HTML com semáforo (o padrão)
 soteria-pmo reporte --formato markdown     # o mesmo conteúdo em texto, para ler
 soteria-pmo lancamentos               # quem lançou horas ontem e na semana passada (só lê)
@@ -121,6 +122,8 @@ procurar na skill:
 E ele é **reativo**, não preventivo: avisa depois de 4 dias úteis de silêncio. O
 Max pediu aviso antes da situação crítica. Isso é detecção precoce, e chamar de
 preventivo seria vender o que não tem.
+
+**Painel da carteira.** Todo dia útil o `rodar` grava `~/.soteria-pmo/reportes/painel-AAAA-MM-DD.html`, no modelo que o Max mandou, e o resumo diz o caminho. Depois do `rodar`, **abra esse arquivo para o Max** (ou mostre como artefato): é o HTML que ele espera às 8:30. Só lê o ClickUp.
 
 **Item 1, reporte.** Sai em **HTML por padrão**, com semáforo de quatro cores
 (`--formato markdown` dá o texto puro). O `rodar` grava a página em

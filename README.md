@@ -180,6 +180,7 @@ soteria-pmo rodar --forcar reporte # roda um item fora da cadencia dele
 soteria-pmo horas --de 2026-09-01 --ate 2026-09-05
 soteria-pmo lancar --arquivo proposta.json --aprovado-por "Nome"         # simula
 soteria-pmo lancar --arquivo proposta.json --aprovado-por "Nome" --real  # grava
+soteria-pmo painel                                         # a carteira inteira em HTML, no modelo do Max
 soteria-pmo reporte --saida reporte.html                  # reporte em HTML (padrao)
 soteria-pmo reporte --formato markdown                    # o mesmo conteudo em texto
 soteria-pmo lancamentos                                   # quem lancou horas ontem e na semana passada
@@ -187,6 +188,13 @@ soteria-pmo rh-importar --lista ID                        # le o nascimento da l
 soteria-pmo rh-importar --lista ID --real                 # grava no roster local de RH, com permissao 600
 soteria-pmo-instalar --atualizar                          # atualiza skills e agente instalados
 ```
+
+O **painel da carteira** (`soteria-pmo painel`, e todo dia util pelo `rodar`) e uma pagina so, no modelo
+que o Max mandou em 21/10/2026: tabela de clientes com consumo contra o teto do mes, projecao, 12 semanas,
+dias sem hora e prazos vencidos, mais o detalhe de um cliente e a carga lancada por pessoa. O `rodar` grava
+`~/.soteria-pmo/reportes/painel-AAAA-MM-DD.html` e o resumo diz onde. O modelo do pacote vai sem dado, sem
+a fonte da marca e sem o logotipo; `painel_modelo` no config aponta para o arquivo do Max, com a aparencia
+completa. So le o ClickUp.
 
 O reporte sai em **HTML**, com semaforo de quatro cores. O `rodar` grava a pagina em
 `~/.soteria-pmo/reportes/` (ou onde `--saida-html` mandar) e o resumo do dia so diz onde

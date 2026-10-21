@@ -28,7 +28,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from . import (auditor, bolsao, checagem, coletor, cronograma, daily, datas, horas,
-               lancamento, periodo, reporte, rh, rotina)
+               lancamento, painel, periodo, reporte, rh, rotina)
 from .clickup import Aprovacao, ClickUp
 
 logger = logging.getLogger("pmo.cli")
@@ -243,6 +243,17 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
                     f"para o Max validar e enviar: {destino}")
         tarefas["reporte"] = _reporte
 
+    # A carteira inteira em HTML, todo dia util, no modelo que o Max mandou em
+    # 21/10/2026. Como o reporte, a pagina vai para um arquivo e o resumo diz onde.
+    if projetos:
+        def _painel() -> str:
+            html = painel.gerar(cliente, projetos, hoje, _feriados(cfg), modelo=cfg.get("painel_modelo"))
+            destino = getattr(cliente, "_saida_painel", None) or painel.caminho_padrao(hoje)
+            destino.parent.mkdir(parents=True, exist_ok=True)
+            destino.write_text(html, encoding="utf-8")
+            return f"Painel da carteira em HTML, atualizado em {hoje:%d/%m/%Y}: {destino}"
+        tarefas["painel"] = _painel
+
     if com_lista or primeiro:
         tarefas["auditor"] = lambda: auditor.relatorio(auditor.auditar(
             cliente.entradas(*periodo.janela(inicio_aud, fim_aud)),
@@ -353,6 +364,28 @@ def cmd_rh_importar(args) -> int:
         print(f"Simulacao: nada foi gravado. Para gravar em {destino}: --real")
         return 0
     print(f"Gravado em {rh.escrever_roster(final, destino)} (permissao 600).")
+    return 0
+
+
+def cmd_painel(args) -> int:
+    """O painel da carteira em HTML, no modelo do Max. Le o ClickUp, nao escreve."""
+    hoje = date.fromisoformat(args.dia) if args.dia else date.today()
+    try:
+        cfg = carregar_config(Path(args.config).expanduser())
+    except ConfigAusente as e:
+        print(f"Sem configuracao do PMO em {e}.", file=sys.stderr)
+        return 2
+    projetos = cfg.get("projetos") or []
+    if not projetos:
+        print("O config nao tem projetos: nao ha carteira para o painel.", file=sys.stderr)
+        return 2
+    with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
+        html = painel.gerar(cliente, projetos, hoje, _feriados(cfg),
+                            modelo=args.modelo or cfg.get("painel_modelo"))
+    destino = Path(args.saida).expanduser() if args.saida else painel.caminho_padrao(hoje)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(html, encoding="utf-8")
+    print(f"Painel da carteira gravado em {destino}")
     return 0
 
 
@@ -588,6 +621,14 @@ def _subcomandos(pmo_sub) -> None:
     p_rhi.add_argument("--saida", help="roster de destino (padrao: roster_rh do config, ou ~/.soteria-pmo/rh.csv)")
     p_rhi.add_argument("--real", action="store_true", help="grava o arquivo (sem isto so simula)")
     p_rhi.set_defaults(func=cmd_rh_importar)
+
+    p_pnl = pmo_sub.add_parser(
+        "painel", help="Gera o painel da carteira em HTML, no modelo do Max (le o ClickUp, nao escreve)")
+    p_pnl.add_argument("--dia", default=None, help="AAAA-MM-DD como data de referencia (hoje)")
+    p_pnl.add_argument("--saida", default=None, help="Arquivo de saida (padrao: ~/.soteria-pmo/reportes/painel-AAAA-MM-DD.html)")
+    p_pnl.add_argument("--modelo", default=None, help="Modelo HTML com `const D = {...}` ou __DADOS_DO_PAINEL__ (ou painel_modelo no config)")
+    p_pnl.add_argument("--config", default=str(CONFIG_PADRAO))
+    p_pnl.set_defaults(func=cmd_painel)
 
     p_rep = pmo_sub.add_parser(
         "reporte", help="Gera o reporte executivo consolidado (HTML com semaforo ou Markdown)")
