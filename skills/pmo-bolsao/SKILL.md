@@ -35,7 +35,6 @@ Confirmados pelo Max na reuniao de homologacao de 08/09/2026, em
 | Cliente | Teto mensal |
 |---|---|
 | Grupo Angelus | 160h |
-| IoX | 160h |
 | China Gate | 100h |
 | Grupo BM2 | 100h, gatilho sem contrato |
 | APET | 60h |
@@ -92,12 +91,11 @@ precisam de confirmacao antes de virar regra de verdade.
 |---|---|
 | Bolsao de horas na Yoshi, no Grupo Dimas (30h) e no Grupo Angelus | Os tres estao em `TETOS_DE_REFERENCIA` e no config com `horas_contratadas` (Yoshi 160h, Dimas 30h, Angelus 160h) |
 | Diferenciar chamado de projeto de implantacao | `tipo` do projeto (`chamado` ou `projeto`) e `listas_sustentacao`, que separa a sustentacao das listas de projeto dentro do mesmo espaco. Hoje so o Angelus tem `listas_sustentacao` |
-| A IoX e o unico cliente de escopo fechado | **Nao esta no codigo como escopo fechado.** `iox` tem 160h mensais em `TETOS_DE_REFERENCIA`, que e a regua de bolsao, e a IoX nao esta no config, entao o vigia nem a le. Escopo fechado se mede contra o total do escopo, como `TOTAIS_DE_PROJETO`, e esse total nao foi informado |
+| A IoX e o unico cliente de escopo fechado | **Nao existe.** O Max confirmou em 21/10/2026 que nao ha cliente IoX (o nome saiu errado na transcricao de 06/10); nao ha cliente de escopo fechado, e `iox` saiu de `TETOS_DE_REFERENCIA`. |
 
 **Pendente de confirmacao, nada alterado:**
 
-1. **IoX.** O nome pode estar errado na transcricao. Se o Max confirmar que e escopo fechado, o teto mensal de 160h sai de `TETOS_DE_REFERENCIA`, entra o total do escopo em `TOTAIS_DE_PROJETO` e a IoX entra no config.
-2. **Grupo Dimas.** Medido em 08/10: as horas do mes estao todas na lista de chamados (os sprints mensais de "Controle de Acionamentos" nao tem hora no mes). Nao e projeto contado como sustentacao, como foi no Angelus; o estouro contra 30h e real, a menos que parte dessas horas seja projeto. Essa fronteira e do Max.
+1. **Grupo Dimas.** Medido em 08/10: as horas do mes estao todas na lista de chamados (os sprints mensais de "Controle de Acionamentos" nao tem hora no mes). Nao e projeto contado como sustentacao, como foi no Angelus; o estouro contra 30h e real, a menos que parte dessas horas seja projeto. O Max respondeu em 21/10/2026: separar por lista, como no Angelus (`listas_sustentacao`), com a observacao de que o bolsao tambem pode ser usado em projeto quando nao ha atividade de sustentacao especifica.
 
 ### Duas armadilhas ja pagas
 

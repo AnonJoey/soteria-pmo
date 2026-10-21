@@ -551,7 +551,7 @@ def test_teto_sugerido_traz_os_tetos_que_o_max_confirmou_em_08_09():
     assert B.teto_sugerido("APET") == 60.0
     assert B.teto_sugerido("Gazin") == 40.0
     assert B.teto_sugerido("Grupo BM2") == 100.0
-    assert B.teto_sugerido("IoX") == 160.0
+    assert B.teto_sugerido("IoX") is None  # o Max, em 21/10: "nao existe esse cliente"
     assert B.teto_sugerido("Cliente Desconhecido") is None
 
 

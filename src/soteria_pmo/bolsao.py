@@ -45,7 +45,6 @@ TETOS_DE_REFERENCIA: dict[str, float] = {
     "chinagate": 100.0,
     "yoshii": 160.0,
     "yoshi": 160.0,
-    "iox": 160.0,
     "apet": 60.0,
     "grupo dimas": 30.0,
     "dimas": 30.0,
@@ -86,9 +85,15 @@ TETOS_DE_REFERENCIA: dict[str, float] = {
 # estimativas das tarefas, e e la que `apurar_total` o le primeiro. O Abner
 # confirmou em 14/10/2026 que Reviver e Unimed nao tem teto mensal e que o
 # acompanhamento e pelo total do projeto.
+#
+# O Max confirmou em 21/10/2026 os totais oficiais: Unimed 390 h e Reviver 2.950 h.
+# O Reviver NAO e a soma das estimativas das nove fases no ClickUp (3.510 h): o
+# oficial vale, e `horas_totais` no config tem a mesma precedencia que esta tabela.
 TOTAIS_DE_PROJETO: dict[str, float] = {
     "unimed londrina": 390.0,
     "unimed": 390.0,
+    "concessionaria reviver": 2950.0,
+    "reviver": 2950.0,
 }
 
 # Clientes que sairam. Guardado em vez de apagado: um projeto que reaparece num

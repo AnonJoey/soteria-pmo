@@ -73,7 +73,7 @@ Conta Azul **não é mais cliente** desde 08/09/2026. Se aparecer num extrato
 antigo, é registro encerrado, não cliente ativo.
 
 Tetos mensais de sustentação, fechados com o Max e o André em 08/09: Angelus
-160h, IoX 160h, China Gate 100h, BM2 100h (gatilho, sem contrato), APET 60h,
+160h, China Gate 100h, BM2 100h (gatilho, sem contrato), APET 60h,
 Gazin 40h, Dimas 30h. O Abner confirmou em 14/10/2026 os números do Angelus, China
 Gate, A.Yoshii, APET e Dimas; o Gazin segue com o Max. O BM2 tem 100h como média,
 não como limite contratado.
