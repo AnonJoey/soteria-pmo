@@ -8,3 +8,5 @@ venv/
 htmlcov/
 build/
 dist/
+audit_soteria_pmo.db*
+*.log

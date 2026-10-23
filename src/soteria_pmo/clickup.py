@@ -250,11 +250,34 @@ class ClickUp:
 
     # ── leitura ──────────────────────────────────────────────────────────────
 
-    def _get(self, path: str, **params) -> dict[str, Any]:
-        r = self._c.get(f"{API}{path}", params=params or None)
-        if r.status_code >= 400:
-            raise ClickUpError(f"GET {path} devolveu {r.status_code}: {r.text[:300]}")
-        return r.json()
+    def _get(self, path: str, max_retries: int = 3, **params) -> dict[str, Any]:
+        url = f"{API}{path}"
+        tentativa = 0
+        while True:
+            tentativa += 1
+            try:
+                r = self._c.get(url, params=params or None)
+                if r.status_code == 429 and tentativa <= max_retries:
+                    espera = float(r.headers.get("Retry-After", 1.5 * tentativa))
+                    logger.warning("ClickUp 429 rate limit em %s. Aguardando %.1fs (tentativa %d/%d)", path, espera, tentativa, max_retries)
+                    time.sleep(espera)
+                    continue
+                if r.status_code in (500, 502, 503, 504) and tentativa <= max_retries:
+                    espera = 1.5 * tentativa
+                    logger.warning("ClickUp %d em %s. Aguardando %.1fs (tentativa %d/%d)", r.status_code, path, espera, tentativa, max_retries)
+                    time.sleep(espera)
+                    continue
+                if r.status_code >= 400:
+                    raise ClickUpError(f"GET {path} devolveu {r.status_code}: {r.text[:300]}")
+                return r.json()
+            except (httpx.TimeoutException, httpx.NetworkError) as e:
+                if tentativa <= max_retries:
+                    espera = 1.5 * tentativa
+                    logger.warning("Falha de rede/timeout ao ler ClickUp %s (%s: %s). Aguardando %.1fs (tentativa %d/%d)...",
+                                   path, type(e).__name__, e, espera, tentativa, max_retries)
+                    time.sleep(espera)
+                    continue
+                raise ClickUpError(f"GET {path} falhou por rede/timeout apos {max_retries} tentativas: {e}") from e
 
     def entradas(self, inicio_ms: int, fim_ms: int,
                  assignee: str | tuple[str, ...] | None = None) -> list[dict[str, Any]]:

@@ -293,6 +293,8 @@ class Situacao:
     #: De onde veio o previsto de um total: soma das estimativas das tarefas,
     #: `horas_totais` do config ou a tabela de referencia.
     origem_previsto: str = ""
+    #: Se mediu apenas horas faturaveis contra o teto.
+    somente_faturaveis: bool = False
 
     @property
     def percentual(self) -> float:
@@ -314,7 +316,8 @@ class Situacao:
         """One line for the daily digest."""
         if self.escopo == "total":
             return self._linha_total()
-        base = (f"{self.projeto}: {self.horas_gastas:.1f}h de "
+        rotulo_h = "h faturáveis" if self.somente_faturaveis else "h"
+        base = (f"{self.projeto}: {self.horas_gastas:.1f}{rotulo_h} de "
                 f"{self.horas_contratadas:.0f}h ({self.percentual:.0%}) [{self.nivel}]")
         # Quem ja passou do teto nao "estoura em" data nenhuma: a data que a
         # projecao daria e o proprio dia da leitura, e dizer "estoura em 13/10"
@@ -356,7 +359,8 @@ def _nivel(percentual: float) -> str:
 def apurar(entradas: list[dict], bolsao: Bolsao, inicio: date, fim: date,
            feriados: frozenset[date] = frozenset(),
            minimo_para_projetar: int = 5,
-           fim_do_ciclo: date | None = None) -> Situacao:
+           fim_do_ciclo: date | None = None,
+           somente_faturaveis: bool = False) -> Situacao:
     """Turn raw time entries into a budget position.
 
     `minimo_para_projetar` is the number of observed business days below which
@@ -377,7 +381,7 @@ def apurar(entradas: list[dict], bolsao: Bolsao, inicio: date, fim: date,
             faturaveis += h
         else:
             nao_faturaveis += h
-    gastas = faturaveis + nao_faturaveis
+    gastas = faturaveis if somente_faturaveis else (faturaveis + nao_faturaveis)
 
     observados = dias_uteis(inicio, fim, feriados)
     ritmo = gastas / observados if observados >= minimo_para_projetar and gastas else None
@@ -412,6 +416,7 @@ def apurar(entradas: list[dict], bolsao: Bolsao, inicio: date, fim: date,
         ritmo_diario=ritmo,
         data_estouro=data_estouro,
         dias_ate_estourar=dias_restantes,
+        somente_faturaveis=somente_faturaveis,
     )
 
 
@@ -461,7 +466,8 @@ def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
            feriados: frozenset[date] = frozenset(),
            sem_teto: list[str] | None = None,
            fim_do_ciclo: date | None = None,
-           totais: list[TotalProjeto] | None = None) -> Vigilancia:
+           totais: list[TotalProjeto] | None = None,
+           somente_faturaveis: bool = False) -> Vigilancia:
     """Read the window once per project and report each position.
 
     Entries are fetched per project list rather than for the whole workspace
@@ -488,7 +494,8 @@ def vigiar(cliente, bolsoes: list[Bolsao], inicio: date, fim: date,
             continue
         do_projeto = [e for e in todas if b.pertence(e)]
         v.situacoes.append(apurar(do_projeto, b, inicio, fim, feriados,
-                                  fim_do_ciclo=fim_do_ciclo))
+                                  fim_do_ciclo=fim_do_ciclo,
+                                  somente_faturaveis=somente_faturaveis))
     for tp in totais or ():
         # Uma falha de leitura sai nomeada, como no caso mensal: projeto que some
         # do digest e indistinguivel de projeto saudavel.

@@ -202,6 +202,11 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
           <button id="b-auto" aria-pressed="true">sustentação quando houver</button>
           <button id="b-total" aria-pressed="false">espaço inteiro</button>
         </div>
+        <span>horas</span>
+        <div class="seg" role="group" aria-label="filtro de faturamento">
+          <button id="b-todas" aria-pressed="true">todas as horas</button>
+          <button id="b-faturaveis" aria-pressed="false">apenas faturáveis</button>
+        </div>
       </div>
     </div>
     <div class="kpis" id="kpis"></div>
@@ -295,8 +300,12 @@ const MESES=['janeiro','fevereiro','março','abril','maio','junho','julho','agos
 const HATCH = (id,cor='var(--st-es)') => `<defs><pattern id="${id}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="var(--canvas)"/><rect width="2" height="5" fill="${cor}"/></pattern></defs>`;
 const COR={0:'var(--st-ok)',1:'var(--st-at)',2:'var(--st-cr)',3:'var(--st-cr)',4:'var(--st-es)'};
 
-let modo='auto', sel=null, sortK='pct', sortDir=-1;
-try{ modo=localStorage.getItem('pmo-modo')||'auto'; sel=localStorage.getItem('pmo-sel'); }catch(e){}
+let modo='auto', sel=null, sortK='pct', sortDir=-1, filtroFat=false;
+try{
+  modo=localStorage.getItem('pmo-modo')||'auto';
+  sel=localStorage.getItem('pmo-sel');
+  filtroFat=localStorage.getItem('pmo-filtro-fat')==='true';
+}catch(e){}
 
 const DU=D.mes.dias_uteis_passados, DUM=D.mes.dias_uteis_mes;
 const hoje=new Date(D.hoje+'T12:00:00');
@@ -308,7 +317,12 @@ const temSust=c=>c.mes.sust>0;
 const teveSust=c=>c.semanas.some(s=>s.sust>0);
 // Regra fixa por cliente (config.json) vence a automatica; o botao 'espaco inteiro' vence as duas.
 const base=c=>modo==='total'?'total':(c.base_fixa||(temSust(c)?'sust':'total'));
-const consumo=c=>base(c)==='sust'?c.mes.sust:c.mes.total;
+const consumo=c=>{
+  if(filtroFat){
+    return base(c)==='sust'?(c.mes.sust_fat??c.mes.fat):c.mes.fat;
+  }
+  return base(c)==='sust'?c.mes.sust:c.mes.total;
+};
 const projecao=c=>DU?consumo(c)/DU*DUM:0;
 const temTeto=c=>c.teto>0;
 const pct=c=>temTeto(c)?consumo(c)/c.teto:null;
@@ -420,6 +434,7 @@ function tabela(){
   $('#n-base').textContent=modo==='auto'
     ?`${fixos.length?`Regra fixa: ${fixos.map(c=>`${c.nome} pelo ${c.base_fixa==='total'?'espaço inteiro':'só sustentação'}`).join(', ')}. `:''}Clientes com hora de sustentação no mês (${D.clientes.filter(c=>!c.base_fixa&&temSust(c)).map(c=>c.nome).join(', ')}) são medidos só pela sustentação. ${semBase.join(', ')} não têm hora de sustentação no mês e são medidos pelo espaço inteiro, a mesma base do vigia de bolsão do soteria-pmo. O trecho tracejado é a projeção até ${dt(fimMes)} no ritmo de dias úteis do mês; o traço vertical é o teto.`
     :`Todos os clientes medidos pelo espaço inteiro do ClickUp, projetos e sustentação somados. É a mesma base que o vigia de bolsão do soteria-pmo usa hoje.`;
+  if(filtroFat) $('#n-base').textContent += ' · [Filtro ativo: exibindo apenas horas faturáveis]';
 }
 document.querySelectorAll('#tbl th.sort').forEach(th=>th.addEventListener('click',()=>{const k=th.dataset.k; if(sortK===k) sortDir*=-1; else {sortK=k; sortDir=(k==='nome'?1:-1);} tabela();}));
 const irCliente=()=>document.getElementById('cliente').scrollIntoView({behavior:matchMedia('(prefers-reduced-motion:reduce)').matches?'auto':'smooth'});
@@ -427,6 +442,9 @@ $('#tbody').addEventListener('click',e=>{const r=e.target.closest('tr.row'); if(
 $('#tbody').addEventListener('keydown',e=>{if(e.key==='Enter'){const r=e.target.closest('tr.row'); if(r){escolher(r.dataset.c); irCliente();}}});
 function setModo(m){ modo=m; try{localStorage.setItem('pmo-modo',m)}catch(e){} $('#b-auto').setAttribute('aria-pressed',m==='auto'); $('#b-total').setAttribute('aria-pressed',m==='total'); tudo(); }
 $('#b-auto').onclick=()=>setModo('auto'); $('#b-total').onclick=()=>setModo('total');
+
+function setFiltroFat(f){ filtroFat=f; try{localStorage.setItem('pmo-filtro-fat',f)}catch(e){} $('#b-todas').setAttribute('aria-pressed',(!f).toString()); $('#b-faturaveis').setAttribute('aria-pressed',f.toString()); tudo(); }
+$('#b-todas').onclick=()=>setFiltroFat(false); $('#b-faturaveis').onclick=()=>setFiltroFat(true);
 
 function chips(){
   $('#chips').innerHTML=D.clientes.map(c=>`<button class="chip" aria-pressed="${c.nome===sel}" data-c="${esc(c.nome)}"><span class="dot ${nivel(c).ord>=0?'full c'+nivel(c).ord:''}"></span>${esc(c.nome)}</button>`).join('');
@@ -587,6 +605,7 @@ function metodo(){
 function tudo(){ hero(); kpis(); tabela(); detalhe(); carga(); metodo(); }
 if(!sel||!D.clientes.some(c=>c.nome===sel)){ sel=[...D.clientes].sort((a,b)=>(pct(b)??-1)-(pct(a)??-1))[0].nome; }
 $('#b-auto').setAttribute('aria-pressed',modo==='auto'); $('#b-total').setAttribute('aria-pressed',modo==='total');
+$('#b-todas').setAttribute('aria-pressed',(!filtroFat).toString()); $('#b-faturaveis').setAttribute('aria-pressed',filtroFat.toString());
 tudo();
 })();
 </script>

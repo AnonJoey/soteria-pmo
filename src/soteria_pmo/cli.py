@@ -173,11 +173,12 @@ def evidencia_do_periodo(cfg: dict, inicio: date, fim: date) -> list:
     return uteis
 
 
-def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
+def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: bool = False) -> dict:
     """Wire each item to its data. Kept out of rotina.py so that module stays
     free of any client and can be tested without a network."""
     projetos = cfg.get("projetos") or []
     feriados = _feriados(cfg)
+    somente_fat = bool(somente_faturaveis or cfg.get("bolsao_somente_faturaveis", False))
     # Passa pelo carregador em vez de construir aqui: e ele que sabe cair no
     # teto de referencia quando o config nao traz horas, e que devolve os
     # projetos sem teto nenhum para o digest dizer que ficaram de fora.
@@ -207,7 +208,8 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
         "bolsao": lambda: bolsao.digest(
             bolsao.vigiar(cliente, bolsoes, hoje.replace(day=1), hoje,
                           feriados, sem_teto=bolsoes_sem_teto,
-                          fim_do_ciclo=periodo.fim_do_mes(hoje), totais=totais)),
+                          fim_do_ciclo=periodo.fim_do_mes(hoje), totais=totais,
+                          somente_faturaveis=somente_fat)),
         "datas": lambda: datas.vigiar_projetos(cliente, projetos, hoje),
         # Item 2 le TODOS os projetos, nao so o primeiro: a regua de 03/09 e
         # por projeto, e avaliar um de uma lista de nove nao e acompanhar
@@ -251,6 +253,18 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date) -> dict:
             destino = getattr(cliente, "_saida_painel", None) or painel.caminho_padrao(hoje)
             destino.parent.mkdir(parents=True, exist_ok=True)
             destino.write_text(html, encoding="utf-8")
+
+            # Espelhar em relatorios/ caso o diretorio exista no cwd ou esteja no config
+            dir_rel = Path(cfg.get("diretorio_relatorios") or "relatorios")
+            if dir_rel.is_dir():
+                copia1 = dir_rel / f"{hoje:%Y-%m-%d}-painel.html"
+                copia2 = dir_rel / f"painel-{hoje:%Y-%m-%d}.html"
+                try:
+                    copia1.write_text(html, encoding="utf-8")
+                    copia2.write_text(html, encoding="utf-8")
+                except OSError as e:
+                    logger.debug("copia para %s falhou: %s", dir_rel, e)
+
             return f"Painel da carteira em HTML, atualizado em {hoje:%d/%m/%Y}: {destino}"
         tarefas["painel"] = _painel
 
@@ -288,11 +302,14 @@ def cmd_rodar(args) -> int:
         print(json.dumps(EXEMPLO, indent=2, ensure_ascii=False), file=sys.stderr)
         return 2
 
+    somente_fat = bool(getattr(args, "faturaveis", False) or cfg.get("bolsao_somente_faturaveis", False))
     with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
         setattr(cliente, "_formato_reporte", getattr(args, "formato", None) or FORMATO_PADRAO)
         if getattr(args, "saida_html", None):
             setattr(cliente, "_saida_reporte", Path(args.saida_html).expanduser())
-        digest = rotina.rodar(hoje, montar_tarefas(cfg, cliente, hoje),
+        if getattr(args, "saida_painel", None):
+            setattr(cliente, "_saida_painel", Path(args.saida_painel).expanduser())
+        digest = rotina.rodar(hoje, montar_tarefas(cfg, cliente, hoje, somente_faturaveis=somente_fat),
                               forcar=frozenset(args.forcar or ()),
                               feriados=_feriados(cfg))
     print(digest.texto())
@@ -385,6 +402,18 @@ def cmd_painel(args) -> int:
     destino = Path(args.saida).expanduser() if args.saida else painel.caminho_padrao(hoje)
     destino.parent.mkdir(parents=True, exist_ok=True)
     destino.write_text(html, encoding="utf-8")
+
+    # Tambem espelhar em relatorios/ se o diretorio existir no cwd ou no config
+    dir_rel = Path(cfg.get("diretorio_relatorios") or "relatorios")
+    if dir_rel.is_dir():
+        copia1 = dir_rel / f"{hoje:%Y-%m-%d}-painel.html"
+        copia2 = dir_rel / f"painel-{hoje:%Y-%m-%d}.html"
+        try:
+            copia1.write_text(html, encoding="utf-8")
+            copia2.write_text(html, encoding="utf-8")
+        except OSError as e:
+            logger.debug("copia para %s falhou: %s", dir_rel, e)
+
     print(f"Painel da carteira gravado em {destino}")
     return 0
 
@@ -600,6 +629,8 @@ def _subcomandos(pmo_sub) -> None:
     p_rodar.add_argument("--formato", choices=["markdown", "html"], default=None,
                          help="formato do reporte (padrao: html, gravado em arquivo)")
     p_rodar.add_argument("--saida-html", default=None, help="grava o reporte em HTML neste arquivo (padrao: ~/.soteria-pmo/reportes/)")
+    p_rodar.add_argument("--saida-painel", default=None, help="grava o painel em HTML neste arquivo")
+    p_rodar.add_argument("--faturaveis", action="store_true", help="considera apenas horas faturaveis nos bolsoes")
     p_rodar.set_defaults(func=cmd_rodar)
 
     p_atu = pmo_sub.add_parser(
@@ -627,6 +658,7 @@ def _subcomandos(pmo_sub) -> None:
     p_pnl.add_argument("--dia", default=None, help="AAAA-MM-DD como data de referencia (hoje)")
     p_pnl.add_argument("--saida", default=None, help="Arquivo de saida (padrao: ~/.soteria-pmo/reportes/painel-AAAA-MM-DD.html)")
     p_pnl.add_argument("--modelo", default=None, help="Modelo HTML com `const D = {...}` ou __DADOS_DO_PAINEL__ (ou painel_modelo no config)")
+    p_pnl.add_argument("--faturaveis", action="store_true", help="filtra o painel por padrao com apenas horas faturaveis")
     p_pnl.add_argument("--config", default=str(CONFIG_PADRAO))
     p_pnl.set_defaults(func=cmd_painel)
 

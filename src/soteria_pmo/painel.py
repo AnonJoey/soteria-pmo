@@ -182,11 +182,16 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
     semanas: dict[date, dict[str, float]] = {}
     for k in range(SEMANAS):
         s = inicio + timedelta(days=7 * k)
-        semanas[s] = {"sust": 0.0, "impl": 0.0, "fat": 0.0}
+        semanas[s] = {"sust": 0.0, "impl": 0.0, "fat": 0.0, "sust_fat": 0.0, "impl_fat": 0.0}
     diario: dict[str, float] = defaultdict(float)
     diario_sust: dict[str, float] = defaultdict(float)
-    mes = {"total": 0.0, "sust": 0.0, "impl": 0.0, "fat": 0.0, "naofat": 0.0}
-    pessoas: dict[str, dict[str, float]] = defaultdict(lambda: {"sust": 0.0, "impl": 0.0})
+    mes = {
+        "total": 0.0, "sust": 0.0, "impl": 0.0, "fat": 0.0, "naofat": 0.0,
+        "sust_fat": 0.0, "sust_naofat": 0.0, "impl_fat": 0.0, "impl_naofat": 0.0,
+    }
+    pessoas: dict[str, dict[str, float]] = defaultdict(lambda: {
+        "sust": 0.0, "impl": 0.0, "fat": 0.0, "sust_fat": 0.0, "impl_fat": 0.0
+    })
     listas: dict[str, dict] = {}
     sp_ini = _segunda(hoje) - timedelta(days=7)
     sp_fim = sp_ini + timedelta(days=6)
@@ -218,6 +223,7 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
             semana[chave] += h
             if fat:
                 semana["fat"] += h
+                semana[f"{chave}_fat"] += h
         diario[d.isoformat()] += h
         if sust:
             diario_sust[d.isoformat()] += h
@@ -227,7 +233,12 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
             mes[chave] += h
             mes["total"] += h
             mes["fat" if fat else "naofat"] += h
-            pessoas[_pessoa(e)][chave] += h
+            mes[f"{chave}_{'fat' if fat else 'naofat'}"] += h
+            p_dict = pessoas[_pessoa(e)]
+            p_dict[chave] += h
+            if fat:
+                p_dict["fat"] += h
+                p_dict[f"{chave}_fat"] += h
             item = listas.setdefault(lid or "-", {"lista": lista, "pasta": pasta, "h": 0.0, "fat": 0.0, "nat": chave})
             item["h"] += h
             if fat:
@@ -263,12 +274,15 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
         "total_projeto": _h(total_projeto) if total_projeto else None,
         "motivo_sem_teto": motivo,
         "tipo_config": projeto.get("tipo") or "",
-        "semanas": [{"semana": s.isoformat(), "sust": _h(v["sust"]), "impl": _h(v["impl"]), "fat": _h(v["fat"])}
+        "semanas": [{"semana": s.isoformat(), "sust": _h(v["sust"]), "impl": _h(v["impl"]),
+                     "fat": _h(v["fat"]), "sust_fat": _h(v.get("sust_fat", 0.0)), "impl_fat": _h(v.get("impl_fat", 0.0))}
                     for s, v in sorted(semanas.items())],
         "diario": {k: _h(v) for k, v in sorted(diario.items())},
         "diario_sust": {k: _h(v) for k, v in sorted(diario_sust.items())},
         "mes": {k: _h(v) for k, v in mes.items()},
-        "pessoas": sorted(({"nome": n, "sust": _h(v["sust"]), "impl": _h(v["impl"])} for n, v in pessoas.items()),
+        "pessoas": sorted(({"nome": n, "sust": _h(v["sust"]), "impl": _h(v["impl"]),
+                            "fat": _h(v.get("fat", 0.0)), "sust_fat": _h(v.get("sust_fat", 0.0)), "impl_fat": _h(v.get("impl_fat", 0.0))}
+                           for n, v in pessoas.items()),
                           key=lambda p: -(p["sust"] + p["impl"])),
         "listas": sorted(({"lista": v["lista"], "pasta": v["pasta"], "h": _h(v["h"]), "fat": _h(v["fat"]), "nat": v["nat"]}
                           for v in listas.values()), key=lambda l: -l["h"]),
