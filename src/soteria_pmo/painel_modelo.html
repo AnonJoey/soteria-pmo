@@ -300,11 +300,11 @@ const MESES=['janeiro','fevereiro','março','abril','maio','junho','julho','agos
 const HATCH = (id,cor='var(--st-es)') => `<defs><pattern id="${id}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="var(--canvas)"/><rect width="2" height="5" fill="${cor}"/></pattern></defs>`;
 const COR={0:'var(--st-ok)',1:'var(--st-at)',2:'var(--st-cr)',3:'var(--st-cr)',4:'var(--st-es)'};
 
-let modo='auto', sel=null, sortK='pct', sortDir=-1, filtroFat=false;
+let modo='auto', sel=null, sortK='pct', sortDir=-1, filtroFat=!!D.filtro_fat_padrao;
 try{
   modo=localStorage.getItem('pmo-modo')||'auto';
   sel=localStorage.getItem('pmo-sel');
-  filtroFat=localStorage.getItem('pmo-filtro-fat')==='true';
+  const fSalvo=localStorage.getItem('pmo-filtro-fat'); if(fSalvo!==null) filtroFat=fSalvo==='true';
 }catch(e){}
 
 const DU=D.mes.dias_uteis_passados, DUM=D.mes.dias_uteis_mes;

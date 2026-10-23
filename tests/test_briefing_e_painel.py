@@ -51,3 +51,25 @@ def test_comando_painel_e_o_rodar_usam_o_mesmo_gravador():
     import inspect
     assert "gravar_briefing" in inspect.getsource(cli.cmd_painel)
     assert "gravar_briefing" in inspect.getsource(cli.montar_tarefas)
+
+
+def test_padrao_do_filtro_vem_da_flag_ou_do_config():
+    assert cli._fat_padrao({}) is False
+    assert cli._fat_padrao({}, True) is True
+    assert cli._fat_padrao({"painel_somente_faturaveis": True}) is True
+    assert cli._fat_padrao({"bolsao_somente_faturaveis": True}) is True
+
+
+def test_painel_leva_o_padrao_no_payload_e_o_modelo_o_usa():
+
+    assert painel.montar_dados(_Nada(), [], HOJE, fat_padrao=True)["filtro_fat_padrao"] is True
+    assert painel.montar_dados(_Nada(), [], HOJE)["filtro_fat_padrao"] is False
+    modelo = (Path(painel.__file__).parent / "painel_modelo.html").read_text(encoding="utf-8")
+    assert "filtroFat=!!D.filtro_fat_padrao" in modelo
+    assert "if(fSalvo!==null)" in modelo
+
+
+class _Nada:
+    """Cliente sem projeto nenhum: montar_dados nao deve precisar ler o ClickUp."""
+    def __getattr__(self, nome):
+        return lambda *a, **k: []

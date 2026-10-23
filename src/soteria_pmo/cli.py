@@ -173,6 +173,12 @@ def evidencia_do_periodo(cfg: dict, inicio: date, fim: date) -> list:
     return uteis
 
 
+def _fat_padrao(cfg: dict, flag: bool = False) -> bool:
+    """O painel abre filtrado em horas faturaveis: pela flag, ou por `painel_somente_faturaveis`
+    ou `bolsao_somente_faturaveis` no config."""
+    return bool(flag or cfg.get("painel_somente_faturaveis") or cfg.get("bolsao_somente_faturaveis"))
+
+
 def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: bool = False) -> dict:
     """Wire each item to its data. Kept out of rotina.py so that module stays
     free of any client and can be tested without a network."""
@@ -249,7 +255,8 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
     # 21/10/2026. Como o reporte, a pagina vai para um arquivo e o resumo diz onde.
     if projetos:
         def _painel() -> str:
-            html = painel.gerar(cliente, projetos, hoje, _feriados(cfg), modelo=cfg.get("painel_modelo"))
+            html = painel.gerar(cliente, projetos, hoje, _feriados(cfg), modelo=cfg.get("painel_modelo"),
+                                fat_padrao=_fat_padrao(cfg, somente_faturaveis))
             destino = painel.gravar_briefing(
                 html, hoje, cfg, getattr(cliente, "_saida_painel", None))[0]
             return f"Painel da carteira em HTML, atualizado em {hoje:%d/%m/%Y}: {destino}"
@@ -385,7 +392,8 @@ def cmd_painel(args) -> int:
         return 2
     with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
         html = painel.gerar(cliente, projetos, hoje, _feriados(cfg),
-                            modelo=args.modelo or cfg.get("painel_modelo"))
+                            modelo=args.modelo or cfg.get("painel_modelo"),
+                            fat_padrao=_fat_padrao(cfg, getattr(args, "faturaveis", False)))
     destino = painel.gravar_briefing(
         html, hoje, cfg, Path(args.saida).expanduser() if args.saida else None)[0]
 

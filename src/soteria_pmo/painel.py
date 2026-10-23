@@ -296,8 +296,12 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
 
 
 def montar_dados(cliente: Any, projetos: list[dict], hoje: date,
-                 feriados: frozenset[date] = frozenset(), agora: datetime | None = None) -> dict:
-    """O objeto `D` do modelo, com o ClickUp lido agora. So leitura."""
+                 feriados: frozenset[date] = frozenset(), agora: datetime | None = None,
+                 fat_padrao: bool = False) -> dict:
+    """O objeto `D` do modelo, com o ClickUp lido agora. So leitura.
+
+    `fat_padrao` abre o painel ja filtrado em horas faturaveis; o botao continua valendo e a
+    escolha que a pessoa fez no navegador vence o padrao."""
     agora = agora or datetime.now()
     inicio = _segunda(hoje) - timedelta(weeks=SEMANAS - 1)
     try:
@@ -321,6 +325,7 @@ def montar_dados(cliente: Any, projetos: list[dict], hoje: date,
     sp_ini = _segunda(hoje) - timedelta(days=7)
     return {
         "gerado_em": agora.strftime("%Y-%m-%dT%H:%M"),
+        "filtro_fat_padrao": bool(fat_padrao),
         "hoje": hoje.isoformat(),
         "inicio": inicio.isoformat(),
         "mes": {"inicio": inicio_mes.isoformat(), "fim": _fim_do_mes(hoje).isoformat(),
@@ -361,8 +366,8 @@ def renderizar(dados: dict, modelo: str | Path | None = None) -> str:
 
 
 def gerar(cliente: Any, projetos: list[dict], hoje: date, feriados: frozenset[date] = frozenset(),
-          modelo: str | Path | None = None) -> str:
-    return renderizar(montar_dados(cliente, projetos, hoje, feriados), modelo)
+          modelo: str | Path | None = None, fat_padrao: bool = False) -> str:
+    return renderizar(montar_dados(cliente, projetos, hoje, feriados, fat_padrao=fat_padrao), modelo)
 
 
 def caminho_padrao(hoje: date) -> Path:
