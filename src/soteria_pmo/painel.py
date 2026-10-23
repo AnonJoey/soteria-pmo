@@ -367,3 +367,39 @@ def gerar(cliente: Any, projetos: list[dict], hoje: date, feriados: frozenset[da
 
 def caminho_padrao(hoje: date) -> Path:
     return Path.home() / ".soteria-pmo" / "reportes" / f"painel-{hoje:%Y-%m-%d}.html"
+
+
+def diretorios_do_briefing(cfg: dict) -> list[Path]:
+    """Onde o briefing do dia e gravado alem de ~/.soteria-pmo/reportes/.
+
+    `diretorio_relatorios` do config, ou ~/.soteria-pmo/relatorios quando ausente, e
+    o `relatorios/` do diretorio atual se ele existir (a rotina.sh do Max roda la).
+    """
+    dirs = [Path(cfg.get("diretorio_relatorios") or Path.home() / ".soteria-pmo" / "relatorios").expanduser()]
+    local = Path("relatorios")
+    if local.is_dir() and local.resolve() not in {d.resolve() for d in dirs}:
+        dirs.append(local)
+    return dirs
+
+
+def gravar_briefing(html: str, hoje: date, cfg: dict, destino: Path | None = None) -> list[Path]:
+    """Grava o painel como briefing do dia: este e o formato do briefing, nunca o .md convertido.
+
+    Devolve os arquivos escritos. O primeiro e o canonico. `AAAA-MM-DD.html` e o nome que
+    a rotina do Max abre; as duas variantes com `painel` ficam por compatibilidade.
+    Falha de copia em relatorios/ e registrada e nao derruba o painel.
+    """
+    destino = destino or caminho_padrao(hoje)
+    destino.parent.mkdir(parents=True, exist_ok=True)
+    destino.write_text(html, encoding="utf-8")
+    escritos = [destino]
+    for pasta in diretorios_do_briefing(cfg):
+        try:
+            pasta.mkdir(parents=True, exist_ok=True)
+            for nome in (f"{hoje:%Y-%m-%d}.html", f"{hoje:%Y-%m-%d}-painel.html",
+                         f"painel-{hoje:%Y-%m-%d}.html"):
+                (pasta / nome).write_text(html, encoding="utf-8")
+                escritos.append(pasta / nome)
+        except OSError as e:
+            logger.warning("copia do briefing para %s falhou: %s", pasta, e)
+    return escritos

@@ -69,7 +69,7 @@ def main():
     """).fetchall()
 
     lines = []
-    lines.append("# Relatório Consolidado de Auditoria Especializada — Agentes PMO (`soteria-pmo`)")
+    lines.append("# Relatório Consolidado de Auditoria Especializada: Agentes PMO (`soteria-pmo`)")
     lines.append("")
     lines.append("- **Data da Conclusão**: 2026-10-23")
     lines.append("- **Motor de Inferência**: Qwen2.5-Coder-14B-Instruct-Q4_K_M (Execução Local via GPU RTX 4070, 16.384 tokens de contexto)")
@@ -81,15 +81,35 @@ def main():
     lines.append("## 1. Resumo Executivo e Métricas Globais")
     lines.append("")
     lines.append(f"A esteira automatizada executou uma varredura completa dos **{total_modules} módulos** do soteria-pmo, gerando um total de **{total_findings:,} apontamentos** do modelo.")
-    lines.append(f"A Passagem 5 realizou o cruzamento com a suíte de testes unitários (`tests/`), isolando **{total_fp:,} falsos positivos** (cenários já cobertos e garantidos) e catalogando **{total_genuine:,} achados genuínos**.")
+    lines.append(f"A Passagem 5 realizou o cruzamento com a suíte de testes unitários (`tests/`), isolando **{total_fp:,} falsos positivos** (cenários já cobertos e garantidos, e 31 achados de severidade ALTA refutados na revisão manual) e restando **{total_genuine:,} apontamentos que ela não descartou**. Isso não os torna defeitos: veja a revisão manual abaixo.")
     lines.append("")
     lines.append("| Métrica | Valor Absoluto | Proporção |")
     lines.append("| :--- | :---: | :---: |")
     lines.append(f"| **Módulos Auditados** | {total_modules} | 100.0% |")
     lines.append(f"| **Apontamentos Totais da LLM** | {total_findings:,} | 100.0% |")
     lines.append(f"| **Falsos Positivos Filtrados (Passagem 5)** | {total_fp:,} | {(total_fp/total_findings)*100:.1f}% |" if total_findings else "| **Falsos Positivos** | 0 | 0.0% |")
-    lines.append(f"| **Achados Genuínos Catalogados** | {total_genuine:,} | {(total_genuine/total_findings)*100:.1f}% |" if total_findings else "| **Achados Genuínos** | 0 | 0.0% |")
+    lines.append(f"| **Apontamentos não descartados (não confirmados)** | {total_genuine:,} | {(total_genuine/total_findings)*100:.1f}% |" if total_findings else "| **Apontamentos não descartados** | 0 | 0.0% |")
     lines.append("")
+    triados = cur.execute("SELECT is_false_positive, count(*) FROM audit_findings "
+                          "WHERE test_verification LIKE 'Triagem manual%' GROUP BY 1").fetchall()
+    if triados:
+        t = dict(triados)
+        lines.append("### Revisão manual de 23/10/2026 (severidade ALTA)")
+        lines.append("")
+        lines.append(f"Os 33 apontamentos de severidade ALTA foram lidos contra o código e os mais plausíveis foram reproduzidos. "
+                     f"**{t.get(1, 0)} eram falsos** e **{t.get(0, 0)} eram reais, mas só de exibição** (rebaixados para BAIXA). "
+                     "Nenhum é defeito de cálculo, segurança ou resiliência.")
+        lines.append("")
+        lines.append("- 16 aplicam regras inventadas (tetos do Reviver e da Unimed, exclusão do IoX) a funções que não calculam teto.")
+        lines.append("- Divisão por zero: as linhas citadas não têm divisão, e `Bolsao` recusa `horas_contratadas <= 0` (testado com 0 e -5).")
+        lines.append("- Fim antes do início: `sobreposicoes` já recusa (testado com 15:00-14:00).")
+        lines.append("- Chamada HTTP sem timeout: `daily.py` usa `timeout=300` e o `coletor.py` não faz HTTP.")
+        lines.append("- Vazamento do token: o token só vai no cabeçalho e nenhum log o imprime.")
+        lines.append("")
+        lines.append("**Consequência:** a taxa de acerto da amostra ALTA foi 0 de 33 para defeito que altere resultado. Trate os demais "
+                     "apontamentos como hipóteses do modelo, não como lista de trabalho. O motivo de cada veredito está em "
+                     "`test_verification` no banco e foi gravado por `scripts/triagem_manual_pmo.py`.")
+        lines.append("")
     lines.append("---")
     lines.append("")
     lines.append("## 2. Estatísticas das 4 Passagens Especializadas")
@@ -107,7 +127,7 @@ def main():
     lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append("## 3. Distribuição dos Achados Genuínos")
+    lines.append("## 3. Distribuição dos Apontamentos Não Descartados")
     lines.append("")
     lines.append("### A. Por Categoria e Severidade")
     lines.append("")
@@ -138,7 +158,7 @@ def main():
     lines.append("")
     lines.append("---")
     lines.append("")
-    lines.append("## 5. Catálogo Completo de Achados Genuínos (Por Módulo e Severidade)")
+    lines.append("## 5. Catálogo dos Apontamentos Não Descartados (Por Módulo e Severidade)")
     lines.append("")
     current_mod = None
     for g in genuine_findings:

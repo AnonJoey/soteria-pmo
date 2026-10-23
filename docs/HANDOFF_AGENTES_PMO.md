@@ -86,7 +86,7 @@ Uma auditoria exaustiva do repositório foi executada no servidor local de GPU (
 - **Passagem 4 (Métricas de Limite, SLA & Tipagem)**: 196 achados.
 - **Passagem 5 (Validação Cruzada contra a Suíte de Testes)**:
   - 576 achados foram comprovados como **falsos positivos** (84,6% de cobertura direta pelos 544 testes unitários existentes).
-  - **105 achados genuínos** foram confirmados e catalogados no banco SQLite `audit_soteria_pmo.db` e documentados em `docs/AUDITORIA_CONSOLIDADA_PMO.md`.
+  - Restaram **74 apontamentos não descartados** no banco SQLite `audit_soteria_pmo.db` (eram 105; em 23/10 os 33 de severidade ALTA foram lidos contra o código e 31 eram falsos, 2 eram só de exibição). Nenhum foi confirmado como defeito: são hipóteses do modelo. Relatório em `docs/AUDITORIA_CONSOLIDADA_PMO.md`.
   - Principais itens para backlog técnico: sanitização de paths no salvamento de relatórios em OS legados, tolerância a retornos nulos de `custom_fields` no ClickUp e locks locais em escrita simultânea de caches.
 
 ---
@@ -138,4 +138,4 @@ Conforme estabelecido em `docs/FRAMEWORK-DE-ENTREGA.md`:
 
 ### Jordan
 - [ ] Manter acompanhamento dos apontamentos diários e verificação dos espelhos gerados em `relatorios/`.
-- [ ] Programar a triagem e remediação modular dos 105 achados genuínos catalogados na auditoria técnica.
+- [ ] Triar os 74 apontamentos restantes da auditoria (45 de severidade MEDIA e 29 BAIXA) do mesmo jeito: ler contra o código e reproduzir antes de tratar como defeito.

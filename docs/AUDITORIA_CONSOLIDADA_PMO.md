@@ -1,4 +1,4 @@
-# Relatório Consolidado de Auditoria Especializada — Agentes PMO (`soteria-pmo`)
+# Relatório Consolidado de Auditoria Especializada: Agentes PMO (`soteria-pmo`)
 
 - **Data da Conclusão**: 2026-10-23
 - **Motor de Inferência**: Qwen2.5-Coder-14B-Instruct-Q4_K_M (Execução Local via GPU RTX 4070, 16.384 tokens de contexto)
@@ -10,14 +10,26 @@
 ## 1. Resumo Executivo e Métricas Globais
 
 A esteira automatizada executou uma varredura completa dos **21 módulos** do soteria-pmo, gerando um total de **681 apontamentos** do modelo.
-A Passagem 5 realizou o cruzamento com a suíte de testes unitários (`tests/`), isolando **576 falsos positivos** (cenários já cobertos e garantidos) e catalogando **105 achados genuínos**.
+A Passagem 5 realizou o cruzamento com a suíte de testes unitários (`tests/`), isolando **607 falsos positivos** (cenários já cobertos e garantidos, e 31 achados de severidade ALTA refutados na revisão manual) e restando **74 apontamentos que ela não descartou**. Isso não os torna defeitos: veja a revisão manual abaixo.
 
 | Métrica | Valor Absoluto | Proporção |
 | :--- | :---: | :---: |
 | **Módulos Auditados** | 21 | 100.0% |
 | **Apontamentos Totais da LLM** | 681 | 100.0% |
-| **Falsos Positivos Filtrados (Passagem 5)** | 576 | 84.6% |
-| **Achados Genuínos Catalogados** | 105 | 15.4% |
+| **Falsos Positivos Filtrados (Passagem 5)** | 607 | 89.1% |
+| **Apontamentos não descartados (não confirmados)** | 74 | 10.9% |
+
+### Revisão manual de 23/10/2026 (severidade ALTA)
+
+Os 33 apontamentos de severidade ALTA foram lidos contra o código e os mais plausíveis foram reproduzidos. **31 eram falsos** e **2 eram reais, mas só de exibição** (rebaixados para BAIXA). Nenhum é defeito de cálculo, segurança ou resiliência.
+
+- 16 aplicam regras inventadas (tetos do Reviver e da Unimed, exclusão do IoX) a funções que não calculam teto.
+- Divisão por zero: as linhas citadas não têm divisão, e `Bolsao` recusa `horas_contratadas <= 0` (testado com 0 e -5).
+- Fim antes do início: `sobreposicoes` já recusa (testado com 15:00-14:00).
+- Chamada HTTP sem timeout: `daily.py` usa `timeout=300` e o `coletor.py` não faz HTTP.
+- Vazamento do token: o token só vai no cabeçalho e nenhum log o imprime.
+
+**Consequência:** a taxa de acerto da amostra ALTA foi 0 de 33 para defeito que altere resultado. Trate os demais apontamentos como hipóteses do modelo, não como lista de trabalho. O motivo de cada veredito está em `test_verification` no banco e foi gravado por `scripts/triagem_manual_pmo.py`.
 
 ---
 
@@ -32,7 +44,7 @@ A Passagem 5 realizou o cruzamento com a suíte de testes unitários (`tests/`),
 
 ---
 
-## 3. Distribuição dos Achados Genuínos
+## 3. Distribuição dos Apontamentos Não Descartados
 
 ### A. Por Categoria e Severidade
 
@@ -40,43 +52,41 @@ A Passagem 5 realizou o cruzamento com a suíte de testes unitários (`tests/`),
 | :--- | :---: | :---: |
 | `api_clickup_e_seguranca` | **MEDIA** | 8 |
 | `api_clickup_e_seguranca` | **BAIXA** | 5 |
-| `api_clickup_e_seguranca` | **ALTA** | 2 |
 | `calculo_datas_e_concorrencia` | **MEDIA** | 23 |
-| `calculo_datas_e_concorrencia` | **BAIXA** | 12 |
-| `calculo_datas_e_concorrencia` | **ALTA** | 7 |
-| `regras_de_negocio_e_pmo` | **ALTA** | 21 |
+| `calculo_datas_e_concorrencia` | **BAIXA** | 13 |
 | `regras_de_negocio_e_pmo` | **MEDIA** | 7 |
-| `regras_de_negocio_e_pmo` | **BAIXA** | 3 |
+| `regras_de_negocio_e_pmo` | **BAIXA** | 4 |
 | `resiliencia_e_timeouts` | **MEDIA** | 7 |
 | `resiliencia_e_timeouts` | **BAIXA** | 7 |
-| `resiliencia_e_timeouts` | **ALTA** | 3 |
 
 ### B. Módulos por Densidade de Débito Técnico
 
 | Módulo | Total Genuínos | Alta | Média | Baixa |
 | :--- | :---: | :---: | :---: | :---: |
-| `src/soteria_pmo/coletor.py` | **22** | 2 | 14 | 6 |
-| `src/soteria_pmo/daily.py` | **22** | 12 | 6 | 4 |
-| `src/soteria_pmo/template_html.py` | **16** | 5 | 6 | 5 |
-| `src/soteria_pmo/reporte.py` | **13** | 3 | 4 | 6 |
-| `src/soteria_pmo/cli.py` | **9** | 4 | 4 | 1 |
-| `src/soteria_pmo/__init__.py` | **5** | 2 | 2 | 1 |
-| `src/soteria_pmo/auditor.py` | **5** | 1 | 2 | 2 |
-| `src/soteria_pmo/cronograma.py` | **4** | 2 | 0 | 2 |
-| `src/soteria_pmo/lancamento.py` | **2** | 1 | 1 | 0 |
+| `src/soteria_pmo/coletor.py` | **20** | 0 | 14 | 6 |
+| `src/soteria_pmo/reporte.py` | **12** | 0 | 4 | 8 |
+| `src/soteria_pmo/template_html.py` | **11** | 0 | 6 | 5 |
+| `src/soteria_pmo/daily.py` | **10** | 0 | 6 | 4 |
+| `src/soteria_pmo/cli.py` | **5** | 0 | 4 | 1 |
+| `src/soteria_pmo/auditor.py` | **4** | 0 | 2 | 2 |
+| `src/soteria_pmo/__init__.py` | **3** | 0 | 2 | 1 |
+| `src/soteria_pmo/cronograma.py` | **2** | 0 | 0 | 2 |
 | `src/soteria_pmo/lancamentos.py` | **2** | 0 | 2 | 0 |
 | `src/soteria_pmo/rh.py` | **2** | 0 | 2 | 0 |
-| `src/soteria_pmo/rotina.py` | **2** | 1 | 1 | 0 |
 | `src/soteria_pmo/horas.py` | **1** | 0 | 1 | 0 |
+| `src/soteria_pmo/lancamento.py` | **1** | 0 | 1 | 0 |
+| `src/soteria_pmo/rotina.py` | **1** | 0 | 1 | 0 |
 
 ---
 
 ## 4. Amostra Representativa de Falsos Positivos Descartados (Passagem 5)
 
-Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e protegidos pela suíte de testes unitários:
+Foram identificados **607 apontamentos** cujos cenários já estavam cobertos e protegidos pela suíte de testes unitários:
 
 | Módulo | Linha | Alerta da LLM | Cobertura Comprovada em Testes |
 | :--- | :---: | :--- | :--- |
+| `src/soteria_pmo/__init__.py` | 0 | Arquivo vazio ou não fornecido. Não é possível realizar a auditoria devido à fal... | Triagem manual 23/10/2026: __init__.py vazio por desenho, nao ha o que auditar |
+| `src/soteria_pmo/__init__.py` | 1 | Vazamento do token do ClickUp em logs, tracebacks ou arquivos temporários.... | Triagem manual 23/10/2026: o token so vai no cabecalho Authorization; nenhum log ou exceca |
 | `src/soteria_pmo/atualizacao.py` | 53 | Chamada HTTP sem timeout explícito que pode travar a rotina indefinidamente.... | Cenário já coberto em: test_atualizacao.py (termos: rodar, return, capture_output, args) |
 | `src/soteria_pmo/atualizacao.py` | 62 | Chamada HTTP sem timeout explícito que pode travar a rotina indefinidamente.... | Cenário já coberto em: test_atualizacao.py (termos: _git, raiz, origin) |
 | `src/soteria_pmo/atualizacao.py` | 64 | Chamada HTTP sem timeout explícito que pode travar a rotina indefinidamente.... | Cenário já coberto em: test_atualizacao.py (termos: _git, raiz, ramo) |
@@ -95,6 +105,7 @@ Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e 
 | `src/soteria_pmo/atualizacao.py` | 116 | Chamada HTTP sem timeout explícito que pode travar a rotina indefinidamente.... | Cenário já coberto em: test_atualizacao.py (termos: copiado, raiz, True, atualizar) |
 | `src/soteria_pmo/atualizacao.py` | 116 | A função `atualizar` chama `instalar(raiz, atualizar=True)`, que pode ser usado ... | Cenário já coberto em: test_atualizacao.py (termos: copiado, raiz, True, atualizar) |
 | `src/soteria_pmo/auditor.py` | 43 | O módulo de logging pode expor informações sensíveis, como tokens de autenticaçã... | Cenário já coberto em: test_auditor_cronograma.py (termo: auditor) |
+| `src/soteria_pmo/auditor.py` | 43 | Tolerância de 0.25 horas é muito alta, podendo levar a apontamentos significativ... | Triagem manual 23/10/2026: tolerancia de 0,25 h e parametro documentado no comentario, nao |
 | `src/soteria_pmo/auditor.py` | 109 | A propriedade horas_lancadas_no_dia é inicializada como 0.0, o que pode levar a ... | Cenário já coberto em: test_auditor_cronograma.py (termo: horas_lancadas_no_dia) |
 | `src/soteria_pmo/auditor.py` | 137 | Arredondamento indevido de horas/minutos na propriedade 'diferenca'.... | Cenário já coberto em: test_auditor_cronograma.py (termos: return, self) |
 | `src/soteria_pmo/auditor.py` | 226 | Arredondamento indevido de horas/minutos na propriedade 'horas_em_conflito'.... | Cenário já coberto em: test_auditor_cronograma.py (termos: return, conflitos, self, horas) |
@@ -104,24 +115,12 @@ Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e 
 | `src/soteria_pmo/auditor.py` | 278 | Verificação inadequada de overflow/underflow na função 'dias_sem_relogio'.... | Cenário já coberto em: test_auditor_cronograma.py (termos: date, inicio) |
 | `src/soteria_pmo/auditor.py` | 303 | A função 'conflitos' não trata HTTP 429 (Too Many Requests), o que pode levar a ... | Cenário já coberto em: test_auditor_cronograma.py (termos: date, clickup, horas, inicio) |
 | `src/soteria_pmo/auditor.py` | 304 | A função 'conflitos' não sanitiza os IDs de entradas, o que pode levar a injeção... | Cenário já coberto em: test_auditor_cronograma.py (termos: date, inicio, append) |
-| `src/soteria_pmo/auditor.py` | 322 | Arredondamento indevido de horas/minutos na criação de conflitos.... | Cenário já coberto em: test_auditor_cronograma.py (termos: disputado, horas) |
-| `src/soteria_pmo/auditor.py` | 323 | A função conflitos não verifica se as entradas estão dentro do período de contra... | Cenário já coberto em: test_auditor_cronograma.py (termos: date, conflitos, list, entradas |
-| `src/soteria_pmo/auditor.py` | 360 | A função 'concentracoes' não sanitiza os IDs de tarefas, o que pode levar a inje... | Cenário já coberto em: test_auditor_cronograma.py (termo: horas) |
 
 ---
 
-## 5. Catálogo Completo de Achados Genuínos (Por Módulo e Severidade)
+## 5. Catálogo dos Apontamentos Não Descartados (Por Módulo e Severidade)
 
 ### Módulo: `src/soteria_pmo/__init__.py`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~0)
-  - **Descrição**: Arquivo vazio ou não fornecido. Não é possível realizar a auditoria devido à falta de código para analisar.
-  - **Risco**: Não é possível garantir o cumprimento das invariantes de negócios e regras de governança devido à ausência de código.
-
-- **[ALTA]** `api_clickup_e_seguranca` (Linha ~1)
-  - **Descrição**: Vazamento do token do ClickUp em logs, tracebacks ou arquivos temporários.
-  - **Risco**: vazamento de credenciais
-  - **Trecho**: `token = 'seu_token_clickup'`
 
 - **[BAIXA]** `calculo_datas_e_concorrencia` (Linha ~0)
   - **Descrição**: Arquivo vazio ou não fornecido.
@@ -138,11 +137,6 @@ Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e 
   - **Trecho**: `response = requests.get(url, headers=headers)`
 
 ### Módulo: `src/soteria_pmo/auditor.py`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~43)
-  - **Descrição**: Tolerância de 0.25 horas é muito alta, podendo levar a apontamentos significativos fora do esperado.
-  - **Risco**: Erro em auditoria executiva
-  - **Trecho**: `TOLERANCIA = 0.25`
 
 - **[BAIXA]** `calculo_datas_e_concorrencia` (Linha ~499)
   - **Descrição**: Manipulação de datas sem especificar a zona de tempo, potencialmente causando problemas de fuso horário.
@@ -164,26 +158,6 @@ Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e 
   - **Trecho**: `f`
 
 ### Módulo: `src/soteria_pmo/cli.py`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~93)
-  - **Descrição**: Contrato de China Gate excede o teto de horas acordado (390h).
-  - **Risco**: Erro em auditoria executiva
-  - **Trecho**: `{'nome': 'China Gate', 'space_id': '90070091337', 'horas_contratadas': 100, 'tipo': 'chamado'}`
-
-- **[ALTA]** `calculo_datas_e_concorrencia` (Linha ~423)
-  - **Descrição**: Possível falta de tratamento de divisão por zero ao calcular a porcentagem de horas trabalhadas em relação ao bolso de horas.
-  - **Risco**: Distorção de horas
-  - **Trecho**: `bolsao.vigiar(...)`
-
-- **[ALTA]** `calculo_datas_e_concorrencia` (Linha ~433)
-  - **Descrição**: Possível falta de tratamento de divisão por zero ao calcular a porcentagem de horas trabalhadas em relação ao bolso de horas.
-  - **Risco**: Distorção de horas
-  - **Trecho**: `reporte.gerar_todos(...)`
-
-- **[ALTA]** `calculo_datas_e_concorrencia` (Linha ~489)
-  - **Descrição**: Possível falta de tratamento de divisão por zero ao calcular a porcentagem de horas trabalhadas em relação ao bolso de horas.
-  - **Risco**: Distorção de horas
-  - **Trecho**: `horas.apurar(...)`
 
 - **[BAIXA]** `calculo_datas_e_concorrencia` (Linha ~345)
   - **Descrição**: Possível falta de tratamento de divisão por zero ao calcular a porcentagem de horas trabalhadas em relação ao bolso de horas.
@@ -211,16 +185,6 @@ Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e 
   - **Trecho**: `433 |         conteudo = reporte.gerar_todos(`
 
 ### Módulo: `src/soteria_pmo/coletor.py`
-
-- **[ALTA]** `calculo_datas_e_concorrencia` (Linha ~456)
-  - **Descrição**: Arredondamento indevido de horas/minutos ao calcular a duração da reunião.
-  - **Risco**: Distorção de horas
-  - **Trecho**: `fim_reuniao = comeco + t.duracao`
-
-- **[ALTA]** `resiliencia_e_timeouts` (Linha ~495)
-  - **Descrição**: Chamada HTTP sem timeout explícito que pode travar a rotina indefinidamente.
-  - **Risco**: Travamento em produção
-  - **Trecho**: `shutil.copy2(origem, copia)`
 
 - **[BAIXA]** `calculo_datas_e_concorrencia` (Linha ~297)
   - **Descrição**: Possível comparação de datetime com timedelta.
@@ -324,16 +288,6 @@ Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e 
 
 ### Módulo: `src/soteria_pmo/cronograma.py`
 
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~45)
-  - **Descrição**: A regra de negócio para projetos de implantação está configurada para 4 dias úteis sem lançamento de horas, mas o teto de horas acordado para Reviver é 2.950h. A regra de 4 dias úteis pode levar a alertas excessivos sem respeitar o teto de horas.
-  - **Risco**: Erro em auditoria executiva
-  - **Trecho**: `REGUA_PROJETO_DIAS = 4`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~47)
-  - **Descrição**: A regra de negócio para chamados/sustentação está configurada para 2 dias úteis sem lançamento de horas, mas o teto de horas acordado para Unimed é 390h. A regra de 2 dias úteis pode levar a alertas excessivos sem respeitar o teto de horas.
-  - **Risco**: Erro em auditoria executiva
-  - **Trecho**: `REGUA_CHAMADO_DIAS = 2`
-
 - **[BAIXA]** `resiliencia_e_timeouts` (Linha ~272)
   - **Descrição**: Exceções silenciosas que ocultam erros de parsing.
   - **Risco**: Perda de reporte
@@ -345,66 +299,6 @@ Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e 
   - **Trecho**: `except Exception as e:`
 
 ### Módulo: `src/soteria_pmo/daily.py`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~40)
-  - **Descrição**: A constante HORA_DA_DAILY está definida como 14, o que pode causar inconsistências com os tétos de horas acordados (Reviver: 2.950h, Unimed: 390h, exclusão total do IoX).
-  - **Risco**: Erro em auditoria executiva
-  - **Trecho**: `HORA_DA_DAILY = 14`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~41)
-  - **Descrição**: A constante DURACAO_MAXIMA está definida como timedelta(hours=1), o que pode causar inconsistências com os tétos de horas acordados (Reviver: 2.950h, Unimed: 390h, exclusão total do IoX).
-  - **Risco**: Erro em auditoria executiva
-  - **Trecho**: `DURACAO_MAXIMA = timedelta(hours=1)`
-
-- **[ALTA]** `calculo_datas_e_concorrencia` (Linha ~130)
-  - **Descrição**: Arredondamento indevido de horas/minutos ao calcular o offset das falas.
-  - **Risco**: Distorção de horas
-  - **Trecho**: `offset = (timedelta(hours=int(a), minutes=int(b), seconds=int(c)) if c else timedelta(minutes=int(a), seconds=int(b)))`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~130)
-  - **Descrição**: A função ler_transcricao não verifica se as horas apontadas estão dentro do contrato acordado (Reviver: 2.950h, Unimed: 390h, exclusão total do IoX).
-  - **Risco**: Divergência contratual
-  - **Trecho**: `offset = (timedelta(hours=int(a), minutes=int(b), seconds=int(c)) if c else timedelta(minutes=int(a), seconds=int(b)))`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~142)
-  - **Descrição**: A função e_daily não verifica se a transcrição está dentro do contrato acordado (Reviver: 2.950h, Unimed: 390h, exclusão total do IoX).
-  - **Risco**: Divergência contratual
-  - **Trecho**: `return "daily" in (t.titulo or "").lower() or "daily" in (t.caminho.name.lower() if t.caminho else "")`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~175)
-  - **Descrição**: A função transcricoes não verifica se as horas apontadas estão dentro do contrato acordado (Reviver: 2.950h, Unimed: 390h, exclusão total do IoX).
-  - **Risco**: Divergência contratual
-  - **Trecho**: `if t is not None and inicio <= t.dia <= fim:`
-
-- **[ALTA]** `calculo_datas_e_concorrencia` (Linha ~258)
-  - **Descrição**: Resolução de datas sem considerar a zona de tempo, podendo causar desalinhamento de dias úteis.
-  - **Risco**: Distorção de horas
-  - **Trecho**: `return dia_da_reuniao - timedelta(days=atras)`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~260)
-  - **Descrição**: A função resolver_quando não verifica se as horas apontadas estão dentro do contrato acordado (Reviver: 2.950h, Unimed: 390h, exclusão total do IoX).
-  - **Risco**: Divergência contratual
-  - **Trecho**: `return dia_da_reuniao - timedelta(days=1)`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~310)
-  - **Descrição**: A função _horas não verifica se as horas apontadas estão dentro do contrato acordado (Reviver: 2.950h, Unimed: 390h, exclusão total do IoX).
-  - **Risco**: Divergência contratual
-  - **Trecho**: `return h if 0 < h <= 16 else None`
-
-- **[ALTA]** `resiliencia_e_timeouts` (Linha ~357)
-  - **Descrição**: Chamada HTTP sem timeout explícito que pode travar a rotina indefinidamente.
-  - **Risco**: travamento em produção
-  - **Trecho**: `with urllib.request.urlopen(req) as r:`
-
-- **[ALTA]** `api_clickup_e_seguranca` (Linha ~367)
-  - **Descrição**: O texto da requisição HTTP para o modelo é formatado com informações sensíveis, como o nome da pessoa e o dia, que podem ser extraídos dos logs ou tracebacks.
-  - **Risco**: Vazamento de credenciais
-  - **Trecho**: `usuario = TAREFA.format(pessoa=self.pessoa, dia=f"{dia:%d/%m/%Y}", falas=texto)`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~419)
-  - **Descrição**: A função falas_da_pessoa não verifica se as horas apontadas estão dentro do contrato acordado (Reviver: 2.950h, Unimed: 390h, exclusão total do IoX).
-  - **Risco**: Divergência contratual
-  - **Trecho**: `todas.extend(extraidas)`
 
 - **[BAIXA]** `api_clickup_e_seguranca` (Linha ~330)
   - **Descrição**: A URL do modelo é armazenada em uma variável de instância, mas não há evidências de que ela seja tratada de forma segura ou criptografada.
@@ -465,11 +359,6 @@ Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e 
 
 ### Módulo: `src/soteria_pmo/lancamento.py`
 
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~100)
-  - **Descrição**: Apontamentos com término antes de início estão sendo permitidos.
-  - **Risco**: Erro em auditoria executiva: violação de regra de negócio que pode levar a horas negativas ou mal contabilizadas.
-  - **Trecho**: `if i.fim_ms <= i.inicio_ms:`
-
 - **[MEDIA]** `calculo_datas_e_concorrencia` (Linha ~125)
   - **Descrição**: A verificação de duplicatas pode falhar se a tolerância for muito pequena ou muito grande, resultando em entradas duplicadas ou entradas perdidas.
   - **Risco**: Duplicação de entradas
@@ -489,20 +378,15 @@ Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e 
 
 ### Módulo: `src/soteria_pmo/reporte.py`
 
-- **[ALTA]** `calculo_datas_e_concorrencia` (Linha ~123)
+- **[BAIXA]** `calculo_datas_e_concorrencia` (Linha ~123)
   - **Descrição**: Arredondamento indevido de horas/minutos. O número de horas por tarefa é arredondado para duas casas decimais, o que pode levar a perda de precisão.
   - **Risco**: Distorção de horas
   - **Trecho**: `horas=round(horas_por_tarefa.get(tid, 0.0), 2)`
 
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~123)
+- **[BAIXA]** `regras_de_negocio_e_pmo` (Linha ~123)
   - **Descrição**: A atribuição de horas a uma tarefa está arredondando para duas casas decimais, o que pode resultar em perda de precisão e inconsistência nas contagens de horas.
   - **Risco**: Erro em auditoria executiva: possibilidade de horas sendo arredondadas de forma inadequada.
   - **Trecho**: `horas=round(horas_por_tarefa.get(tid, 0.0), 2)`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~495)
-  - **Descrição**: O relatório consolidado está sendo gerado sem considerar o teto de horas acordado para Reviver (2.950h) e Unimed (390h), o que pode resultar em excesso de horas.
-  - **Risco**: 
-  - **Trecho**: `f`
 
 - **[BAIXA]** `calculo_datas_e_concorrencia` (Linha ~164)
   - **Descrição**: Falta de tratamento de overflow/underflow. O relatório lista até 370 tarefas abertas sem horas, o que pode levar a overflow em variáveis de contagem.
@@ -567,39 +451,12 @@ Foram identificados **576 apontamentos** cujos cenários já estavam cobertos e 
 
 ### Módulo: `src/soteria_pmo/rotina.py`
 
-- **[ALTA]** `resiliencia_e_timeouts` (Linha ~173)
-  - **Descrição**: Exceções silenciosas que ocultam erros de parsing.
-  - **Risco**: Travamento em produção
-  - **Trecho**: `except Exception as e:`
-
 - **[MEDIA]** `api_clickup_e_seguranca` (Linha ~175)
   - **Descrição**: Em caso de exceção, o traceback completo é registrado no log de debug. Isso pode expor informações sensíveis sobre o ambiente de execução e a estrutura do código.
   - **Risco**: vazamento de informações
   - **Trecho**: `logger.debug("%s", traceback.format_exc())`
 
 ### Módulo: `src/soteria_pmo/template_html.py`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~431)
-  - **Descrição**: O arquivo de código não contém nenhuma lógica relacionada à validação de horas trabalhadas ou invariantes de negócios como teto de horas acordados (Reviver: 2.950h, Unimed: 390h, exclusão total do IoX).
-  - **Risco**: Erro em auditoria executiva: Falta de validação de horas trabalhadas contra os teto de horas acordados.
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~431)
-  - **Descrição**: O arquivo de código não contém nenhuma lógica para verificar apontamentos fora de vigência de contrato ou horas atribuídas a pessoas sem cadastro.
-  - **Risco**: Erro em auditoria executiva: Falta de validação de apontamentos fora de vigência de contrato e horas atribuídas a pessoas sem cadastro.
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~431)
-  - **Descrição**: O arquivo de código não contém nenhuma lógica para garantir a geração de HTML sem tags truncadas ou a precisão nos status de entrega (no prazo, em risco, atrasado).
-  - **Risco**: Erro em auditoria executiva: Falta de garantia de geração de HTML sem tags truncadas e precisão nos status de entrega.
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~570)
-  - **Descrição**: A função renderizar_cliente_html não verifica se as horas gastas excedem os teto de horas acordados para Reviver (2.950h) e Unimed (390h), violando a regra de negócio.
-  - **Risco**: Erro em auditoria executiva: possibilidade de excesso de horas faturáveis sem controle.
-  - **Trecho**: `if contratadas and contratadas > 0:`
-
-- **[ALTA]** `regras_de_negocio_e_pmo` (Linha ~570)
-  - **Descrição**: A função renderizar_cliente_html não exclui totalmente o IoX, violando a regra de negócio.
-  - **Risco**: Erro em auditoria executiva: possibilidade de inclusão do IoX sem controle.
-  - **Trecho**: `if contratadas and contratadas > 0:`
 
 - **[BAIXA]** `calculo_datas_e_concorrencia` (Linha ~463)
   - **Descrição**: O campo $PERIODO pode não estar formatado corretamente, podendo causar inconsistências na exibição da data.

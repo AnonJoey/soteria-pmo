@@ -250,21 +250,8 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
     if projetos:
         def _painel() -> str:
             html = painel.gerar(cliente, projetos, hoje, _feriados(cfg), modelo=cfg.get("painel_modelo"))
-            destino = getattr(cliente, "_saida_painel", None) or painel.caminho_padrao(hoje)
-            destino.parent.mkdir(parents=True, exist_ok=True)
-            destino.write_text(html, encoding="utf-8")
-
-            # Espelhar em relatorios/ caso o diretorio exista no cwd ou esteja no config
-            dir_rel = Path(cfg.get("diretorio_relatorios") or "relatorios")
-            if dir_rel.is_dir():
-                copia1 = dir_rel / f"{hoje:%Y-%m-%d}-painel.html"
-                copia2 = dir_rel / f"painel-{hoje:%Y-%m-%d}.html"
-                try:
-                    copia1.write_text(html, encoding="utf-8")
-                    copia2.write_text(html, encoding="utf-8")
-                except OSError as e:
-                    logger.debug("copia para %s falhou: %s", dir_rel, e)
-
+            destino = painel.gravar_briefing(
+                html, hoje, cfg, getattr(cliente, "_saida_painel", None))[0]
             return f"Painel da carteira em HTML, atualizado em {hoje:%d/%m/%Y}: {destino}"
         tarefas["painel"] = _painel
 
@@ -399,20 +386,8 @@ def cmd_painel(args) -> int:
     with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
         html = painel.gerar(cliente, projetos, hoje, _feriados(cfg),
                             modelo=args.modelo or cfg.get("painel_modelo"))
-    destino = Path(args.saida).expanduser() if args.saida else painel.caminho_padrao(hoje)
-    destino.parent.mkdir(parents=True, exist_ok=True)
-    destino.write_text(html, encoding="utf-8")
-
-    # Tambem espelhar em relatorios/ se o diretorio existir no cwd ou no config
-    dir_rel = Path(cfg.get("diretorio_relatorios") or "relatorios")
-    if dir_rel.is_dir():
-        copia1 = dir_rel / f"{hoje:%Y-%m-%d}-painel.html"
-        copia2 = dir_rel / f"painel-{hoje:%Y-%m-%d}.html"
-        try:
-            copia1.write_text(html, encoding="utf-8")
-            copia2.write_text(html, encoding="utf-8")
-        except OSError as e:
-            logger.debug("copia para %s falhou: %s", dir_rel, e)
+    destino = painel.gravar_briefing(
+        html, hoje, cfg, Path(args.saida).expanduser() if args.saida else None)[0]
 
     print(f"Painel da carteira gravado em {destino}")
     return 0
