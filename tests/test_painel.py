@@ -6,7 +6,7 @@ de tempo, listas e tarefas no formato que o ClickUp devolve.
 from __future__ import annotations
 
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, timedelta
 
 from soteria_pmo import painel
 

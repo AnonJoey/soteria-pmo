@@ -1,11 +1,10 @@
 """test_faturaveis_e_resiliencia.py — Testes das correções de resiliência e filtro faturável."""
 
 import httpx
-import pytest
 from datetime import date
 
-from soteria_pmo.clickup import ClickUp, ClickUpError
-from soteria_pmo.bolsao import Bolsao, apurar, Situacao
+from soteria_pmo.clickup import ClickUp
+from soteria_pmo.bolsao import Bolsao, apurar
 from soteria_pmo import painel
 
 
