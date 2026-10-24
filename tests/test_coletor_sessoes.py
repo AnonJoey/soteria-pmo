@@ -87,3 +87,13 @@ def test_registros_injetados_pelo_harness_nao_contam_como_digitados(tmp_path):
     evs = C.sessoes_ia(raiz, date(2026, 9, 26), date(2026, 9, 27))
     acompanhado = sum((e.fim - e.inicio).total_seconds() for e in evs if e.tipo == "sessao_ia")
     assert acompanhado <= 50 * 60
+
+
+def test_lacuna_de_ate_30_minutos_continua_no_mesmo_bloco():
+    """Regra da nuance: 25 minutos entre dois eventos nao cortam o bloco; 35 cortam."""
+    from datetime import datetime, timedelta
+    base = datetime(2026, 10, 20, 9, 0)
+    juntos = C._agrupar([C.Ponto(base, "a"), C.Ponto(base + timedelta(minutes=25), "b")], "git")
+    separados = C._agrupar([C.Ponto(base, "a"), C.Ponto(base + timedelta(minutes=35), "b")], "git")
+    assert len(juntos) == 1 and len(separados) == 2
+    assert C.INTERVALO_DE_CLUSTER == timedelta(minutes=30)

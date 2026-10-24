@@ -40,10 +40,11 @@ from .periodo import BRT, janela
 logger = logging.getLogger("pmo.coletor")
 
 # Two events further apart than this are two stretches of work, not one.
-# Twenty minutes: long enough to survive reading a page or writing a test
-# between commits, short enough that lunch splits the morning from the
-# afternoon instead of swallowing it.
-INTERVALO_DE_CLUSTER = timedelta(minutes=20)
+# Thirty minutes (was twenty until 2026-10-24): the "nuance rule" decided by
+# the owner. Messages, conversation and research between two actions leave no
+# mark of their own, so a short gap is attached to the block instead of cutting
+# it. Lunch still splits the morning from the afternoon.
+INTERVALO_DE_CLUSTER = timedelta(minutes=30)
 
 # What a single isolated event is worth. Deliberately small: one commit at
 # 14:32 with nothing around it proves a moment, not an afternoon, and the gap
