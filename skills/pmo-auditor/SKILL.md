@@ -97,6 +97,16 @@ fechamento.
 Qualquer pessoa da Soteria pode rodar: a skill le o workspace, e a evidencia de
 maquina que ela cruza e a de quem esta rodando. Nao ha operador unico.
 
+**Quem gerencia e nao lanca hora** (o Max) recebe outra leitura. A conferencia
+contra a maquina so roda quando o config traz `evidencia`, porque sem ela o que
+sobra e a auditoria dos proprios lancamentos de quem roda, que no caso dele nao
+existem. No lugar vem o quadro da equipe, lido pelo workspace inteiro: quanto
+cada pessoa lancou no dia util anterior, quem nao lancou, e quem acumula dias
+sem lancar nos ultimos cinco dias uteis. Tambem existe como
+`soteria-pmo lancamentos`. "Lancou" quer dizer ter alguma entrada no dia: ferias,
+feriado local e meio periodo nao aparecem, e o quadro nao mede se foi o
+suficiente. O fechamento do mes continua lendo so quem tem `evidencia`.
+
 ## Codigo
 
 `src/soteria_pmo/auditor.py`, testes em `tests/test_auditor_cronograma.py`.

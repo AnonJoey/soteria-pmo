@@ -324,6 +324,14 @@ class _ListasFalsas:
             raise self.por_lista[lista]
         return self.por_lista[lista]
 
+    def tarefas_do_espaco(self, espaco, **k):
+        self.lidas.append(f"espaco:{espaco}")
+        self.pedidos_de_espaco = getattr(self, "pedidos_de_espaco", []) + [dict(k)]
+        achado = self.por_lista.get(f"espaco:{espaco}", [])
+        if isinstance(achado, Exception):
+            raise achado
+        return achado
+
 
 def test_montar_tarefas_liga_o_guardiao_a_todas_as_listas_do_config():
     """A ligacao pegava so o primeiro projeto com list_id; o segundo nunca era lido."""
@@ -333,39 +341,95 @@ def test_montar_tarefas_liga_o_guardiao_a_todas_as_listas_do_config():
     cfg = {"projetos": [{"nome": "Alfa", "list_id": "L1"}, {"nome": "Beta", "space_id": "S"},
                         {"nome": "Gama", "list_id": "L2"}]}
     saida = cli.montar_tarefas(cfg, c, HOJE)["datas"]()
-    assert c.lidas == ["L1", "L2"] and "do segundo" in saida
+    # A lista do segundo projeto e lida, e o espaco do Beta tambem (so tinha space_id).
+    assert c.lidas == ["L1", "espaco:S", "L2"] and "do segundo" in saida
 
 
-def test_uma_lista_sai_igual_ao_vigiar_de_sempre():
+def test_uma_lista_sozinha_sai_igual_ao_vigiar_de_sempre():
     tarefas = [tarefa("atrasada", due=em(-4))]
     c = _ListasFalsas({"L1": tarefas})
-    projetos = [{"nome": "A", "list_id": "L1"}, {"nome": "B", "space_id": "S"}]
-    assert D.vigiar_projetos(c, projetos, HOJE) == D.vigiar(_ListasFalsas({"L1": tarefas}), "L1", HOJE)
+    assert D.vigiar_projetos(c, [{"nome": "A", "list_id": "L1"}], HOJE) == D.vigiar(
+        _ListasFalsas({"L1": tarefas}), "L1", HOJE)
     assert c.lidas == ["L1"]
 
 
-def test_cada_projeto_com_lista_e_lido_e_o_bloco_leva_o_nome():
+def test_cada_projeto_e_lido_e_o_bloco_leva_o_nome():
+    """Retorno do Max, 26/10/2026: com onze projetos no config so um tinha `list_id`, e o
+    resumo mostrava as datas de um projeto so. Quem tem so `space_id` agora e lido pelo espaco."""
     c = _ListasFalsas({"L1": [tarefa("do primeiro", due=em(-4))],
-                       "L2": [tarefa("do segundo", due=em(-2))]})
+                       "L2": [tarefa("do segundo", due=em(-2))],
+                       "espaco:S": [tarefa("do cliente", due=em(-6))]})
     projetos = [{"nome": "Alfa", "list_id": "L1"}, {"nome": "Beta", "space_id": "S"},
                 {"nome": "Gama", "list_id": "L2"}]
     saida = D.vigiar_projetos(c, projetos, HOJE)
-    assert c.lidas == ["L1", "L2"]
+    assert c.lidas == ["L1", "espaco:S", "L2"]
     assert "Guardiao das datas, Alfa" in saida and "do primeiro" in saida
+    assert "Guardiao das datas, Beta" in saida and "do cliente" in saida
     assert "Guardiao das datas, Gama" in saida and "do segundo" in saida
-    assert "Beta" not in saida
+
+
+def test_tarefa_cancelada_nao_e_atraso_mesmo_com_tipo_custom():
+    """Medido em 26/10/2026: `cancelado` vem com type `custom` e aparecia como vencido ha 111 dias."""
+    cancelada = dict(tarefa("cancelada", due=em(-111)), status={"status": "Cancelado", "type": "custom"})
+    viva = tarefa("viva", due=em(-3))
+    assert [p.nome for p in D.ler([cancelada, viva])] == ["viva"]
+
+
+def test_status_desconhecido_sem_tipo_continua_aberto():
+    """A excecao e de um nome so: o resto segue sem filtro por nome."""
+    t = dict(tarefa("x", due=em(-3)), status={"status": "publicado/finalizado"})
+    assert [p.nome for p in D.ler([t])] == ["x"]
+
+
+def test_espaco_e_lido_so_nas_tarefas_abertas_e_sem_engolir_erro():
+    c = _ListasFalsas({"L1": [], "espaco:S": [tarefa("x", due=em(-1))]})
+    D.vigiar_projetos(c, [{"nome": "Alfa", "list_id": "L1"}, {"nome": "Beta", "space_id": "S"}], HOJE)
+    assert c.pedidos_de_espaco == [{"incluir_fechadas": False, "levantar_erro": True}]
+
+
+def test_espaco_nao_traz_higiene_de_card():
+    """Descricao e estimativa faltando em centenas de tarefas de cliente e ruido; o pedido e datas."""
+    c = _ListasFalsas({"L1": [], "espaco:S": [tarefa("vencida", due=em(-2))]})
+    saida = D.vigiar_projetos(c, [{"nome": "Alfa", "list_id": "L1"}, {"nome": "Beta", "space_id": "S"}], HOJE)
+    assert "Higiene do card" not in saida.split("Guardiao das datas, Beta")[1]
+
+
+def test_espaco_com_muito_atraso_e_cortado_e_o_corte_e_dito():
+    muitas = [dict(tarefa(f"t{n}", due=em(-n - 1)), id=f"id{n}") for n in range(30)]
+    c = _ListasFalsas({"espaco:S": muitas})
+    saida = D.vigiar_projetos(c, [{"nome": "Beta", "space_id": "S"}, {"nome": "Gama", "space_id": "S2"}], HOJE)
+    assert f"... e mais {30 - D.LIMITE_POR_GRUPO_NO_ESPACO}" in saida
+
+
+def test_cliente_encerrado_fica_de_fora_como_no_bolsao():
+    c = _ListasFalsas({"espaco:S": [tarefa("x", due=em(-1))]})
+    assert D.vigiar_projetos(c, [{"nome": "Conta Azul", "space_id": "S"}], HOJE) == ""
+    assert c.lidas == []
+
+
+def test_espaco_que_nao_pode_ser_lido_e_dito_e_nao_vira_saude():
+    c = _ListasFalsas({"L1": [tarefa("viva", due=em(-2))], "espaco:S": RuntimeError("api fora")})
+    saida = D.vigiar_projetos(c, [{"nome": "Alfa", "list_id": "L1"}, {"nome": "Beta", "space_id": "S"}], HOJE)
+    assert "viva" in saida
+    assert "nao puderam ser lidos" in saida and "Beta" in saida
+
+
+def test_sem_lista_nem_espaco_o_guardiao_nao_diz_nada():
+    c = _ListasFalsas({})
+    assert D.vigiar_projetos(c, [{"nome": "A"}], HOJE) == ""
+    assert D.vigiar_projetos(c, [], HOJE) == "" and c.lidas == []
+
+
+def test_espaco_repetido_no_config_e_lido_uma_vez():
+    c = _ListasFalsas({"espaco:S": [tarefa("x", due=em(-1))]})
+    D.vigiar_projetos(c, [{"nome": "A", "space_id": "S"}, {"nome": "B", "space_id": "S"}], HOJE)
+    assert c.lidas == ["espaco:S"]
 
 
 def test_lista_repetida_no_config_e_lida_uma_vez():
     c = _ListasFalsas({"L1": [tarefa("x", due=em(-1))]})
     D.vigiar_projetos(c, [{"nome": "A", "list_id": "L1"}, {"nome": "B", "list_id": "L1"}], HOJE)
     assert c.lidas == ["L1"]
-
-
-def test_sem_nenhuma_lista_o_guardiao_nao_diz_nada():
-    c = _ListasFalsas({})
-    assert D.vigiar_projetos(c, [{"nome": "A", "space_id": "S"}], HOJE) == ""
-    assert D.vigiar_projetos(c, [], HOJE) == "" and c.lidas == []
 
 
 def test_lista_que_falha_nao_derruba_a_outra():

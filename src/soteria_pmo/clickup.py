@@ -419,12 +419,22 @@ class ClickUp:
         return tarefas
 
     def tarefas_do_espaco(self, space_id: str, desde_ms: int | None = None,
-                          max_paginas: int = 100) -> list[dict[str, Any]]:
+                          max_paginas: int = 100, incluir_fechadas: bool = True,
+                          levantar_erro: bool = False) -> list[dict[str, Any]]:
         """As tarefas de um espaco inteiro, que e a unidade de um cliente.
 
         `tarefas_da_lista` nao serve ao reporte consolidado: o trabalho de um
         cliente se espalha por dezenas de listas do espaco dele, e foi por isso
         que o bolsao passou a medir por espaco em 08/09/2026.
+
+        `incluir_fechadas=False` le so o que esta aberto, que e tudo de que o
+        guardiao das datas e o acompanhamento de cronograma precisam e e o que
+        evita arrastar o historico fechado do cliente.
+
+        `levantar_erro=True` deixa a falha de leitura subir em vez de devolver o
+        que ja leu. Quem vigia precisa disso: um espaco que nao pode ser lido e
+        um espaco sem alerta produzem o mesmo texto vazio, e o segundo e saude
+        que ninguem verificou.
 
         `desde_ms` recorta por ultima atualizacao, e nao e economia de chamada:
         e o que impede o reporte de uma semana de arrastar o backlog inteiro do
@@ -438,7 +448,7 @@ class ClickUp:
             # valido em Python; o dicionario e a unica forma de escreve-lo.
             params: dict[str, Any] = {
                 "space_ids[]": str(space_id), "page": page,
-                "include_closed": "true", "subtasks": "true",
+                "include_closed": str(incluir_fechadas).lower(), "subtasks": "true",
             }
             if desde_ms:
                 params["date_updated_gt"] = int(desde_ms)
@@ -446,6 +456,8 @@ class ClickUp:
                 data = self._get(f"/team/{self.team_id}/task", **params)
             except ClickUpError as e:
                 logger.warning("nao foi possivel ler o espaco %s: %s", space_id, e)
+                if levantar_erro:
+                    raise
                 return tarefas
             lote = data.get("tasks", [])
             tarefas.extend(lote)
