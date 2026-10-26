@@ -36,6 +36,19 @@ def dia_util_anterior(hoje: date, feriados: frozenset[date] = frozenset()) -> da
     return d
 
 
+def ultimos_dias_uteis(hoje: date, n: int = 5, feriados: frozenset[date] = frozenset()) -> list[date]:
+    """Os `n` dias uteis que terminam no dia util anterior a `hoje`, do mais antigo ao mais novo.
+
+    E a janela do resumo diario: a semana passada so cobre segunda a sexta de uma
+    semana calendario, e na quarta ela ja nao diz nada sobre ontem."""
+    dias: list[date] = []
+    d = dia_util_anterior(hoje, feriados)
+    while len(dias) < n:
+        dias.append(d)
+        d = dia_util_anterior(d, feriados)
+    return sorted(dias)
+
+
 def dias_da_semana_passada(hoje: date, feriados: frozenset[date] = frozenset()) -> list[date]:
     """Os dias uteis da semana calendario anterior a de `hoje` (segunda a sexta, sem feriado)."""
     segunda = hoje - timedelta(days=hoje.weekday() + 7)
@@ -145,6 +158,31 @@ def formatar(ontem: Quadro, semana: Quadro) -> str:
     if pendentes:
         for p, ds in sorted(pendentes.items(), key=lambda kv: (-len(kv[1]), kv[0].lower())):
             linhas.append(f"- {p}: {len(ds)} de {len(semana.dias)} ({', '.join(_rotulo(d) for d in ds)})")
+    else:
+        linhas.append("- Nenhum.")
+    linhas += ["", f"Esperados: {ontem.origem_dos_esperados}.",
+               "\"Lancou\" quer dizer ter alguma entrada no dia, nao ter lancado o suficiente. "
+               "Ferias, feriado local e meio periodo nao aparecem: um dia util sem entrada e "
+               "listado como sem lancamento."]
+    return "\n".join(linhas)
+
+
+def formatar_resumo(ontem: Quadro, recentes: Quadro) -> str:
+    """O quadro curto do resumo diario: quem nao lancou no dia util anterior e quem
+    acumula dias sem lancar nos ultimos dias uteis. E o que o Max pediu de uma
+    auditoria de apontamentos (26/10/2026); a tabela inteira segue em
+    `soteria-pmo lancamentos`."""
+    dia = ontem.dias[0]
+    lancaram, faltam = ontem.lancaram(dia), ontem.sem_lancamento(dia)
+    linhas = ["Lancamentos da equipe",
+              f"Dia util anterior ({_rotulo(dia)}): {len(lancaram)} de {len(ontem.linhas)} lancaram.",
+              ("Sem lancamento: " + ", ".join(faltam) + ".") if faltam else "Todos os esperados lancaram."]
+    por_pessoa = {l.pessoa: [d for d in recentes.dias if l.por_dia.get(d, 0.0) <= 0.0] for l in recentes.linhas}
+    pendentes = {p: ds for p, ds in por_pessoa.items() if ds}
+    linhas += ["", f"Dias sem lancamento, {_rotulo(recentes.dias[0])} a {_rotulo(recentes.dias[-1])}:"]
+    if pendentes:
+        for p, ds in sorted(pendentes.items(), key=lambda kv: (-len(kv[1]), kv[0].lower())):
+            linhas.append(f"- {p}: {len(ds)} de {len(recentes.dias)} ({', '.join(_rotulo(d) for d in ds)})")
     else:
         linhas.append("- Nenhum.")
     linhas += ["", f"Esperados: {ontem.origem_dos_esperados}.",

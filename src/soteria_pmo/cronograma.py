@@ -48,6 +48,7 @@ REGUA_PROJETO_DIAS = 4
 REGUA_CHAMADO_DIAS = 2
 
 TIPO_PROJETO = "projeto"
+MAX_RESPONSAVEIS_NA_LINHA = 4
 TIPO_CHAMADO = "chamado"
 
 # ── Acompanhamento por projeto, a regra acordada em 03/09/2026 com o Abner ──
@@ -93,7 +94,11 @@ class DivergenciaProjeto:
         return "lembrete"
 
     def linha(self) -> str:
-        resp = f" ({', '.join(self.responsaveis)})" if self.responsaveis else ""
+        # Um espaco de cliente tem dezenas de responsaveis: quatro nomes e a conta do resto.
+        nomes = self.responsaveis[:MAX_RESPONSAVEIS_NA_LINHA]
+        resto = len(self.responsaveis) - len(nomes)
+        resp = (f" ({', '.join(nomes)}{f' e mais {resto}' if resto > 0 else ''})"
+                if nomes else "")
         return (
             f"[{self.nivel}] {self.projeto}{resp} ({self.tipo}): "
             f"{self.dias_sem_horas} dias uteis sem horas apontadas "
@@ -249,16 +254,25 @@ def acompanhar_projetos(cliente, projetos: list[dict], hoje: date,
                         janela_dias: int = 30) -> str:
     """A porta do item 2: le cada projeto e devolve o log das divergencias.
 
-    Le a equipe uma vez e as entradas de tempo por projeto, porque uma entrada
-    nomeia a sua tarefa e mapear tarefa para projeto no workspace inteiro custa
-    uma chamada por tarefa. E o mesmo caminho que `bolsao.vigiar` ja usa, pela
-    mesma razao, incluindo nomear a equipe em vez de pedir `assignee=any`, que
-    responde 500 num workspace deste tamanho.
+    Le a equipe e as entradas de tempo uma vez para todos os projetos, porque uma
+    entrada nomeia a sua tarefa e mapear tarefa para projeto no workspace inteiro
+    custa uma chamada por tarefa. E o mesmo caminho que `bolsao.vigiar` ja usa,
+    pela mesma razao, incluindo nomear a equipe em vez de pedir `assignee=any`,
+    que responde 500 num workspace deste tamanho.
+
+    Um projeto com `list_id` e avaliado por essa lista. Um projeto so com
+    `space_id` e avaliado pelo espaco inteiro (as tarefas abertas dele e as horas
+    cuja entrada aponta para esse espaco), que e a unidade de um cliente. Antes
+    desta leitura so entrava quem tinha `list_id`, e com onze projetos no config
+    um era avaliado e dez calavam (retorno do Max, 26/10/2026). Cliente que nao
+    e mais cliente fica de fora, como no bolsao.
 
     Um projeto que nao pode ser lido nao derruba os outros e tambem nao some em
     silencio: ausencia de alerta e indistinguivel de projeto saudavel, entao a
     falha e dita no proprio log.
     """
+    from .bolsao import encerrado                    # import local: evita ciclo
+
     if not projetos:
         return ""
 
@@ -274,23 +288,48 @@ def acompanhar_projetos(cliente, projetos: list[dict], hoje: date,
 
     divergencias: list[DivergenciaProjeto] = []
     falhas: list[str] = []
+    todas: list[dict] | None = None
+    erro_das_entradas: str | None = None
+    vistas: set[tuple[str, str]] = set()
 
     for proj in projetos:
-        nome = proj.get("nome") or proj.get("list_id", "")
-        list_id = proj.get("list_id")
-        if not list_id:
+        nome = proj.get("nome") or proj.get("list_id") or proj.get("space_id", "")
+        list_id = str(proj.get("list_id") or "").strip()
+        space_id = str(proj.get("space_id") or "").strip()
+        if list_id:
+            chave = ("lista", list_id)
+        elif space_id and not encerrado(proj.get("nome") or ""):
+            chave = ("espaco", space_id)
+        else:
             continue
+        if chave in vistas:
+            continue
+        vistas.add(chave)
         tipo = proj.get("tipo") or TIPO_PROJETO
         try:
-            tarefas = cliente.tarefas_da_lista(list_id)
-            todas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
+            if todas is None and erro_das_entradas is None:
+                try:
+                    todas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
+                except Exception as e:
+                    erro_das_entradas = f"{type(e).__name__}: {e}"
+            if erro_das_entradas is not None:
+                raise RuntimeError(f"entradas de tempo nao puderam ser lidas ({erro_das_entradas})")
+            if chave[0] == "lista":
+                tarefas = cliente.tarefas_da_lista(list_id)
+                do_projeto = [e for e in todas
+                              if campo_objeto(e, "task_location").get("list_id") == list_id]
+                ident = list_id
+            else:
+                tarefas = cliente.tarefas_do_espaco(
+                    space_id, incluir_fechadas=False, levantar_erro=True)
+                do_projeto = [e for e in todas
+                              if str(campo_objeto(e, "task_location").get("space_id") or "") == space_id]
+                ident = space_id
         except Exception as e:
             logger.warning("nao foi possivel ler %s: %s", nome, e)
             falhas.append(f"{nome}: {type(e).__name__}: {e}")
             continue
-        do_projeto = [e for e in todas
-                      if campo_objeto(e, "task_location").get("list_id") == list_id]
-        d = avaliar_projeto(nome, list_id, tarefas, do_projeto,
+        d = avaliar_projeto(nome, ident, tarefas, do_projeto,
                             tipo=tipo, hoje=hoje, feriados=feriados, inicio=inicio)
         if d:
             divergencias.append(d)

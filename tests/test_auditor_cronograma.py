@@ -488,7 +488,14 @@ class ClienteFalso:
             raise RuntimeError("api fora")
         return self.por_lista[list_id]
 
+    def tarefas_do_espaco(self, space_id, **k):
+        self.pedidos_de_espaco = getattr(self, "pedidos_de_espaco", []) + [dict(k)]
+        if f"espaco:{space_id}" in self.quebra_em:
+            raise RuntimeError("api fora")
+        return self.por_lista[f"espaco:{space_id}"]
+
     def entradas(self, *_a, **_k):
+        self.leituras_de_entradas = getattr(self, "leituras_de_entradas", 0) + 1
         return self._entradas
 
 
@@ -530,6 +537,56 @@ def test_projeto_que_nao_pode_ser_lido_e_dito_e_nao_some_em_silencio():
     log = C.acompanhar_projetos(cliente, [{"nome": "Alfa", "list_id": "a"}], HOJE)
     assert "nao puderam ser lidos" in log
     assert "Alfa" in log
+
+
+def test_projeto_so_com_espaco_e_avaliado_pelo_espaco_inteiro():
+    """Retorno do Max, 26/10/2026: so o projeto com `list_id` era avaliado; dez de onze calavam."""
+    cliente = ClienteFalso({"a": [tarefa(nome="A", tocado_ha=20)],
+                            "espaco:S": [tarefa(nome="do cliente", tocado_ha=20)]})
+    log = C.acompanhar_projetos(cliente, [{"nome": "Interno", "list_id": "a"},
+                                          {"nome": "Cliente X", "space_id": "S", "tipo": C.TIPO_CHAMADO}], HOJE)
+    assert "Interno" in log and "Cliente X" in log
+
+
+def test_horas_de_outro_espaco_nao_caladam_o_espaco_avaliado():
+    de_outro = dict(entrada(HOJE, 8.0), task_location={"space_id": "OUTRO"})
+    do_proprio = dict(entrada(HOJE - timedelta(days=25), 1.0), task_location={"space_id": "S"})
+    cliente = ClienteFalso({"espaco:S": [tarefa(tocado_ha=20)]}, entradas=[de_outro, do_proprio])
+    assert "Cliente X" in C.acompanhar_projetos(cliente, [{"nome": "Cliente X", "space_id": "S"}], HOJE)
+
+
+def test_horas_do_proprio_espaco_calam_o_alerta():
+    do_proprio = dict(entrada(HOJE - timedelta(days=1), 2.0), task_location={"space_id": "S"})
+    cliente = ClienteFalso({"espaco:S": [tarefa(tocado_ha=20)]}, entradas=[do_proprio])
+    assert C.acompanhar_projetos(cliente, [{"nome": "Cliente X", "space_id": "S"}], HOJE) == ""
+
+
+def test_espaco_e_lido_so_nas_tarefas_abertas_e_as_entradas_uma_vez_so():
+    cliente = ClienteFalso({"espaco:S": [tarefa(tocado_ha=20)], "espaco:T": [tarefa(tocado_ha=20)],
+                            "a": [tarefa(tocado_ha=20)]})
+    C.acompanhar_projetos(cliente, [{"nome": "X", "space_id": "S"}, {"nome": "Y", "space_id": "T"},
+                                    {"nome": "Z", "list_id": "a"}], HOJE)
+    assert cliente.leituras_de_entradas == 1
+    assert cliente.pedidos_de_espaco == [{"incluir_fechadas": False, "levantar_erro": True}] * 2
+
+
+def test_espaco_que_nao_pode_ser_lido_e_dito_no_log():
+    cliente = ClienteFalso({"espaco:S": []}, quebra_em={"espaco:S"})
+    log = C.acompanhar_projetos(cliente, [{"nome": "Cliente X", "space_id": "S"}], HOJE)
+    assert "nao puderam ser lidos" in log and "Cliente X" in log
+
+
+def test_cliente_encerrado_nao_e_avaliado():
+    cliente = ClienteFalso({"espaco:S": [tarefa(tocado_ha=20)]})
+    assert C.acompanhar_projetos(cliente, [{"nome": "Conta Azul", "space_id": "S"}], HOJE) == ""
+    assert not hasattr(cliente, "pedidos_de_espaco")
+
+
+def test_muitos_responsaveis_viram_quatro_nomes_e_a_conta_do_resto():
+    tarefas = [dict(tarefa(quem=f"Dev{n}", tocado_ha=20), id=f"t{n}") for n in range(7)]
+    d = proj(tarefas)
+    linha = d.linha()
+    assert "e mais 3" in linha and "Dev0" in linha and "Dev6" not in linha
 
 
 def test_acompanhar_projetos_sem_projeto_nenhum_e_silencioso():

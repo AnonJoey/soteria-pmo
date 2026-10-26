@@ -179,6 +179,25 @@ def _fat_padrao(cfg: dict, flag: bool = False) -> bool:
     return bool(flag or cfg.get("painel_somente_faturaveis") or cfg.get("bolsao_somente_faturaveis"))
 
 
+def _lancamentos_da_equipe(cfg: dict, cliente: ClickUp, hoje: date, feriados: frozenset[date]) -> str:
+    """Quem nao lancou no dia util anterior, lido da equipe inteira e nao so de quem rodou.
+
+    A janela das entradas cobre os 30 dias que definem os esperados (quando o config
+    nao traz `equipe_lancamento`) e os ultimos dias uteis. Falha de leitura sobe: um
+    quadro vazio por API fora do ar seria lido como equipe em dia."""
+    from . import lancamentos
+    ontem = lancamentos.dia_util_anterior(hoje, feriados)
+    recentes = lancamentos.ultimos_dias_uteis(hoje, 5, feriados)
+    inicio = min([ontem, *recentes, hoje - timedelta(days=lancamentos.JANELA_DE_ESPERADOS)])
+    ini_ms, fim_ms = periodo.janela(inicio, hoje)
+    equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
+    entradas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
+    esperados = cfg.get("equipe_lancamento") or None
+    return lancamentos.formatar_resumo(
+        lancamentos.apurar(entradas, [ontem], esperados, historico=entradas),
+        lancamentos.apurar(entradas, recentes, esperados, historico=entradas))
+
+
 def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: bool = False) -> dict:
     """Wire each item to its data. Kept out of rotina.py so that module stays
     free of any client and can be tested without a network."""
@@ -263,14 +282,32 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
         tarefas["painel"] = _painel
 
     if com_lista or primeiro:
-        tarefas["auditor"] = lambda: auditor.relatorio(auditor.auditar(
-            cliente.entradas(*periodo.janela(inicio_aud, fim_aud)),
-            evidencia_do_periodo(cfg, inicio_aud, fim_aud),
-            inicio_aud, fim_aud))
-        tarefas["fechamento"] = lambda: auditor.relatorio(auditor.auditar(
-            cliente.entradas(*periodo.janela(inicio_mes, fim_mes)),
-            evidencia_do_periodo(cfg, inicio_mes, fim_mes),
-            inicio_mes, fim_mes))
+        # `cliente.entradas` sem `assignee` le SO o usuario autenticado. Isso e certo
+        # para a auditoria de cada dev contra a propria evidencia de maquina, e errado
+        # para quem gerencia e nao lanca hora: o Max recebia a auditoria dos proprios
+        # lancamentos, que nao existem (retorno de 26/10/2026). Por isso a parte
+        # pessoal so roda quando o config traz `evidencia`, e a parte da equipe (quem
+        # nao lancou no dia util anterior) roda sempre.
+        pessoal = bool(cfg.get("evidencia"))
+
+        def _auditor() -> str:
+            partes = []
+            if pessoal:
+                partes.append(
+                    f"Auditoria dos lancamentos de {cfg.get('pessoa') or 'quem roda'} "
+                    f"(escopo: {cliente.escopo_das_entradas(None) if hasattr(cliente, 'escopo_das_entradas') else 'somente o usuario autenticado'}).\n\n"
+                    + auditor.relatorio(auditor.auditar(
+                        cliente.entradas(*periodo.janela(inicio_aud, fim_aud)),
+                        evidencia_do_periodo(cfg, inicio_aud, fim_aud),
+                        inicio_aud, fim_aud)))
+            partes.append(_lancamentos_da_equipe(cfg, cliente, hoje, feriados))
+            return "\n\n".join(p for p in partes if p)
+        tarefas["auditor"] = _auditor
+        if pessoal:
+            tarefas["fechamento"] = lambda: auditor.relatorio(auditor.auditar(
+                cliente.entradas(*periodo.janela(inicio_mes, fim_mes)),
+                evidencia_do_periodo(cfg, inicio_mes, fim_mes),
+                inicio_mes, fim_mes))
 
     # Item 4 is absent on purpose. Hours need evidence this command does not
     # collect and an approval it must not fabricate, so it has its own path.

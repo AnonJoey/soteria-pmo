@@ -33,6 +33,11 @@ logger = logging.getLogger("pmo.datas")
 # Days out at which a date starts being worth mentioning.
 HORIZONTE = 3
 
+# Quantas linhas por grupo o guardiao imprime para um espaco de cliente. Um espaco de
+# sustentacao carrega centenas de tarefas abertas, e o digest do dia nao e o lugar
+# de listar todas: o corte e dito na ultima linha do grupo, nunca calado.
+LIMITE_POR_GRUPO_NO_ESPACO = 15
+
 # Status types ClickUp uses for finished work. `closed` is what this workspace
 # returns for "publicado/finalizado"; `done` is the other finished type.
 TIPOS_FINALIZADOS = frozenset({"closed", "done"})
@@ -66,15 +71,27 @@ class Prazo:
         return "proximo" if d <= HORIZONTE else "ok"
 
 
+# "Cancelado" e o unico nome que conta como encerrado sem o tipo dizer. Medido em
+# 26/10/2026 no espaco de um cliente: o status `cancelado` vem com type `custom`, como
+# `desenvolvimento`, entao o ClickUp o devolve com as abertas, e 19 tarefas canceladas
+# apareciam como vencidas ha ate 111 dias. E uma excecao de um nome so, por medida, e
+# nao a volta do filtro por nome que o modulo recusa.
+STATUS_CANCELADO = frozenset({"cancelado", "cancelada", "cancelled", "canceled"})
+
+
 def _finalizada(t: dict) -> bool:
-    """True when ClickUp itself says the task is finished.
+    """True when ClickUp itself says the task is finished, or the task was cancelled.
 
     A payload without a status type is not finished: guessing from the name
-    would reintroduce the status filter this module refuses to have.
+    would reintroduce the status filter this module refuses to have. The one
+    exception is `STATUS_CANCELADO`, with the measurement that justifies it.
     """
     status = t.get("status")
-    return (isinstance(status, dict)
-            and str(status.get("type") or "").lower() in TIPOS_FINALIZADOS)
+    if not isinstance(status, dict):
+        return False
+    if str(status.get("status") or "").strip().lower() in STATUS_CANCELADO:
+        return True
+    return str(status.get("type") or "").lower() in TIPOS_FINALIZADOS
 
 
 def ler(tarefas: list[dict]) -> list[Prazo]:
@@ -182,8 +199,12 @@ def _recolher_filhas(grupo: list[Prazo]) -> dict:
     return {"escondidas": escondidas, "por_raiz": por_raiz}
 
 
-def digest(prazos: list[Prazo], hoje: date, incluir_higiene: bool = True) -> str:
-    """The guardian's message. Empty when there is nothing to say."""
+def digest(prazos: list[Prazo], hoje: date, incluir_higiene: bool = True,
+           limite_por_grupo: int | None = None) -> str:
+    """The guardian's message. Empty when there is nothing to say.
+
+    `limite_por_grupo` corta cada grupo (vencidos, hoje, proximos) e diz quantos
+    ficaram de fora; sem ele o digest sai inteiro, como sempre saiu."""
     grupos = guardar(prazos, hoje)
     partes: list[str] = []
 
@@ -203,6 +224,9 @@ def digest(prazos: list[Prazo], hoje: date, incluir_higiene: bool = True) -> str
             n = filhas["por_raiz"].get(p.task_id, 0)
             resto = (f", mais {n} subtarefa{'s' if n != 1 else ''} com a mesma data" if n else "")
             linhas.append(f"  {p.nome} ({p.responsavel}, {p.status}) {quando}{resto}")
+        if limite_por_grupo is not None and len(linhas) > limite_por_grupo:
+            sobra = len(linhas) - limite_por_grupo
+            linhas = linhas[:limite_por_grupo] + [f"  ... e mais {sobra}, as menos atrasadas"]
         partes.append(f"{titulo}:\n" + "\n".join(linhas))
 
     if incluir_higiene:
@@ -223,27 +247,66 @@ def vigiar(cliente, list_id: str, hoje: date) -> str:
     return digest(ler(tarefas), hoje)
 
 
-def vigiar_projetos(cliente, projetos: list[dict], hoje: date) -> str:
-    """The guardian over every configured project that names a list.
+def vigiar_espaco(cliente, space_id: str, hoje: date) -> str:
+    """O guardiao sobre um espaco inteiro, que e a unidade de um cliente.
 
-    `list_id` is documented as the list this item reads, per project. The wiring
-    used to take the first project that had one and stop, so a second list in the
-    config was never read. One list reads exactly as `vigiar` always did; with
-    several, each block carries the project name, since a task name alone does
-    not say whose it is. A list named twice is read once.
+    Le so as tarefas abertas e deixa a falha de leitura subir: um espaco que nao
+    pode ser lido nao pode virar o mesmo texto vazio de um espaco sem atraso.
+    Sem higiene do card: apontar descricao e estimativa faltando em centenas de
+    tarefas de cliente seria ruido, e o que se pede aqui sao as datas."""
+    tarefas = cliente.tarefas_do_espaco(space_id, incluir_fechadas=False, levantar_erro=True)
+    return digest(ler(tarefas), hoje, incluir_higiene=False,
+                  limite_por_grupo=LIMITE_POR_GRUPO_NO_ESPACO)
+
+
+def vigiar_projetos(cliente, projetos: list[dict], hoje: date) -> str:
+    """The guardian over every configured project: the lists, and the client spaces.
+
+    Um projeto com `list_id` e lido por essa lista, como sempre. Um projeto so com
+    `space_id` e lido pelo espaco inteiro, porque o trabalho de um cliente se
+    espalha por dezenas de listas e ler "a lista" do config era ler uma fatia, ou
+    nenhuma: com onze projetos no config, so um tinha `list_id` e o resumo do dia
+    mostrava as datas de um projeto so (retorno do Max, 26/10/2026). Cliente que
+    nao e mais cliente fica de fora, como no bolsao.
+
+    Com uma fonte so a saida e a de `vigiar`; com varias, cada bloco leva o nome do
+    projeto, porque o nome de uma tarefa nao diz de quem ela e. Uma lista ou um
+    espaco citado duas vezes e lido uma vez. Quem nao pode ser lido e dito no fim,
+    nunca omitido: ausencia de alerta e indistinguivel de projeto saudavel.
     """
-    listas: list[tuple[str, str]] = []
-    vistas: set[str] = set()
+    from .bolsao import encerrado                    # import local: evita ciclo
+
+    fontes: list[tuple[str, str, str]] = []          # (tipo, nome, id)
+    vistas: set[tuple[str, str]] = set()
     for p in projetos:
+        nome = p.get("nome") or ""
         lista = str(p.get("list_id") or "").strip()
-        if lista and lista not in vistas:
-            vistas.add(lista)
-            listas.append((p.get("nome") or lista, lista))
-    if len(listas) <= 1:
-        return vigiar(cliente, listas[0][1], hoje) if listas else ""
-    blocos = []
-    for nome, lista in listas:
-        texto = vigiar(cliente, lista, hoje)
+        espaco = str(p.get("space_id") or "").strip()
+        if lista:
+            if ("lista", lista) not in vistas:
+                vistas.add(("lista", lista))
+                fontes.append(("lista", nome or lista, lista))
+        elif espaco and ("espaco", espaco) not in vistas and not encerrado(nome):
+            vistas.add(("espaco", espaco))
+            fontes.append(("espaco", nome or espaco, espaco))
+    if not fontes:
+        return ""
+    if len(fontes) == 1 and fontes[0][0] == "lista":
+        return vigiar(cliente, fontes[0][2], hoje)
+
+    blocos: list[str] = []
+    falhas: list[str] = []
+    for tipo, nome, ident in fontes:
+        try:
+            texto = (vigiar(cliente, ident, hoje) if tipo == "lista"
+                     else vigiar_espaco(cliente, ident, hoje))
+        except Exception as e:
+            logger.warning("nao foi possivel ler %s: %s", nome, e)
+            falhas.append(f"{nome}: {type(e).__name__}: {e}")
+            continue
         if texto:
             blocos.append(texto.replace("Guardiao das datas", f"Guardiao das datas, {nome}", 1))
+    if falhas:
+        blocos.append("Guardiao das datas, projetos que nao puderam ser lidos e por isso nao foram avaliados:\n"
+                      + "\n".join(f"  {f}" for f in falhas))
     return "\n\n".join(blocos)
