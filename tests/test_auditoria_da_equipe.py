@@ -73,6 +73,21 @@ def test_resumo_diz_quem_nao_lancou_no_dia_anterior_e_quem_nunca_lancou_nao_some
     assert "Esperados: lista informada em equipe_lancamento" in texto
 
 
+def test_resumo_mostra_as_horas_de_quem_lancou_e_nao_so_quem_faltou():
+    es = historico() + [entrada("Ana", SEXTA, horas=3.5)]       # Ana: 4,0 + 3,5 na sexta
+    ontem = L.apurar(es, [SEXTA], ["Ana", "Beto", "Caio"], historico=es)
+    recentes = L.apurar(es, L.ultimos_dias_uteis(HOJE), ["Ana", "Beto", "Caio"], historico=es)
+    linhas = L.formatar_resumo(ontem, recentes).splitlines()
+    assert "Lancaram: Ana 7,5h." in linhas
+    assert linhas.index("Lancaram: Ana 7,5h.") < linhas.index("Sem lancamento: Beto, Caio.")
+
+
+def test_resumo_sem_ninguem_que_lancou_nao_traz_linha_de_lancaram():
+    ontem = L.apurar([], [SEXTA], ["Ana"], historico=[])
+    recentes = L.apurar([], L.ultimos_dias_uteis(HOJE), ["Ana"], historico=[])
+    assert "Lancaram:" not in L.formatar_resumo(ontem, recentes)
+
+
 def test_auditor_de_quem_gerencia_traz_a_equipe_e_nao_os_proprios_lancamentos():
     cliente = ClienteDaEquipe(historico())
     saida = cli.montar_tarefas(CFG_DO_MAX, cliente, HOJE)["auditor"]()

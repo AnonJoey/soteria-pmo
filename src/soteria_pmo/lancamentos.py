@@ -177,6 +177,9 @@ def formatar_resumo(ontem: Quadro, recentes: Quadro) -> str:
     linhas = ["Lancamentos da equipe",
               f"Dia util anterior ({_rotulo(dia)}): {len(lancaram)} de {len(ontem.linhas)} lancaram.",
               ("Sem lancamento: " + ", ".join(faltam) + ".") if faltam else "Todos os esperados lancaram."]
+    if lancaram:
+        horas = {l.pessoa: l.por_dia.get(dia, 0.0) for l in ontem.linhas}
+        linhas.insert(2, "Lancaram: " + ", ".join(f"{p} {_hm(horas[p])}h" for p in lancaram) + ".")
     por_pessoa = {l.pessoa: [d for d in recentes.dias if l.por_dia.get(d, 0.0) <= 0.0] for l in recentes.linhas}
     pendentes = {p: ds for p, ds in por_pessoa.items() if ds}
     linhas += ["", f"Dias sem lancamento, {_rotulo(recentes.dias[0])} a {_rotulo(recentes.dias[-1])}:"]

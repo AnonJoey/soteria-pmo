@@ -33,9 +33,11 @@ soteria-pmo rodar --forcar datas
 
 Qualquer pessoa da Soteria. A skill le os prazos das listas do time, e nao a
 agenda de ninguem em particular: quem roda ve o que vence para o time. Le a
-lista de cada projeto que tem `list_id` no config (hoje so a lista interna dos
-Agentes PMO). Os espacos dos clientes nao sao lidos, porque o config deles so
-traz `space_id`; com mais de uma lista, cada bloco leva o nome do projeto.
+lista de cada projeto que tem `list_id` no config e, para o projeto que so traz
+`space_id` (os clientes), le o espaco inteiro. Cada bloco leva o nome do projeto.
+Ate 26/10/2026 so a lista interna dos Agentes PMO era lida e os outros dez
+projetos do config ficavam de fora sem aviso; hoje o que nao puder ser lido
+aparece no resumo, e projeto de cliente encerrado fica fora de proposito.
 
 ## Codigo
 
