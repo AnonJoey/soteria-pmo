@@ -366,6 +366,7 @@ def test_cada_projeto_e_lido_e_o_bloco_leva_o_nome():
     assert "Guardiao das datas, Alfa" in saida and "do primeiro" in saida
     assert "Guardiao das datas, Beta" in saida and "do cliente" in saida
     assert "Guardiao das datas, Gama" in saida and "do segundo" in saida
+    assert saida.startswith("Guardiao das datas na carteira (3 projetos com alerta: 3 vencida(s))")
 
 
 def test_tarefa_cancelada_nao_e_atraso_mesmo_com_tipo_custom():

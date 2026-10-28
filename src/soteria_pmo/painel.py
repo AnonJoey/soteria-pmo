@@ -295,6 +295,39 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
     }
 
 
+def _prazos_carteira(clientes: list[dict], hoje: date) -> dict:
+    """Consolida em lista unica os prazos vencidos e que vencem em 7 dias de toda a carteira."""
+    vencidas: list[dict] = []
+    a_vencer: list[dict] = []
+    total_vencidas = 0
+    total_espera = 0
+    total_a_vencer = 0
+    for c in clientes:
+        tf = c.get("tarefas") or {}
+        total_vencidas += int(tf.get("vencidas") or 0)
+        total_espera += int(tf.get("vencidas_espera") or 0)
+        total_a_vencer += int(tf.get("a_vencer_7d") or 0)
+        for t in tf.get("lista_vencidas") or ():
+            item = dict(t)
+            item["cliente"] = c["nome"]
+            item["dias_atraso"] = (hoje - date.fromisoformat(t["vence"])).days
+            vencidas.append(item)
+        for t in tf.get("lista_a_vencer") or ():
+            item = dict(t)
+            item["cliente"] = c["nome"]
+            item["dias_para_vencer"] = (date.fromisoformat(t["vence"]) - hoje).days
+            a_vencer.append(item)
+    vencidas.sort(key=lambda i: (i["espera"], i["vence"], i["cliente"], i["tarefa"]))
+    a_vencer.sort(key=lambda i: (i["vence"], i["espera"], i["cliente"], i["tarefa"]))
+    return {
+        "vencidas": total_vencidas,
+        "vencidas_espera": total_espera,
+        "a_vencer_7d": total_a_vencer,
+        "lista_vencidas": vencidas,
+        "lista_a_vencer": a_vencer,
+    }
+
+
 def montar_dados(cliente: Any, projetos: list[dict], hoje: date,
                  feriados: frozenset[date] = frozenset(), agora: datetime | None = None,
                  fat_padrao: bool = False) -> dict:
@@ -335,6 +368,7 @@ def montar_dados(cliente: Any, projetos: list[dict], hoje: date,
         "equipe_consultada": len(equipe or ()),
         "entradas_lidas": len(entradas),
         "clientes": clientes,
+        "prazos_carteira": _prazos_carteira(clientes, hoje),
         "pessoas": pessoas,
     }
 

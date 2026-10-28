@@ -259,6 +259,27 @@ def vigiar_espaco(cliente, space_id: str, hoje: date) -> str:
                   limite_por_grupo=LIMITE_POR_GRUPO_NO_ESPACO)
 
 
+def _contar_no_bloco(texto: str) -> tuple[int, int, int]:
+    """Conta (vencidos, vencem_hoje, proximos) em um digest ja formatado."""
+    chave_prox = f"Vencem em ate {HORIZONTE} dias:"
+    totais = {"Vencidos:": 0, "Vencem hoje:": 0, chave_prox: 0}
+    secao = ""
+    for linha in texto.splitlines():
+        limpa = linha.strip()
+        if limpa in totais:
+            secao = limpa
+        elif limpa.startswith("Higiene do card:"):
+            secao = ""
+        elif secao and linha.startswith("  "):
+            if limpa.startswith("... e mais "):
+                resto = limpa[len("... e mais "):].split(",", 1)[0].strip()
+                if resto.isdigit():
+                    totais[secao] += int(resto)
+            else:
+                totais[secao] += 1
+    return totais["Vencidos:"], totais["Vencem hoje:"], totais[chave_prox]
+
+
 def vigiar_projetos(cliente, projetos: list[dict], hoje: date) -> str:
     """The guardian over every configured project: the lists, and the client spaces.
 
@@ -296,6 +317,8 @@ def vigiar_projetos(cliente, projetos: list[dict], hoje: date) -> str:
 
     blocos: list[str] = []
     falhas: list[str] = []
+    tot_venc = tot_hoje = tot_prox = 0
+    projetos_com_alerta = 0
     for tipo, nome, ident in fontes:
         try:
             texto = (vigiar(cliente, ident, hoje) if tipo == "lista"
@@ -305,8 +328,26 @@ def vigiar_projetos(cliente, projetos: list[dict], hoje: date) -> str:
             falhas.append(f"{nome}: {type(e).__name__}: {e}")
             continue
         if texto:
+            v, h, pr = _contar_no_bloco(texto)
+            tot_venc += v
+            tot_hoje += h
+            tot_prox += pr
+            projetos_com_alerta += 1
             blocos.append(texto.replace("Guardiao das datas", f"Guardiao das datas, {nome}", 1))
     if falhas:
         blocos.append("Guardiao das datas, projetos que nao puderam ser lidos e por isso nao foram avaliados:\n"
                       + "\n".join(f"  {f}" for f in falhas))
+    if projetos_com_alerta > 1 and (tot_venc or tot_hoje or tot_prox):
+        partes_resumo = []
+        if tot_venc:
+            partes_resumo.append(f"{tot_venc} vencida(s)")
+        if tot_hoje:
+            partes_resumo.append(f"{tot_hoje} vence(m) hoje")
+        if tot_prox:
+            partes_resumo.append(f"{tot_prox} em ate {HORIZONTE} dias")
+        cabecalho = (
+            f"Guardiao das datas na carteira ({projetos_com_alerta} projetos com alerta: "
+            + ", ".join(partes_resumo) + ")"
+        )
+        return cabecalho + "\n\n" + "\n\n".join(blocos)
     return "\n\n".join(blocos)

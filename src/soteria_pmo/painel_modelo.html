@@ -227,6 +227,20 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
     </div>
     <div class="legend"><span><span class="badge s4">estourado</span></span><span><span class="badge s3">crítico</span></span><span><span class="badge s1">atenção</span></span><span><span class="badge s0">dentro</span></span><span><span class="badge sx">sem teto</span></span><span><i class="hatch"></i>acima do teto</span><span><i class="line"></i>projeção</span></div>
     <p class="note" id="n-base"></p>
+
+    <div class="panel" style="margin-top:26px" id="prazos-carteira-painel">
+      <div class="sec-head" style="margin-bottom:12px;padding-bottom:10px">
+        <h3 id="t-prazos-carteira" style="margin:0">prazos vencidos e ameaçados na carteira</h3>
+        <div class="ctl"><span>mostrar</span>
+          <div class="seg" role="group" aria-label="filtro de prazos da carteira">
+            <button id="b-pz-todas" aria-pressed="true">vencidas e a vencer</button>
+            <button id="b-pz-venc" aria-pressed="false">só vencidas</button>
+            <button id="b-pz-7d" aria-pressed="false">vencem em 7 dias</button>
+          </div>
+        </div>
+      </div>
+      <div class="tbl-wrap tiny-tbl" id="prazos-carteira"></div>
+    </div>
   </section>
 
   <section id="cliente" aria-labelledby="t-cliente">
@@ -421,7 +435,7 @@ function tabela(){
     return `<tr class="row${c.nome===sel?' sel':''}" data-c="${esc(c.nome)}" tabindex="0">
       <td><div class="cname">${esc(c.nome)}</div><div class="csub">${nf0.format(c.mes.total)}h no mês · ${nf0.format(c.mes.sust)} sust · ${nf0.format(c.mes.impl)} impl${modo==='auto'&&c.base_fixa?' · regra fixa: '+(c.base_fixa==='total'?'espaço inteiro':'sustentação'):(modo==='auto'&&!temSust(c)&&teveSust(c)?' · sem sustentação no mês':'')}</div></td>
       <td>${meter(c)}</td>
-      <td class="n">${p==null?'<span class="dim">—</span>':`<span class="${p>=1?'u':''}">${P(p)}</span>`}</td>
+      <td class="n">${p==null?'<span class="dim">-</span>':`<span class="${p>=1?'u':''}">${P(p)}</span>`}</td>
       <td class="n">${temTeto(c)?`<span class="${pr>c.teto?'u':''}">${H(pr)}</span>`:`<span class="dim">${H(pr)}</span>`}</td>
       <td>${spark(c)}</td>
       <td class="n">${sh==null?'<span class="dim">sem hora</span>':`<span class="${sh>=4?'u':''}">${sh}</span>`}</td>
@@ -556,8 +570,8 @@ function cKpis(c){
     [temTeto(c)?'consumo × teto':'consumo no mês', temTeto(c)?P(p):H(consumo(c)), temTeto(c)?`${H(consumo(c))} de ${nf0.format(c.teto)}h · ${baseNome(c)}`:esc(motivoSemTeto(c)), p>=1],
     ['projeção '+dt(fimMes), H(pr), temTeto(c)?(pr>c.teto?`passa ${H(pr-c.teto)} do teto`:`sobra ${H(c.teto-pr)}`):`${nf1.format(DU?consumo(c)/DU:0)}h por dia útil`, temTeto(c)&&pr>c.teto],
     ['sustentação', H(c.mes.sust), `implantação ${H(c.mes.impl)}`],
-    ['faturável', c.mes.total?P(c.mes.fat/c.mes.total):'—', `${H(c.mes.naofat)} não faturáveis`],
-    ['última hora', c.ultima_hora?dt(c.ultima_hora):'—', sh==null?'sem hora em 12 semanas':(sh===0?'lançou ontem ou hoje':`${sh} ${sh>1?'dias úteis':'dia útil'} sem hora`), sh>=4],
+    ['faturável', c.mes.total?P(c.mes.fat/c.mes.total):'-', `${H(c.mes.naofat)} não faturáveis`],
+    ['última hora', c.ultima_hora?dt(c.ultima_hora):'-', sh==null?'sem hora em 12 semanas':(sh===0?'lançou ontem ou hoje':`${sh} ${sh>1?'dias úteis':'dia útil'} sem hora`), sh>=4],
     ['prazos vencidos', c.tarefas.vencidas, `${c.tarefas.vencidas-(c.tarefas.vencidas_espera||0)} em desenvolvimento · ${c.tarefas.vencidas_espera||0} em espera · ${c.tarefas.a_vencer_7d} vencem em 7 dias`, c.tarefas.vencidas>0],
   ];
   $('#c-kpis').innerHTML=k.map(([l,v,s,a])=>`<div class="kpi${a?' alert':''}"><span class="l">${l}</span><span class="v">${v}</span><span class="s">${s}</span></div>`).join('');
@@ -602,7 +616,55 @@ function metodo(){
   $('#f-dir').textContent=`painel pmo · ${MESES[hoje.getMonth()]} ${hoje.getFullYear()}`;
 }
 
-function tudo(){ hero(); kpis(); tabela(); detalhe(); carga(); metodo(); }
+let filtroPz='todas';
+function coletarPrazosCarteira(){
+  if(D.prazos_carteira && Array.isArray(D.prazos_carteira.lista_vencidas)) return D.prazos_carteira;
+  const lv=[], la=[];
+  let tv=0, te=0, ta=0;
+  for(const c of D.clientes){
+    const tf=c.tarefas||{};
+    tv+=tf.vencidas||0; te+=tf.vencidas_espera||0; ta+=tf.a_vencer_7d||0;
+    for(const t of (tf.lista_vencidas||[])) lv.push({...t, cliente:c.nome});
+    for(const t of (tf.lista_a_vencer||[])) la.push({...t, cliente:c.nome});
+  }
+  lv.sort((a,b)=>(a.espera-b.espera)||a.vence.localeCompare(b.vence)||a.cliente.localeCompare(b.cliente));
+  la.sort((a,b)=>a.vence.localeCompare(b.vence)||(a.espera-b.espera)||a.cliente.localeCompare(b.cliente));
+  return {vencidas:tv, vencidas_espera:te, a_vencer_7d:ta, lista_vencidas:lv, lista_a_vencer:la};
+}
+function prazosCarteira(){
+  const pc=coletarPrazosCarteira();
+  const emDev=Math.max(0, pc.vencidas-(pc.vencidas_espera||0));
+  $('#t-prazos-carteira').textContent=`prazos vencidos e ameaçados na carteira · ${pc.vencidas} vencida${pc.vencidas===1?'':'s'} (${emDev} em desenvolvimento, ${pc.vencidas_espera||0} em espera) · ${pc.a_vencer_7d} vencem em 7 dias`;
+  const dias=s=>Math.round((hoje-new Date(s+'T12:00:00'))/864e5);
+  const venc=(pc.lista_vencidas||[]).map(t=>({...t, _vencida:true}));
+  const avenc=(pc.lista_a_vencer||[]).map(t=>({...t, _vencida:false}));
+  let items=[];
+  if(filtroPz==='venc') items=venc;
+  else if(filtroPz==='7d') items=avenc;
+  else items=[...venc.filter(t=>!t.espera), ...avenc, ...venc.filter(t=>t.espera)];
+  if(!items.length){
+    $('#prazos-carteira').innerHTML='<div class="empty">nenhuma tarefa vencida ou a vencer nos próximos 7 dias neste filtro</div>';
+    return;
+  }
+  const lim=20;
+  $('#prazos-carteira').innerHTML=`<table><thead><tr><th>cliente</th><th>tarefa</th><th>responsável</th><th>status</th><th class="n">prazo</th></tr></thead><tbody>${items.slice(0,lim).map(t=>{
+    const d=dias(t.vence);
+    const rotuloPrazo=t._vencida?`há ${d} ${d===1?'dia':'dias'}`:(d===0?'vence hoje':`em ${-d} ${-d===1?'dia':'dias'}`);
+    return `<tr class="row" data-cl="${esc(t.cliente)}" style="cursor:pointer"><td><div class="cname">${esc(t.cliente)}</div></td><td>${esc(t.tarefa)}<div class="csub">${esc(t.lista||'')}</div></td><td>${esc(t.resp)}</td><td><span class="badge ${t.espera?'sx':(t._vencida?'s3':'s1')}">${esc(t.status)}</span>${t.espera?'<div class="csub">em espera</div>':''}</td><td class="n"><span class="${t._vencida&&!t.espera?'u':''}">${dt(t.vence)}</span><div class="csub">${rotuloPrazo}</div></td></tr>`;
+  }).join('')}</tbody></table>${items.length>lim?`<div class="csub" style="margin-top:8px">mais ${items.length-lim} tarefas na carteira</div>`:''}`;
+}
+$('#prazos-carteira').addEventListener('click',e=>{const r=e.target.closest('[data-cl]'); if(r){ escolher(r.dataset.cl); const s=$('#cliente'); if(s&&s.scrollIntoView) s.scrollIntoView({behavior:'smooth',block:'start'}); }});
+[['#b-pz-todas','todas'],['#b-pz-venc','venc'],['#b-pz-7d','7d']].forEach(([id,f])=>{
+  $(id).addEventListener('click',()=>{
+    filtroPz=f;
+    $('#b-pz-todas').setAttribute('aria-pressed',String(f==='todas'));
+    $('#b-pz-venc').setAttribute('aria-pressed',String(f==='venc'));
+    $('#b-pz-7d').setAttribute('aria-pressed',String(f==='7d'));
+    prazosCarteira();
+  });
+});
+
+function tudo(){ hero(); kpis(); tabela(); prazosCarteira(); detalhe(); carga(); metodo(); }
 if(!sel||!D.clientes.some(c=>c.nome===sel)){ sel=[...D.clientes].sort((a,b)=>(pct(b)??-1)-(pct(a)??-1))[0].nome; }
 $('#b-auto').setAttribute('aria-pressed',modo==='auto'); $('#b-total').setAttribute('aria-pressed',modo==='total');
 $('#b-todas').setAttribute('aria-pressed',(!filtroFat).toString()); $('#b-faturaveis').setAttribute('aria-pressed',filtroFat.toString());
