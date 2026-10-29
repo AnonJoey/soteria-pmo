@@ -24,6 +24,7 @@ Lista `projetos`, uma entrada por cliente ou projeto:
 | `space_id` | Espaço do cliente. É a **unidade do bolsão**: o trabalho de um cliente se espalha por dezenas de listas | Max, ou lido da hierarquia do ClickUp | O bolsão usa só a lista (mede uma fatia) |
 | `list_id` | Lista lida pelo cronograma e pelo guardião das datas. Sem ela, o projeto é lido pelo `space_id` inteiro (as tarefas abertas do espaço e as horas lançadas nele); cliente encerrado fica de fora | Max | Lido pelo espaço, se houver `space_id`; sem os dois, o projeto não é lido |
 | `tipo` | `projeto` (régua de 4 dias úteis sem hora apontada) ou `chamado` (2 dias úteis) | Acordado com o Abner em 03/09 | Vale `projeto` |
+| `base` | `total` (espaço inteiro consome o bolsão, combinando chamados e implantação) ou `sust` (só listas de sustentação) | Max (acordado para China Gate em 28/10) | Automático (`sust` se houver sustentação no mês ou `listas_sustentacao`, senão `total`) |
 | `horas_contratadas` | Teto mensal de sustentação, ou total de um projeto | Max e Abner | Vale o teto de referência do código, se houver. Sem nenhum, o vigia diz "sem teto", em voz alta, e não projeta estouro |
 | `listas_sustentacao` | Listas que contam para o teto. Separa a sustentação de projetos dentro do mesmo espaço | Max | Tudo no espaço conta como sustentação |
 | `listas_projeto` | Listas que **não** contam para o teto | Max | Idem |

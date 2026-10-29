@@ -176,7 +176,13 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
 
     listas_sust = frozenset(str(x) for x in (projeto.get("listas_sustentacao") or ()))
     listas_proj = frozenset(str(x) for x in (projeto.get("listas_projeto") or ()))
-    base_fixa = "sust" if listas_sust else ""
+    base_cfg = str(projeto.get("base") or "").strip().lower()
+    if base_cfg in ("total", "sust"):
+        base_fixa = base_cfg
+    elif listas_sust:
+        base_fixa = "sust"
+    else:
+        base_fixa = ""
     nomes = _nomes_das_listas(cliente, space) if space else {}
 
     semanas: dict[date, dict[str, float]] = {}
@@ -270,7 +276,7 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
         "nome": nome,
         "teto": teto,
         "base_fixa": base_fixa,
-        "base_origem": "listas_sustentacao no config do projeto" if base_fixa else "",
+        "base_origem": f"base '{base_fixa}' no config do projeto" if base_cfg else ("listas_sustentacao no config do projeto" if base_fixa else ""),
         "total_projeto": _h(total_projeto) if total_projeto else None,
         "motivo_sem_teto": motivo,
         "tipo_config": projeto.get("tipo") or "",

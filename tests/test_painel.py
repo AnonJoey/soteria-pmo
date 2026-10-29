@@ -76,6 +76,16 @@ def test_lista_declarada_no_config_manda_sobre_o_tipo_do_cliente():
     assert c["mes"]["sust"] == 4.0 and c["mes"]["impl"] == 6.0
 
 
+def test_base_total_declarada_no_config():
+    """Cliente com base='total' no config: base_fixa vira 'total' mesmo se tiver sustentacao."""
+    projetos = [dict(PROJETOS[0], base="total")]
+    entradas = [_entrada(HOJE, 4, "L-sust"), _entrada(HOJE, 6, "L-proj")]
+    c = painel.montar_dados(Falso(entradas), projetos, HOJE)["clientes"][0]
+    assert c["base_fixa"] == "total"
+    assert "base 'total'" in c["base_origem"]
+    assert c["mes"]["total"] == 10.0
+
+
 def test_total_de_projeto_no_lugar_do_teto():
     projetos = [{"nome": "Cliente B", "space_id": "S1", "tipo": "chamado", "listas_total": ["L1"], "horas_totais": 390}]
     c = painel.montar_dados(Falso([]), projetos, HOJE)["clientes"][0]
