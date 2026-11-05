@@ -76,6 +76,16 @@ def test_lista_declarada_no_config_manda_sobre_o_tipo_do_cliente():
     assert c["mes"]["sust"] == 4.0 and c["mes"]["impl"] == 6.0
 
 
+def test_base_total_declarada_no_config():
+    """Cliente com base='total' no config: base_fixa vira 'total' mesmo se tiver sustentacao."""
+    projetos = [dict(PROJETOS[0], base="total")]
+    entradas = [_entrada(HOJE, 4, "L-sust"), _entrada(HOJE, 6, "L-proj")]
+    c = painel.montar_dados(Falso(entradas), projetos, HOJE)["clientes"][0]
+    assert c["base_fixa"] == "total"
+    assert "base 'total'" in c["base_origem"]
+    assert c["mes"]["total"] == 10.0
+
+
 def test_total_de_projeto_no_lugar_do_teto():
     projetos = [{"nome": "Cliente B", "space_id": "S1", "tipo": "chamado", "listas_total": ["L1"], "horas_totais": 390}]
     c = painel.montar_dados(Falso([]), projetos, HOJE)["clientes"][0]
@@ -133,3 +143,55 @@ def test_modelo_do_pacote_nao_leva_dado_nem_marca():
 def test_dados_serializam_em_json():
     entradas = [_entrada(HOJE, 3, "L-sust")]
     json.dumps(painel.montar_dados(Falso(entradas), PROJETOS, HOJE))
+
+
+def test_prazos_carteira_consolida_vencidas_e_a_vencer_de_todos_os_clientes():
+    class MultiFalso(Falso):
+        def __init__(self, por_espaco):
+            super().__init__([])
+            self._por_espaco = por_espaco
+
+        def tarefas_do_espaco(self, space_id, desde_ms=None):
+            return self._por_espaco.get(space_id, [])
+
+    projetos = [
+        {"nome": "Cliente A", "space_id": "S1", "horas_contratadas": 100, "tipo": "chamado"},
+        {"nome": "Cliente B", "space_id": "S2", "horas_contratadas": 80, "tipo": "projeto"},
+    ]
+    por_espaco = {
+        "S1": [
+            _tarefa("a1", "Vencida em homologacao A", HOJE - timedelta(days=12), status="homologação"),
+            _tarefa("a2", "Vence em 2 dias A", HOJE + timedelta(days=2)),
+        ],
+        "S2": [
+            _tarefa("b1", "Vencida ativa B", HOJE - timedelta(days=4)),
+            _tarefa("b2", "Vence hoje B", HOJE),
+        ],
+    }
+    D = painel.montar_dados(MultiFalso(por_espaco), projetos, HOJE)
+    pc = D["prazos_carteira"]
+    assert pc["vencidas"] == 2
+    assert pc["vencidas_espera"] == 1
+    assert pc["a_vencer_7d"] == 2
+    # Ativa em desenvolvimento vem antes da tarefa em espera, mesmo sendo menos antiga
+    assert [(i["cliente"], i["tarefa"], i["dias_atraso"]) for i in pc["lista_vencidas"]] == [
+        ("Cliente B", "Vencida ativa B", 4),
+        ("Cliente A", "Vencida em homologacao A", 12),
+    ]
+    assert [(i["cliente"], i["tarefa"], i["dias_para_vencer"]) for i in pc["lista_a_vencer"]] == [
+        ("Cliente B", "Vence hoje B", 0),
+        ("Cliente A", "Vence em 2 dias A", 2),
+    ]
+
+
+def test_painel_html_inclui_secao_unificada_prazos_carteira_na_primeira_tela():
+    tarefas = [_tarefa("a", "Vencida critica", HOJE - timedelta(days=3))]
+    html = painel.gerar(Falso([], tarefas), PROJETOS, HOJE)
+    pos_carteira = html.index('<section id="carteira"')
+    pos_prazos_cart = html.index('id="prazos-carteira-painel"')
+    pos_cliente = html.index('<section id="cliente"')
+    assert pos_carteira < pos_prazos_cart < pos_cliente
+    assert 'id="b-pz-todas"' in html
+    assert 'id="b-pz-venc"' in html
+    assert 'id="b-pz-7d"' in html
+    assert "prazosCarteira()" in html

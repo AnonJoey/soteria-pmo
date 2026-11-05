@@ -13,8 +13,9 @@ soteria-pmo dailies --dias 30
 soteria-pmo dailies --ate 2026-10-16
 ```
 
-So le. Lista cada dia util como `ok`, `FALTA` ou `feriado` (feriados vem de `feriados`
-no config) e sai com **2** enquanto faltar algum dia, para um agendador ou uma rotina
+So le. Lista cada dia util como `ok`, `FALTA`, `feriado` (feriados vem de `feriados`
+no config) ou `cancelada` (dias em `dailies_canceladas` no config, quando a reuniao
+nao ocorreu) e sai com **2** enquanto faltar algum dia, para um agendador ou uma rotina
 de sessao notar a diferenca entre "em dia" e "tem dia faltando".
 
 Conta como transcricao uma nota na pasta `evidencia.dailies` que tenha falas no formato
@@ -29,18 +30,24 @@ esta aberta num Chrome. **Precisa de um agente com o Chrome conectado** (por exe
 Claude Code com a extensao do Chrome). Nao ha como rodar isto sozinho, sem o navegador
 logado.
 
-1. No Teams, abra o chat da reuniao e a aba **Recap**. Escolha a data no seletor. Se a
+1. No Teams, abra o chat da reuniao e a aba **Recap**. Se precisar abrir o Teams numa
+   aba nova do Chrome (`https://teams.microsoft.com`), ele ja entra logado com a sessao
+   existente do navegador, sem pedir login de novo. Escolha a data no seletor. Se a
    data nao tem gravacao, o Recap nao mostra video e nao ha o que capturar (feriado,
-   reuniao que nao aconteceu).
-2. Descubra onde a gravacao esta. O botao `[data-tid="recap-open-in-stream-button"]`
-   abre uma aba nova que sai do controle do agente. Intercepte o `window.open` e
-   clique nele para ler so o caminho:
+   reuniao que nao aconteceu; se a daily foi cancelada naquele dia, registre a data em
+   `dailies_canceladas` no `pmo.json`).
+2. Descubra onde a gravacao esta. Na tela inicial do Recap (antes de trocar de data no
+   seletor), o botao de abrir no Stream pode nao ter `data-tid="recap-open-in-stream-button"`:
+   ele aparece rotulado como `"Watch in browser"` e pode ser localizado por `aria-label`.
+   Depois de trocar de data no seletor, o `data-tid` passa a existir. Como o botao
+   abre uma aba nova que sai do controle do agente, intercepte o `window.open` e
+   use o seletor combinado para ler so o caminho:
 
    ```js
    window.__cap = [];
    const orig = window.open;
    window.open = (u) => { window.__cap.push(String(u)); return {closed:false, focus(){}, close(){}}; };
-   document.querySelector('[data-tid="recap-open-in-stream-button"]').click();
+   document.querySelector('[data-tid="recap-open-in-stream-button"], [aria-label*="Watch in browser"]').click();
    await new Promise(r => setTimeout(r, 2500));
    window.open = orig;
    decodeURIComponent(new URL(window.__cap[0]).pathname)

@@ -6,6 +6,14 @@ Este documento responde, para cada parâmetro que o Max e o Abner precisam infor
 
 `~/.soteria-pmo/pmo.json`, um arquivo por pessoa que opera o pacote. Só `token`, `team_id` e `projetos` são obrigatórios (`soteria-pmo checar` diz o que falta e o preço de cada ausência).
 
+Em ambientes sem disco local (como containers ou funções agendadas na nuvem), o pacote também aceita configuração por variáveis de ambiente, sem exigir `~/.soteria-pmo/pmo.json` no disco (ou sobrepondo os valores do arquivo quando presentes):
+
+- `SOTERIA_PMO_CONFIG`: caminho alternativo para o `pmo.json`, ou o próprio JSON em linha (começando com `{`).
+- `SOTERIA_PMO_CLICKUP_TOKEN` (ou `CLICKUP_TOKEN`): token da API do ClickUp (`token`).
+- `SOTERIA_PMO_TEAM_ID` (ou `CLICKUP_TEAM_ID`): identificador do time no ClickUp (`team_id`).
+- `SOTERIA_PMO_PROJETOS`: lista `projetos` em JSON.
+- `SOTERIA_PMO_FERIADOS`: lista `feriados` em JSON ou datas `AAAA-MM-DD` separadas por vírgula.
+
 ## Projetos, tetos e horas contratadas
 
 Lista `projetos`, uma entrada por cliente ou projeto:
@@ -16,6 +24,7 @@ Lista `projetos`, uma entrada por cliente ou projeto:
 | `space_id` | Espaço do cliente. É a **unidade do bolsão**: o trabalho de um cliente se espalha por dezenas de listas | Max, ou lido da hierarquia do ClickUp | O bolsão usa só a lista (mede uma fatia) |
 | `list_id` | Lista lida pelo cronograma e pelo guardião das datas. Sem ela, o projeto é lido pelo `space_id` inteiro (as tarefas abertas do espaço e as horas lançadas nele); cliente encerrado fica de fora | Max | Lido pelo espaço, se houver `space_id`; sem os dois, o projeto não é lido |
 | `tipo` | `projeto` (régua de 4 dias úteis sem hora apontada) ou `chamado` (2 dias úteis) | Acordado com o Abner em 03/09 | Vale `projeto` |
+| `base` | `total` (espaço inteiro consome o bolsão, combinando chamados e implantação) ou `sust` (só listas de sustentação) | Max (acordado para China Gate em 28/10) | Automático (`sust` se houver sustentação no mês ou `listas_sustentacao`, senão `total`) |
 | `horas_contratadas` | Teto mensal de sustentação, ou total de um projeto | Max e Abner | Vale o teto de referência do código, se houver. Sem nenhum, o vigia diz "sem teto", em voz alta, e não projeta estouro |
 | `listas_sustentacao` | Listas que contam para o teto. Separa a sustentação de projetos dentro do mesmo espaço | Max | Tudo no espaço conta como sustentação |
 | `listas_projeto` | Listas que **não** contam para o teto | Max | Idem |
@@ -61,6 +70,7 @@ Regra confirmada em 14/10/2026: **todos devem lançar horas**, e algumas pessoas
 | `task_horas` | ID da tarefa guarda-chuva onde as horas são lançadas quando nenhuma outra é indicada | Nenhum (a proposta aponta tudo para uma tarefa só) |
 | `pessoa` | Nome de quem opera, como aparece na daily e no ClickUp | Nenhum |
 | `feriados` | Lista de datas `AAAA-MM-DD` que não contam como dia útil | Vazia |
+| `dailies_canceladas` | Lista de datas `AAAA-MM-DD` (ou objetos `{"data": "AAAA-MM-DD", "motivo": "..."}`) em que a reunião da daily foi cancelada e por isso não há gravação a capturar em `soteria-pmo dailies` | Vazia |
 | `evidencia` | Fontes de evidência da máquina (repositórios, sessões de IA, daily, agenda) e a lista `pessoais` de projetos que **não** são do trabalho. Sem ela, a auditoria diária não confere os lançamentos de quem roda (que só enxerga o usuário autenticado) e traz só o quadro da equipe: quem não lançou no dia útil anterior | Vazia: sem fontes, o motor só pergunta mais, e o resumo diário mostra só a equipe |
 | `modelo` | Endereço de um servidor compatível com OpenAI para ler as dailies | Nenhum: sem ele as dailies não são lidas |
 

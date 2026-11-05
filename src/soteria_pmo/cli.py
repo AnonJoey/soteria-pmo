@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -109,12 +110,46 @@ class ConfigAusente(RuntimeError):
     example instead of a traceback."""
 
 
-def carregar_config(caminho: Path) -> dict:
+def _aplicar_env_no_config(cfg: dict) -> dict:
+    """Sobrepoe ou preenche credenciais e listas a partir de variaveis de ambiente."""
+    token = (os.environ.get("SOTERIA_PMO_CLICKUP_TOKEN")
+             or os.environ.get("CLICKUP_TOKEN") or "").strip()
+    team_id = (os.environ.get("SOTERIA_PMO_TEAM_ID")
+               or os.environ.get("CLICKUP_TEAM_ID") or "").strip()
+    projetos_raw = (os.environ.get("SOTERIA_PMO_PROJETOS") or "").strip()
+    feriados_raw = (os.environ.get("SOTERIA_PMO_FERIADOS") or "").strip()
+    if token:
+        cfg["token"] = token
+    if team_id:
+        cfg["team_id"] = team_id
+    if projetos_raw:
+        cfg["projetos"] = json.loads(projetos_raw)
+    if feriados_raw:
+        if feriados_raw.startswith("["):
+            cfg["feriados"] = json.loads(feriados_raw)
+        else:
+            cfg["feriados"] = [d.strip() for d in feriados_raw.split(",") if d.strip()]
+    return cfg
+
+
+def carregar_config(caminho: Path | None = None) -> dict:
     # O config antigo em ~/.delegation_core deixou de ser lido em 02/10/2026:
     # era o ultimo caminho do pacote que apontava para outro projeto.
-    if not caminho.exists():
-        raise ConfigAusente(str(caminho))
-    return json.loads(caminho.read_text(encoding="utf-8"))
+    alvo = caminho if caminho is not None else CONFIG_PADRAO
+    env_cfg = (os.environ.get("SOTERIA_PMO_CONFIG") or "").strip()
+    if env_cfg and (caminho is None or alvo == CONFIG_PADRAO):
+        if env_cfg.startswith("{"):
+            return _aplicar_env_no_config(json.loads(env_cfg))
+        alvo = Path(env_cfg).expanduser()
+
+    if alvo.exists():
+        cfg = json.loads(alvo.read_text(encoding="utf-8"))
+        return _aplicar_env_no_config(cfg)
+
+    cfg = _aplicar_env_no_config({})
+    if cfg.get("token") and cfg.get("team_id"):
+        return cfg
+    raise ConfigAusente(str(alvo))
 
 
 def pasta_dailies(cfg: dict) -> Path:
@@ -131,6 +166,24 @@ def modelo_url(cfg: dict) -> str:
 
 def _feriados(cfg: dict) -> frozenset[date]:
     return frozenset(date.fromisoformat(d) for d in cfg.get("feriados", []))
+
+
+def _dailies_canceladas(cfg: dict) -> dict[date, str]:
+    """Datas em que a daily nao ocorreu (ex.: reuniao cancelada), com motivo opcional."""
+    bruto = cfg.get("dailies_canceladas") or ()
+    saida: dict[date, str] = {}
+    if isinstance(bruto, dict):
+        for k, v in bruto.items():
+            saida[date.fromisoformat(str(k))] = str(v or "").strip()
+        return saida
+    for item in bruto:
+        if isinstance(item, dict):
+            d = item.get("data") or item.get("dia")
+            if d:
+                saida[date.fromisoformat(str(d))] = str(item.get("motivo") or "").strip()
+        elif item:
+            saida[date.fromisoformat(str(item))] = ""
+    return saida
 
 
 def fontes_de_evidencia(cfg: dict) -> "coletor.Fontes":
@@ -226,15 +279,24 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
 
     com_lista = next((p for p in projetos if p.get("list_id")), None)
 
-    tarefas: dict[str, callable] = {
+    def _bolsao() -> str:
         # A janela do bolsao e o MES CORRENTE, nao trinta dias corridos: o teto
         # e mensal e reseta na virada. Com a janela movel, dois clientes
         # apareceram estourados em 08/09 sem estarem.
-        "bolsao": lambda: bolsao.digest(
-            bolsao.vigiar(cliente, bolsoes, hoje.replace(day=1), hoje,
-                          feriados, sem_teto=bolsoes_sem_teto,
-                          fim_do_ciclo=periodo.fim_do_mes(hoje), totais=totais,
-                          somente_faturaveis=somente_fat)),
+        vig = bolsao.vigiar(
+            cliente, bolsoes, hoje.replace(day=1), hoje,
+            feriados, sem_teto=bolsoes_sem_teto,
+            fim_do_ciclo=periodo.fim_do_mes(hoje), totais=totais,
+            somente_faturaveis=somente_fat,
+        )
+        try:
+            setattr(cliente, "_ultima_vigilancia_bolsao", vig)
+        except AttributeError:
+            pass
+        return bolsao.digest(vig)
+
+    tarefas: dict[str, callable] = {
+        "bolsao": _bolsao,
         "datas": lambda: datas.vigiar_projetos(cliente, projetos, hoje),
         # Item 2 le TODOS os projetos, nao so o primeiro: a regua de 03/09 e
         # por projeto, e avaliar um de uma lista de nove nao e acompanhar
@@ -245,7 +307,8 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
 
     if cfg.get("roster_rh"):
         caminho = Path(cfg["roster_rh"]).expanduser()
-        tarefas["rh"] = lambda: rh.rodar(caminho, hoje)
+        if not getattr(cliente, "_modo_json", False) or caminho.exists():
+            tarefas["rh"] = lambda: rh.rodar(caminho, hoje)
 
     # Item 1 sobre TODOS os clientes, consolidado por espaco e separando
     # implantacao de sustentacao, que e o que o Max especificou em 24/06. Ate
@@ -258,11 +321,19 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
         def _reporte() -> str:
             corpo = reporte.gerar_todos(
                 cliente, projetos, inicio_semana, fim_semana, formato=formato)
+            try:
+                setattr(cliente, "_ultimo_reporte", corpo)
+            except AttributeError:
+                pass
             if formato != "html" or not corpo:
                 return corpo
+            saida_explicita = getattr(cliente, "_saida_reporte", None)
+            if getattr(cliente, "_modo_json", False) and not saida_explicita:
+                return (f"Reporte da semana {inicio_semana:%d/%m} a {fim_semana:%d/%m} "
+                        "em HTML gerado em memoria (modo --json)")
             # A pagina inteira no resumo do dia (e no log do timer das 08:30)
             # seria ilegivel: o HTML vai para um arquivo e o resumo diz onde.
-            destino = getattr(cliente, "_saida_reporte", None) or caminho_padrao_reporte(
+            destino = saida_explicita or caminho_padrao_reporte(
                 inicio_semana, fim_semana)
             destino.parent.mkdir(parents=True, exist_ok=True)
             destino.write_text(corpo, encoding="utf-8")
@@ -276,8 +347,14 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
         def _painel() -> str:
             html = painel.gerar(cliente, projetos, hoje, _feriados(cfg), modelo=cfg.get("painel_modelo"),
                                 fat_padrao=_fat_padrao(cfg, somente_faturaveis))
-            destino = painel.gravar_briefing(
-                html, hoje, cfg, getattr(cliente, "_saida_painel", None))[0]
+            try:
+                setattr(cliente, "_ultimo_html_painel", html)
+            except AttributeError:
+                pass
+            saida_explicita = getattr(cliente, "_saida_painel", None)
+            if getattr(cliente, "_modo_json", False) and not saida_explicita:
+                return f"Painel da carteira em HTML, atualizado em {hoje:%d/%m/%Y} (em memoria)"
+            destino = painel.gravar_briefing(html, hoje, cfg, saida_explicita)[0]
             return f"Painel da carteira em HTML, atualizado em {hoje:%d/%m/%Y}: {destino}"
         tarefas["painel"] = _painel
 
@@ -323,6 +400,39 @@ def caminho_padrao_reporte(inicio: date, fim: date) -> Path:
     return Path.home() / ".soteria-pmo" / "reportes" / f"reporte-{inicio:%Y-%m-%d}_{fim:%Y-%m-%d}.html"
 
 
+def _resumo_executivo_rodar(digest: rotina.Digest, cliente) -> dict:
+    """Extrai o resumo estruturado (alertas_criticos, bolsoes_em_risco, horas_faturadas)
+    para o contrato de saida em JSON."""
+    vig = getattr(cliente, "_ultima_vigilancia_bolsao", None)
+    bolsoes_em_risco: list[str] = []
+    alertas_criticos: list[str] = []
+    horas_faturadas = 0.0
+    if vig is not None:
+        horas_faturadas = round(sum(s.faturaveis for s in vig.situacoes), 2)
+        for s in vig.situacoes:
+            if s.alerta:
+                bolsoes_em_risco.append(s.linha().strip())
+            if s.nivel in ("critico", "estourado"):
+                alertas_criticos.append(s.linha().strip())
+        for t in getattr(vig, "totais", ()):
+            if t.alerta:
+                bolsoes_em_risco.append(t.linha().strip())
+            if t.nivel in ("critico", "estourado"):
+                alertas_criticos.append(t.linha().strip())
+    for saida in digest.saidas:
+        if saida.erro:
+            alertas_criticos.append(f"{saida.item}: {saida.erro}")
+        elif saida.item in ("datas", "cronograma") and saida.falou and saida.texto:
+            primeira = next((ln.strip() for ln in saida.texto.splitlines() if ln.strip()), "")
+            if primeira:
+                alertas_criticos.append(primeira)
+    return {
+        "alertas_criticos": alertas_criticos,
+        "bolsoes_em_risco": bolsoes_em_risco,
+        "horas_faturadas": horas_faturadas,
+    }
+
+
 def cmd_rodar(args) -> int:
     hoje = date.fromisoformat(args.dia) if args.dia else date.today()
     try:
@@ -333,8 +443,10 @@ def cmd_rodar(args) -> int:
         print(json.dumps(EXEMPLO, indent=2, ensure_ascii=False), file=sys.stderr)
         return 2
 
+    modo_json = bool(getattr(args, "json", False))
     somente_fat = bool(getattr(args, "faturaveis", False) or cfg.get("bolsao_somente_faturaveis", False))
     with ClickUp(cfg["token"], cfg["team_id"], dry_run=True) as cliente:
+        setattr(cliente, "_modo_json", modo_json)
         setattr(cliente, "_formato_reporte", getattr(args, "formato", None) or FORMATO_PADRAO)
         if getattr(args, "saida_html", None):
             setattr(cliente, "_saida_reporte", Path(args.saida_html).expanduser())
@@ -343,7 +455,20 @@ def cmd_rodar(args) -> int:
         digest = rotina.rodar(hoje, montar_tarefas(cfg, cliente, hoje, somente_faturaveis=somente_fat),
                               forcar=frozenset(args.forcar or ()),
                               feriados=_feriados(cfg))
-    print(digest.texto())
+        resumo_exec = _resumo_executivo_rodar(digest, cliente)
+        html_painel = getattr(cliente, "_ultimo_html_painel", None)
+        html_reporte = (getattr(cliente, "_ultimo_reporte", None)
+                        if getattr(cliente, "_formato_reporte", FORMATO_PADRAO) == "html"
+                        else None)
+        html_saida = html_painel or html_reporte or ""
+
+    if modo_json:
+        payload = digest.para_dict()
+        payload["html"] = html_saida
+        payload["resumo"] = resumo_exec
+        print(json.dumps(payload, ensure_ascii=False))
+    else:
+        print(digest.texto())
     # Non-zero when an item failed, so a scheduler notices. A quiet day is
     # success; a broken item is not.
     return 1 if digest.erros else 0
@@ -483,14 +608,50 @@ def cmd_reporte(args) -> int:
             formato=args.formato,
             pre_analise=args.pre_analise or "",
             bolsoes=bolsoes_info)
+        objetos = list(getattr(cliente, "_ultimo_reportes_objetos", ()))
+        sem_movimento = list(getattr(cliente, "_ultimo_sem_movimento", ()))
 
+    modo_json = bool(getattr(args, "json", False))
     if args.saida:
         caminho = Path(args.saida).expanduser()
         caminho.parent.mkdir(parents=True, exist_ok=True)
         caminho.write_text(conteudo, encoding="utf-8")
-        print(f"Reporte ({args.formato}) salvo em {caminho}")
-    else:
+        if not modo_json:
+            print(f"Reporte ({args.formato}) salvo em {caminho}")
+    elif not modo_json:
         print(conteudo)
+
+    if modo_json:
+        situacoes = list(bolsoes_info.values())
+        horas_faturadas = round(
+            sum(rc.total_faturavel for rc in objetos)
+            or sum(s.faturaveis for s in situacoes),
+            2,
+        )
+        horas_totais = round(sum(rc.total_horas for rc in objetos), 2)
+        horas_nao_fat = round(sum(rc.total_nao_faturavel for rc in objetos), 2)
+        payload = {
+            "dia": hoje.isoformat(),
+            "inicio": inicio.isoformat(),
+            "fim": fim.isoformat(),
+            "formato": args.formato,
+            "ok": True,
+            "html": conteudo if str(args.formato).lower() == "html" else "",
+            "conteudo": conteudo,
+            "resumo": {
+                "alertas_criticos": [s.linha().strip() for s in situacoes if s.nivel in ("critico", "estourado")],
+                "bolsoes_em_risco": [s.linha().strip() for s in situacoes if s.alerta],
+                "horas_faturadas": horas_faturadas,
+                "horas_totais": horas_totais,
+                "horas_nao_faturaveis": horas_nao_fat,
+                "clientes_ativos": len(objetos),
+                "sem_movimento": sem_movimento,
+            },
+            "clientes": [rc.para_dict() for rc in objetos],
+            "sem_movimento": sem_movimento,
+            "itens_com_erro": [],
+        }
+        print(json.dumps(payload, ensure_ascii=False))
     return 0
 
 
@@ -549,8 +710,10 @@ def cmd_cadencias(args) -> int:
     print(f"Cadencias dos itens, para {hoje:%d/%m/%Y} ({hoje:%A}):\n")
     feriados = frozenset()
     caminho = Path(getattr(args, "config", "") or CONFIG_PADRAO).expanduser()
-    if caminho.exists():
-        feriados = _feriados(json.loads(caminho.read_text(encoding="utf-8")))
+    try:
+        feriados = _feriados(carregar_config(caminho))
+    except ConfigAusente:
+        pass
     if hoje in feriados:
         print("  (feriado: nada roda hoje)\n")
     for item, cadencia in sorted(rotina.CADENCIAS.items()):
@@ -578,14 +741,23 @@ def cmd_dailies(args) -> int:
     fim = date.fromisoformat(args.ate) if args.ate else date.today() - timedelta(days=1)
     inicio = fim - timedelta(days=args.dias - 1)
     feriados = _feriados(cfg)
+    canceladas = _dailies_canceladas(cfg)
     pasta = pasta_dailies(cfg)
-    faltam = set(daily.dias_sem_daily(pasta, inicio, fim, feriados))
+    faltam = set(daily.dias_sem_daily(pasta, inicio, fim, feriados, frozenset(canceladas)))
     print(f"Dailies de {inicio:%d/%m} a {fim:%d/%m}, em {pasta}\n")
     d = inicio
     while d <= fim:
         if d.weekday() < 5:
-            rotulo = ("feriado" if d in feriados else "FALTA" if d in faltam else "ok")
-            print(f"  {rotulo:8} {_DIAS_CURTOS[d.weekday()]} {d:%d/%m}")
+            if d in feriados:
+                rotulo = "feriado"
+            elif d in canceladas:
+                rotulo = "cancelada"
+            elif d in faltam:
+                rotulo = "FALTA"
+            else:
+                rotulo = "ok"
+            motivo = f" ({canceladas[d]})" if d in canceladas and canceladas[d] else ""
+            print(f"  {rotulo:8} {_DIAS_CURTOS[d.weekday()]} {d:%d/%m}{motivo}")
         d += timedelta(days=1)
     if not faltam:
         print("\nTodos os dias uteis da janela tem transcricao.")
@@ -651,6 +823,7 @@ def _subcomandos(pmo_sub) -> None:
     p_rodar.add_argument("--saida-html", default=None, help="grava o reporte em HTML neste arquivo (padrao: ~/.soteria-pmo/reportes/)")
     p_rodar.add_argument("--saida-painel", default=None, help="grava o painel em HTML neste arquivo")
     p_rodar.add_argument("--faturaveis", action="store_true", help="considera apenas horas faturaveis nos bolsoes")
+    p_rodar.add_argument("--json", action="store_true", help="imprime o resultado estruturado em JSON no stdout (sem gravar arquivos padrao)")
     p_rodar.set_defaults(func=cmd_rodar)
 
     p_atu = pmo_sub.add_parser(
@@ -695,6 +868,8 @@ def _subcomandos(pmo_sub) -> None:
                             "para ser editado; o reporte passa a usar esse arquivo")
     p_rep.add_argument("--forcar", action="store_true",
                        help="Com --exportar-modelo, recomeca do padrao mesmo se o arquivo existir")
+    p_rep.add_argument("--json", action="store_true",
+                       help="Imprime o reporte estruturado em JSON no stdout")
     p_rep.add_argument("--config", default=str(CONFIG_PADRAO))
     p_rep.set_defaults(func=cmd_reporte)
 

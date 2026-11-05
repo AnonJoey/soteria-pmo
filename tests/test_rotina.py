@@ -5,6 +5,7 @@ broken API call silences the other six is worse than no routine, because the
 silence is indistinguishable from a quiet week.
 """
 
+import json
 from datetime import date
 
 import pytest
@@ -156,3 +157,163 @@ def test_rodar_respeita_feriado():
     chamados = []
     R.rodar(SETE, {"bolsao": lambda: chamados.append("x")}, feriados=FERIADO)
     assert chamados == []
+
+
+# ── Item 3.2.2.1: variaveis de ambiente e modo --json ─────────────────────────
+
+
+def test_carregar_config_por_variaveis_de_ambiente_sem_arquivo_no_disco(tmp_path, monkeypatch):
+    from soteria_pmo import cli
+
+    inexistente = tmp_path / "nao_existe" / "pmo.json"
+    monkeypatch.setenv("SOTERIA_PMO_CLICKUP_TOKEN", "pk_env_123")
+    monkeypatch.setenv("SOTERIA_PMO_TEAM_ID", "9007999")
+    monkeypatch.setenv("SOTERIA_PMO_PROJETOS", json.dumps([{"nome": "Cliente Nuvem", "space_id": "S1"}]))
+    monkeypatch.setenv("SOTERIA_PMO_FERIADOS", "2026-09-07, 2026-10-12")
+
+    cfg = cli.carregar_config(inexistente)
+    assert cfg["token"] == "pk_env_123"
+    assert cfg["team_id"] == "9007999"
+    assert cfg["projetos"] == [{"nome": "Cliente Nuvem", "space_id": "S1"}]
+    assert cfg["feriados"] == ["2026-09-07", "2026-10-12"]
+
+
+def test_carregar_config_aceita_soteria_pmo_config_json_inline(monkeypatch):
+    from soteria_pmo import cli
+
+    inline = json.dumps({"token": "pk_inline", "team_id": "42", "projetos": [{"nome": "X", "list_id": "L1"}]})
+    monkeypatch.setenv("SOTERIA_PMO_CONFIG", inline)
+    cfg = cli.carregar_config()
+    assert cfg["token"] == "pk_inline"
+    assert cfg["team_id"] == "42"
+    assert cfg["projetos"][0]["nome"] == "X"
+
+
+def test_carregar_config_variaveis_de_ambiente_sobrepoem_arquivo(tmp_path, monkeypatch):
+    from soteria_pmo import cli
+
+    arq = tmp_path / "pmo.json"
+    arq.write_text(json.dumps({"token": "pk_antigo", "team_id": "111", "projetos": []}), encoding="utf-8")
+    monkeypatch.setenv("CLICKUP_TOKEN", "pk_novo")
+    monkeypatch.setenv("CLICKUP_TEAM_ID", "222")
+    cfg = cli.carregar_config(arq)
+    assert cfg["token"] == "pk_novo"
+    assert cfg["team_id"] == "222"
+
+
+def test_cmd_rodar_json_retorna_contrato_estruturado_sem_gravar_no_disco(tmp_path, monkeypatch, capsys):
+    from soteria_pmo import cli
+
+    class ClickUpFalso:
+        def __init__(self, token, team_id, dry_run=True):
+            self.token = token
+            self.team_id = team_id
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def membros(self):
+            return [{"id": 1, "username": "Ana"}]
+
+        def entradas(self, ini, fim, assignee=None):
+            return [{
+                "id": "e1",
+                "start": str(ini + 3600_000),
+                "duration": str(95 * 3600_000),
+                "billable": True,
+                "user": {"id": 1, "username": "Ana"},
+                "task": {"id": "t1", "name": " Manutencao", "status": {"status": "em andamento"}},
+                "task_location": {"space_id": "S1", "list_id": "L1"},
+            }]
+
+        def tarefas_da_lista(self, lid, **k):
+            return []
+
+        def tarefas_do_espaco(self, sid, **k):
+            return []
+
+        def _get(self, caminho, **_):
+            return {"folders": [], "lists": [{"id": "L1", "name": "Sustentacao"}]}
+
+    monkeypatch.setattr(cli, "ClickUp", ClickUpFalso)
+    monkeypatch.setenv("SOTERIA_PMO_CLICKUP_TOKEN", "pk_nuvem")
+    monkeypatch.setenv("SOTERIA_PMO_TEAM_ID", "9007")
+    monkeypatch.setenv("SOTERIA_PMO_PROJETOS", json.dumps([
+        {"nome": "Cliente Alfa", "space_id": "S1", "list_id": "L1", "horas_contratadas": 100, "tipo": "chamado"}
+    ]))
+
+    codigo = cli.main(["rodar", "--json", "--dia", "2026-10-16"])
+    saida = capsys.readouterr().out
+    assert codigo == 0
+    dados = json.loads(saida)
+    assert dados["dia"] == "2026-10-16"
+    assert dados["ok"] is True
+    assert dados["itens_com_erro"] == []
+    assert "<!doctype html>" in dados["html"].lower()
+    assert dados["resumo"]["horas_faturadas"] == 95.0
+    assert any("Cliente Alfa" in b for b in dados["resumo"]["bolsoes_em_risco"])
+    assert any("Cliente Alfa" in a for a in dados["resumo"]["alertas_criticos"])
+    assert isinstance(dados["saidas"], list) and len(dados["saidas"]) > 0
+    assert not (cli.CONFIG_HOME / "relatorios").exists()
+    assert not (cli.CONFIG_HOME / "reportes").exists()
+
+
+def test_cmd_reporte_json_retorna_contrato_estruturado(monkeypatch, capsys):
+    from soteria_pmo import cli
+
+    class ClickUpFalso:
+        def __init__(self, token, team_id, dry_run=True):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def membros(self):
+            return [{"id": 1, "username": "Ana"}]
+
+        def entradas(self, ini, fim, assignee=None):
+            return [{
+                "id": "e1",
+                "start": str(ini + 3600_000),
+                "duration": str(12 * 3600_000),
+                "billable": True,
+                "user": {"id": 1, "username": "Ana"},
+                "task": {"id": "t1", "name": "Entrega 1", "status": {"status": "concluido", "type": "closed"}},
+                "task_location": {"space_id": "S1", "list_id": "L1"},
+            }]
+
+        def tarefas_do_espaco(self, sid, **k):
+            return [{
+                "id": "t1",
+                "name": "Entrega 1",
+                "status": {"status": "concluido", "type": "closed"},
+                "list": {"id": "L1", "name": "Sustentacao"},
+                "folder": {"name": "Suporte"},
+                "assignees": [{"username": "Ana"}],
+            }]
+
+    monkeypatch.setattr(cli, "ClickUp", ClickUpFalso)
+    monkeypatch.setenv("SOTERIA_PMO_CLICKUP_TOKEN", "pk_nuvem")
+    monkeypatch.setenv("SOTERIA_PMO_TEAM_ID", "9007")
+    monkeypatch.setenv("SOTERIA_PMO_PROJETOS", json.dumps([
+        {"nome": "Cliente Alfa", "space_id": "S1", "horas_contratadas": 100, "tipo": "chamado"}
+    ]))
+
+    codigo = cli.main(["reporte", "--json", "--dia", "2026-10-16"])
+    saida = capsys.readouterr().out
+    assert codigo == 0
+    dados = json.loads(saida)
+    assert dados["dia"] == "2026-10-16"
+    assert dados["ok"] is True
+    assert dados["formato"] == "html"
+    assert "<html" in dados["html"].lower()
+    assert dados["resumo"]["horas_faturadas"] == 12.0
+    assert dados["resumo"]["clientes_ativos"] == 1
+    assert dados["clientes"][0]["cliente"] == "Cliente Alfa"
+    assert dados["itens_com_erro"] == []

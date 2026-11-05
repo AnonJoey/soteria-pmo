@@ -269,6 +269,18 @@ class ReporteCliente:
     def total_nao_faturavel(self) -> float:
         return round(sum(r.horas_nao_faturaveis for r in self.implantacao + self.sustentacao), 2)
 
+    def para_dict(self) -> dict:
+        return {
+            "cliente": self.cliente,
+            "inicio": self.inicio.isoformat(),
+            "fim": self.fim.isoformat(),
+            "horas_totais": self.total_horas,
+            "horas_faturaveis": self.total_faturavel,
+            "horas_nao_faturaveis": self.total_nao_faturavel,
+            "implantacao": [r.projeto for r in self.implantacao],
+            "sustentacao": [r.projeto for r in self.sustentacao],
+        }
+
 
 #: Marcas de fila de sustentacao no nome da lista ou da pasta. Heuristica, e
 #: nomeada como uma: erra para o lado de chamar de implantacao o que nao
@@ -462,6 +474,12 @@ def gerar_todos(cliente, projetos: list[dict], inicio: date, fim: date,
                 partes.append(texto_md.strip())
             else:
                 sem_movimento.append(nome)
+
+    try:
+        setattr(cliente, "_ultimo_reportes_objetos", list(reportes_objetos))
+        setattr(cliente, "_ultimo_sem_movimento", list(sem_movimento))
+    except AttributeError:
+        pass
 
     if str(formato).lower() == "html":
         from .template_html import renderizar_relatorio_html

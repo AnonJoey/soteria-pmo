@@ -187,7 +187,8 @@ def transcricoes(pasta: str | Path, inicio: date, fim: date) -> list[Transcricao
 
 
 def dias_sem_daily(pasta: str | Path, inicio: date, fim: date,
-                   feriados: frozenset[date] = frozenset()) -> list[date]:
+                   feriados: frozenset[date] = frozenset(),
+                   canceladas: frozenset[date] = frozenset()) -> list[date]:
     """Dias uteis da janela sem transcricao da daily na pasta.
 
     Sem transcricao a apuracao de horas roda cega: no teste de 02/09 a mesma
@@ -198,7 +199,7 @@ def dias_sem_daily(pasta: str | Path, inicio: date, fim: date,
     com = {t.dia for t in transcricoes(pasta, inicio, fim) if e_daily(t)}
     faltam, d = [], inicio
     while d <= fim:
-        if d.weekday() < 5 and d not in feriados and d not in com:
+        if d.weekday() < 5 and d not in feriados and d not in canceladas and d not in com:
             faltam.append(d)
         d += timedelta(days=1)
     return faltam

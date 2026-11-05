@@ -25,6 +25,7 @@ because the silence looks exactly like a quiet week.
 from __future__ import annotations
 
 import logging
+import time
 import traceback
 from dataclasses import dataclass, field
 from datetime import date, timedelta
@@ -63,10 +64,22 @@ class Saida:
     rodou: bool
     texto: str = ""
     erro: str = ""
+    duracao_s: float = 0.0
 
     @property
     def falou(self) -> bool:
         return self.rodou and bool(self.texto.strip())
+
+    def para_dict(self) -> dict:
+        return {
+            "item": self.item,
+            "cadencia": self.cadencia,
+            "rodou": self.rodou,
+            "falou": self.falou,
+            "texto": self.texto,
+            "erro": self.erro,
+            "duracao_s": round(self.duracao_s, 3),
+        }
 
 
 @dataclass
@@ -87,6 +100,19 @@ class Digest:
     @property
     def silenciosos(self) -> list[Saida]:
         return [s for s in self.saidas if s.rodou and not s.falou and not s.erro]
+
+    def para_dict(self) -> dict:
+        return {
+            "dia": self.dia.isoformat(),
+            "ok": not self.erros,
+            "texto": self.texto(),
+            "saidas": [s.para_dict() for s in self.saidas],
+            "itens_com_erro": [
+                {"item": s.item, "cadencia": s.cadencia, "erro": s.erro}
+                for s in self.erros
+            ],
+            "duracao_total_s": round(sum(s.duracao_s for s in self.saidas), 3),
+        }
 
     def texto(self) -> str:
         partes = [f"# Agentes PMO, {self.dia:%d/%m/%Y}", ""]
@@ -169,6 +195,7 @@ def rodar(hoje: date, tarefas: dict[str, callable], *,
         if item not in forcar and not devido(item, hoje, ultimo_mensal, feriados):
             digest.saidas.append(Saida(item, cadencia, rodou=False))
             continue
+        t0 = time.monotonic()
         try:
             texto = fn() or ""
         except Exception as e:
@@ -177,7 +204,9 @@ def rodar(hoje: date, tarefas: dict[str, callable], *,
             logger.warning("item %s falhou: %s", item, e)
             logger.debug("%s", traceback.format_exc())
             digest.saidas.append(Saida(item, cadencia, rodou=True,
-                                       erro=f"{type(e).__name__}: {e}"))
+                                       erro=f"{type(e).__name__}: {e}",
+                                       duracao_s=time.monotonic() - t0))
             continue
-        digest.saidas.append(Saida(item, cadencia, rodou=True, texto=texto))
+        digest.saidas.append(Saida(item, cadencia, rodou=True, texto=texto,
+                                   duracao_s=time.monotonic() - t0))
     return digest

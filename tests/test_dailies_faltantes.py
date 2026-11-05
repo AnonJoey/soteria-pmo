@@ -93,3 +93,50 @@ def test_comando_nao_escreve_nada_na_pasta(tmp_path):
     antes = sorted(p.name for p in pasta.iterdir())
     cli.main(["dailies", "--config", str(_config(tmp_path, pasta)), "--ate", "2026-10-16"])
     assert sorted(p.name for p in pasta.iterdir()) == antes
+
+
+def test_dias_sem_daily_pula_dailies_canceladas(tmp_path):
+    pasta = _pasta(tmp_path)
+    faltam = daily.dias_sem_daily(
+        pasta,
+        date(2026, 10, 12),
+        date(2026, 10, 16),
+        feriados=frozenset({date(2026, 10, 12)}),
+        canceladas=frozenset({date(2026, 10, 13)}),
+    )
+    assert faltam == []
+
+
+def test_comando_dailies_aceita_dia_cancelado_e_sai_zero(tmp_path, capsys):
+    pasta = _pasta(tmp_path)
+    cfg = tmp_path / "pmo.json"
+    cfg.write_text(json.dumps({
+        "token": "x",
+        "team_id": "1",
+        "projetos": [{"nome": "A", "list_id": "L"}],
+        "feriados": ["2026-10-12"],
+        "dailies_canceladas": ["2026-10-13"],
+        "evidencia": {"dailies": str(pasta)},
+    }), encoding="utf-8")
+    codigo = cli.main(["dailies", "--config", str(cfg), "--ate", "2026-10-16", "--dias", "5"])
+    saida = capsys.readouterr().out
+    assert codigo == 0
+    assert "cancelada ter 13/10" in saida
+    assert "Todos os dias uteis da janela tem transcricao." in saida
+
+
+def test_comando_dailies_aceita_motivo_em_dailies_canceladas(tmp_path, capsys):
+    pasta = _pasta(tmp_path)
+    cfg = tmp_path / "pmo.json"
+    cfg.write_text(json.dumps({
+        "token": "x",
+        "team_id": "1",
+        "projetos": [{"nome": "A", "list_id": "L"}],
+        "feriados": ["2026-10-12"],
+        "dailies_canceladas": [{"data": "2026-10-13", "motivo": "reuniao cancelada"}],
+        "evidencia": {"dailies": str(pasta)},
+    }), encoding="utf-8")
+    codigo = cli.main(["dailies", "--config", str(cfg), "--ate", "2026-10-16", "--dias", "5"])
+    saida = capsys.readouterr().out
+    assert codigo == 0
+    assert "cancelada ter 13/10 (reuniao cancelada)" in saida
