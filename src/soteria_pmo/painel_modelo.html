@@ -241,6 +241,14 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
       </div>
       <div class="tbl-wrap tiny-tbl" id="prazos-carteira"></div>
     </div>
+
+    <div class="panel" style="margin-top:26px" id="sem-tarefa-painel" hidden>
+      <div class="sec-head" style="margin-bottom:12px;padding-bottom:10px">
+        <h3 id="t-sem-tarefa" style="margin:0">horas lançadas sem tarefa</h3>
+      </div>
+      <p class="note" id="n-sem-tarefa" style="margin:0 0 10px"></p>
+      <div class="tbl-wrap tiny-tbl" id="sem-tarefa"></div>
+    </div>
   </section>
 
   <section id="cliente" aria-labelledby="t-cliente">
@@ -664,7 +672,16 @@ $('#prazos-carteira').addEventListener('click',e=>{const r=e.target.closest('[da
   });
 });
 
-function tudo(){ hero(); kpis(); tabela(); prazosCarteira(); detalhe(); carga(); metodo(); }
+function semTarefa(){
+  const st=D.sem_tarefa, box=$('#sem-tarefa-painel');
+  if(!st||!st.entradas){ box.hidden=true; return; }
+  box.hidden=false;
+  const f=x=>String(x.toFixed(1)).replace('.',',');
+  $('#t-sem-tarefa').textContent=`horas lançadas sem tarefa · ${f(st.horas)} h na janela, ${f(st.mes_horas)} h no mês`;
+  $('#n-sem-tarefa').textContent=`Fora do consumo de cada cliente: a hora sem tarefa não tem espaço, então o painel e o bolsão não a atribuem a ninguém. ${f(st.esperadas)} h são daily, reunião, férias ou feriado (sem cliente por natureza); ${f(st.a_explicar)} h foram lançadas sem escolher a tarefa (${f(st.faturaveis)} h na janela marcadas como faturáveis, ${st.entradas} entradas). Quem mais tem, entre as que sobram:`;
+  $('#sem-tarefa').innerHTML=`<table><thead><tr><th>pessoa</th><th class="n">horas</th></tr></thead><tbody>${(st.pessoas||[]).map(p=>`<tr><td>${esc(p.nome)}</td><td class="n">${f(p.h)}</td></tr>`).join('')}</tbody></table>`;
+}
+function tudo(){ hero(); kpis(); tabela(); prazosCarteira(); semTarefa(); detalhe(); carga(); metodo(); }
 if(!sel||!D.clientes.some(c=>c.nome===sel)){ sel=[...D.clientes].sort((a,b)=>(pct(b)??-1)-(pct(a)??-1))[0].nome; }
 $('#b-auto').setAttribute('aria-pressed',modo==='auto'); $('#b-total').setAttribute('aria-pressed',modo==='total');
 $('#b-todas').setAttribute('aria-pressed',(!filtroFat).toString()); $('#b-faturaveis').setAttribute('aria-pressed',filtroFat.toString());

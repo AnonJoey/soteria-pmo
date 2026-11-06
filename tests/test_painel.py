@@ -195,3 +195,41 @@ def test_painel_html_inclui_secao_unificada_prazos_carteira_na_primeira_tela():
     assert 'id="b-pz-venc"' in html
     assert 'id="b-pz-7d"' in html
     assert "prazosCarteira()" in html
+
+
+# ---- horas sem tarefa (auditoria de 06/11/2026: 974 h fora do painel, sem aviso) ----
+
+def _solta(d: date, horas: float, pessoa: str = "Ana", fat: bool = False, tarefa: str = "0",
+           tags: tuple[str, ...] = ()) -> dict:
+    e = _entrada(d, horas, "", espaco="", pessoa=pessoa, fat=fat, tarefa=tarefa)
+    e["task_location"] = {}
+    e["tags"] = [{"name": t} for t in tags]
+    return e
+
+
+def test_horas_sem_tarefa_aparecem_no_painel_e_nao_entram_em_cliente():
+    entradas = [_entrada(HOJE, 3, "L-sust"),
+                _solta(HOJE, 4, "Bia", fat=True), _solta(HOJE - timedelta(days=1), 2, "Bia"),
+                _solta(HOJE, 1, "Ana", tags=("daily",)),
+                _solta(date(2026, 9, 15), 5, "Cid")]  # setembro: dentro da janela, fora do mes
+    D = painel.montar_dados(Falso(entradas), PROJETOS, HOJE)
+    st = D["sem_tarefa"]
+    assert D["clientes"][0]["mes"]["total"] == 3.0  # o cliente nao recebe nada da hora solta
+    assert st["horas"] == 12.0 and st["entradas"] == 4 and st["faturaveis"] == 4.0
+    assert st["esperadas"] == 1.0 and st["a_explicar"] == 11.0
+    assert st["mes_horas"] == 7.0 and st["mes_a_explicar"] == 6.0
+    assert [(p["nome"], p["h"]) for p in st["pessoas"]] == [("Bia", 6.0), ("Cid", 5.0)]  # quem mais tem, primeiro
+
+
+def test_sem_tarefa_fora_da_janela_ou_no_futuro_nao_conta():
+    entradas = [_solta(date(2026, 1, 5), 9), _solta(HOJE + timedelta(days=3), 8), _solta(HOJE, 1)]
+    st = painel.montar_dados(Falso(entradas), PROJETOS, HOJE)["sem_tarefa"]
+    assert st["horas"] == 1.0 and st["entradas"] == 1
+
+
+def test_sem_tarefa_vazio_nao_quebra_e_o_painel_mostra_o_bloco_so_com_dado():
+    D = painel.montar_dados(Falso([_entrada(HOJE, 3, "L-sust")]), PROJETOS, HOJE)
+    assert D["sem_tarefa"]["entradas"] == 0 and D["sem_tarefa"]["pessoas"] == []
+    html = painel.gerar(Falso([]), PROJETOS, HOJE)
+    assert 'id="sem-tarefa-painel" hidden' in html and "semTarefa()" in html
+    assert "if(!st||!st.entradas){ box.hidden=true; return; }" in html

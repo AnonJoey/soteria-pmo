@@ -366,6 +366,49 @@ def _separar_atencao(marcas: list[tuple[datetime, str, bool]]):
 # ── vault ────────────────────────────────────────────────────────────────────
 
 
+#: Quantas notas num mesmo intervalo bastam para dizer que foi uma passada de maquina
+#: (reindexacao, relink, manutencao) e nao uma pessoa escrevendo.
+RAJADA_DE_NOTAS = 15
+JANELA_DA_RAJADA = timedelta(minutes=10)
+
+
+#: Notas que o proprio delegation-core escreve todo dia ou ao fim de cada sessao. O resumo
+#: de uma sessao registra uma sessao que `sessoes_ia` ja mediu (contar as duas e contar o
+#: mesmo trecho duas vezes, o mesmo motivo de pular transcricao); boletim e sonho sao jobs.
+PREFIXOS_DE_NOTA_DE_MAQUINA = ("resumo da sessao", "sonho de", "boletim de")
+
+
+def _nota_de_maquina(nome: str) -> bool:
+    import re
+    import unicodedata
+    base = unicodedata.normalize("NFKD", nome)
+    base = "".join(c for c in base if not unicodedata.combining(c)).lower()
+    base = re.sub(r"^\d{4}-\d{2}-\d{2}[-_ ]*", "", base)
+    return base.startswith(PREFIXOS_DE_NOTA_DE_MAQUINA)
+
+
+def _sem_rajadas_de_maquina(pontos: list[Ponto]) -> list[Ponto]:
+    """Descarta as notas tocadas em rajada: mtime de passada de maquina nao e trabalho.
+
+    A evidencia por nota e a data de modificacao do arquivo. Em 04/11/2026 uma passada de
+    manutencao do vault reescreveu 507 notas antigas e cada uma virou "trabalho": 2,9 h do
+    que a auditoria apontava de 30/10 a 05/11 vinham so disso. Uma pessoa nao salva
+    `RAJADA_DE_NOTAS` notas em `JANELA_DA_RAJADA`; passou disso, todas as notas dessa
+    janela saem (a ponta de baixo, de poucas notas, segue valendo).
+    """
+    ordenados = sorted(pontos, key=lambda p: p.quando)
+    fora: set[int] = set()
+    i = 0
+    for j, p in enumerate(ordenados):
+        while p.quando - ordenados[i].quando > JANELA_DA_RAJADA:
+            i += 1
+        if j - i + 1 >= RAJADA_DE_NOTAS:
+            fora.update(range(i, j + 1))
+    if fora:
+        logger.info("notas do vault: %d tocadas em rajada de maquina, ignoradas", len(fora))
+    return [p for k, p in enumerate(ordenados) if k not in fora]
+
+
 def notas_vault(vault: str | Path, inicio: date, fim: date,
                 pastas: tuple[str, ...] = ()) -> list[Evidencia]:
     """Notes written or touched in the window, by file modification time.
@@ -390,13 +433,15 @@ def notas_vault(vault: str | Path, inicio: date, fim: date,
         for nota in raiz.rglob("*.md"):
             if "transcript" in nota.name.lower() or "_processed" in str(nota):
                 continue
+            if _nota_de_maquina(nota.stem):
+                continue
             try:
                 quando = datetime.fromtimestamp(nota.stat().st_mtime, BRT)
             except OSError:
                 continue
             if ini_dt <= quando <= fim_dt:
                 pontos.append(Ponto(quando, f"nota: {nota.stem[:70]}"))
-    return _agrupar(pontos, "nota_vault")
+    return _agrupar(_sem_rajadas_de_maquina(pontos), "nota_vault")
 
 
 def reunioes(pasta: str | Path, inicio: date, fim: date) -> list[Evidencia]:
