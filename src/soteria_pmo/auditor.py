@@ -197,6 +197,8 @@ class Auditoria:
     com_evidencia: bool = True
     achados: list[Achado] = field(default_factory=list)
     orfas: list[Orfa] = field(default_factory=list)
+    #: Evidencia em sabado, domingo ou feriado sem lancamento: nao entra em `orfas`.
+    orfas_nao_uteis: list[Orfa] = field(default_factory=list)
     conflitos: list[Conflito] = field(default_factory=list)
     concentracoes: list[Concentracao] = field(default_factory=list)
     sem_relogio: list[date] = field(default_factory=list)
@@ -382,7 +384,8 @@ def _marcar_data_trocada(aud: "Auditoria", tolerancia: float) -> None:
     is also produced by two unrelated days, and calling it an error would be a
     guess wearing a verdict's clothes.
     """
-    por_dia = {o.dia: o for o in aud.orfas}
+    # Dia nao util tambem vale como pista: a data trocada pode ter caido num domingo.
+    por_dia = {o.dia: o for o in aud.orfas + aud.orfas_nao_uteis}
     for a in aud.achados:
         if a.veredito != "sem lastro":
             continue
@@ -401,7 +404,8 @@ def _marcar_data_trocada(aud: "Auditoria", tolerancia: float) -> None:
 
 
 def auditar(entradas: list[dict], evidencias: list, inicio: date, fim: date,
-            tolerancia: float = TOLERANCIA, com_evidencia: bool = True) -> Auditoria:
+            tolerancia: float = TOLERANCIA, com_evidencia: bool = True,
+            feriados: frozenset[date] = frozenset()) -> Auditoria:
     """Match logged entries against evidence, both directions.
 
     `com_evidencia=False` audita quem NAO e o dono desta maquina. Metade das
@@ -496,11 +500,19 @@ def auditar(entradas: list[dict], evidencias: list, inicio: date, fim: date,
         h = round(somar_horas([e.intervalo for e in do_dia]), 2)
         if h <= 0:
             continue
-        aud.orfas.append(Orfa(
+        orfa = Orfa(
             dia=dia, horas=h,
             fontes=tuple(sorted({e.tipo for e in do_dia})),
             amostra=do_dia[0].descricao,
-        ))
+        )
+        # Sabado, domingo e feriado nao sao dia de lancar: a maquina ligada neles e, quase
+        # sempre, projeto pessoal. Medido em 06/11/2026: a janela de 30/10 a 05/11 trazia
+        # fim de semana e o feriado de 02/11 dentro das 24,1 h de "trabalho sem lancamento".
+        # Fica listado a parte, nao sumido: quem trabalhou num domingo pode lancar.
+        if dia.weekday() >= 5 or dia in feriados:
+            aud.orfas_nao_uteis.append(orfa)
+        else:
+            aud.orfas.append(orfa)
 
     # Entries against each other, and against their own size. Both are pure
     # arithmetic on what ClickUp already returned, so they run with or without
@@ -552,6 +564,11 @@ def relatorio(aud: Auditoria) -> str:
     if aud.orfas:
         linhas.append(f"Trabalho com evidencia e sem lancamento: "
                       f"{aud.horas_orfas:.1f}h em {len(aud.orfas)} dias")
+    if aud.orfas_nao_uteis:
+        h = sum(o.horas for o in aud.orfas_nao_uteis)
+        dias = ", ".join(f"{o.dia:%d/%m}" for o in aud.orfas_nao_uteis)
+        linhas.append(f"Evidencia em dia nao util (fim de semana ou feriado), fora da conta acima: "
+                      f"{h:.1f}h em {len(aud.orfas_nao_uteis)} dias ({dias}). Se foi trabalho, pode ser lancado.")
     if aud.conflitos:
         linhas.append(f"Entradas que disputam o mesmo horario: {len(aud.conflitos)} "
                       f"({aud.horas_em_conflito:.1f}h em disputa)")

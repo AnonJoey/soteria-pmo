@@ -26,7 +26,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from . import bolsao
+from . import bolsao, lancamentos
 from .clickup import ClickUpError, status_normalizado
 from .periodo import campo_objeto, de_ms, dias_uteis, janela
 from .reporte import _e_sustentacao
@@ -334,6 +334,27 @@ def _prazos_carteira(clientes: list[dict], hoje: date) -> dict:
     }
 
 
+def _sem_tarefa(entradas: list[dict], hoje: date, inicio: date) -> dict:
+    """Horas lancadas sem tarefa (sem `space_id`): nenhum cliente as recebe.
+
+    Medido em 06/11/2026 contra o ClickUp: 974 h (15,9% do total desde 17/08) estavam
+    nessa situacao e nao apareciam em lugar nenhum do painel, enquanto o quadro por
+    pessoa as contava. `esperadas` e o que nao tem cliente por natureza (daily,
+    reuniao, ferias, feriado); `a_explicar` e o resto.
+    """
+    na_janela = [e for e in entradas if (d := _dia(e)) is not None and inicio <= d <= hoje]
+    inicio_mes = hoje.replace(day=1)
+    no_mes = [e for e in na_janela if _dia(e) >= inicio_mes]
+    st = lancamentos.apurar_sem_tarefa(na_janela)
+    sm = lancamentos.apurar_sem_tarefa(no_mes)
+    return {
+        "horas": st.horas, "faturaveis": st.faturaveis, "entradas": st.entradas,
+        "esperadas": st.horas_esperadas, "a_explicar": round(st.horas - st.horas_esperadas, 1),
+        "mes_horas": sm.horas, "mes_a_explicar": round(sm.horas - sm.horas_esperadas, 1),
+        "pessoas": [{"nome": n, "h": h} for n, h in list(st.por_pessoa.items())[:8]],
+    }
+
+
 def montar_dados(cliente: Any, projetos: list[dict], hoje: date,
                  feriados: frozenset[date] = frozenset(), agora: datetime | None = None,
                  fat_padrao: bool = False) -> dict:
@@ -375,6 +396,7 @@ def montar_dados(cliente: Any, projetos: list[dict], hoje: date,
         "entradas_lidas": len(entradas),
         "clientes": clientes,
         "prazos_carteira": _prazos_carteira(clientes, hoje),
+        "sem_tarefa": _sem_tarefa(entradas, hoje, inicio),
         "pessoas": pessoas,
     }
 

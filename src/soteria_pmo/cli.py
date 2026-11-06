@@ -376,7 +376,7 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
                     + auditor.relatorio(auditor.auditar(
                         cliente.entradas(*periodo.janela(inicio_aud, fim_aud)),
                         evidencia_do_periodo(cfg, inicio_aud, fim_aud),
-                        inicio_aud, fim_aud)))
+                        inicio_aud, fim_aud, feriados=feriados)))
             partes.append(_lancamentos_da_equipe(cfg, cliente, hoje, feriados))
             return "\n\n".join(p for p in partes if p)
         tarefas["auditor"] = _auditor
@@ -384,7 +384,7 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
             tarefas["fechamento"] = lambda: auditor.relatorio(auditor.auditar(
                 cliente.entradas(*periodo.janela(inicio_mes, fim_mes)),
                 evidencia_do_periodo(cfg, inicio_mes, fim_mes),
-                inicio_mes, fim_mes))
+                inicio_mes, fim_mes, feriados=feriados))
 
     # Item 4 is absent on purpose. Hours need evidence this command does not
     # collect and an approval it must not fabricate, so it has its own path.
