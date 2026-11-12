@@ -17,6 +17,12 @@ The per-person path was deleted on 08/09/2026 rather than left beside the new
 one. It had survived four days after being rejected, still printing "confirm
 this person's rhythm with Abner" in real runs, which is what keeping both costs.
 
+What came back on 09/11/2026 is not that path. Max asked on 21/10 for the
+attention points "including by person", and Jordan decided that both views stay
+available. `leitura_por_pessoa` is a reading for the portfolio panel: no ruler
+per person, no escalation level, no ranking by who has been quiet longest. The
+only alert is still the one per project.
+
 The second constraint is that this agent cannot tell "the project stopped" from
 "the project moved and nobody logged it". Both look like silence in ClickUp.
 Every alert therefore states the ambiguity it could not resolve instead of
@@ -343,3 +349,59 @@ def acompanhar_projetos(cliente, projetos: list[dict], hoje: date,
         aviso += [f"      {f}" for f in falhas]
         log = (log or f"Acompanhamento de cronograma por projeto, {hoje:%d/%m}") + "\n".join(aviso)
     return log
+
+
+# ── Leitura por pessoa, para o painel da carteira ───────────────────────────
+
+
+def abertas_por_pessoa(tarefas: list[dict], hoje: date) -> dict[str, dict[str, int]]:
+    """Por responsavel: tarefas em andamento e quantas delas passaram do prazo.
+
+    "Em andamento" e a mesma conta da regua por projeto: aberta e nao bloqueada.
+    Tarefa com dois responsaveis conta para os dois, porque a pergunta e o que
+    cada um tem na mao, e nao quantas tarefas existem.
+    """
+    por_pessoa: dict[str, dict[str, int]] = {}
+    vistas: set[str] = set()
+    for t in tarefas:
+        tid = str(t.get("id") or "")
+        if tid and tid in vistas:
+            continue
+        vistas.add(tid)
+        status = t.get("status")
+        if concluida(status) or bloqueada(status):
+            continue
+        vence = de_ms(t.get("due_date"))
+        vencida = vence is not None and vence.date() < hoje
+        for a in t.get("assignees") or []:
+            nome = a.get("username")
+            if not nome:
+                continue
+            item = por_pessoa.setdefault(nome, {"em_andamento": 0, "vencidas": 0})
+            item["em_andamento"] += 1
+            item["vencidas"] += int(vencida)
+    return por_pessoa
+
+
+def leitura_por_pessoa(por_cliente: dict[str, dict[str, dict[str, int]]], ultima_hora: dict[str, date],
+                       hoje: date, feriados: frozenset[date] = frozenset()) -> list[dict]:
+    """Uma linha por pessoa com tarefa em andamento, em ordem alfabetica.
+
+    Leitura, nao alerta. Sem regua individual e sem nivel, porque calibrar e cobrar
+    por dev foi o que o Abner recusou em 03/09/2026, e sem ordenar por silencio, que
+    seria um ranking de quem esta mais quieto. Os dias sem hora seguem a conta dos
+    clientes no painel: dias uteis inteiros entre a ultima hora e hoje, sem contar hoje.
+    """
+    linhas: dict[str, dict] = {}
+    for cliente, pessoas in por_cliente.items():
+        for nome, contagem in pessoas.items():
+            linha = linhas.setdefault(nome, {"nome": nome, "clientes": [], "em_andamento": 0, "vencidas": 0})
+            linha["clientes"].append(cliente)
+            linha["em_andamento"] += contagem["em_andamento"]
+            linha["vencidas"] += contagem["vencidas"]
+    for nome, linha in linhas.items():
+        ultima = ultima_hora.get(nome)
+        linha["ultima_hora"] = ultima.isoformat() if ultima else None
+        linha["dias_sem_hora"] = (dias_uteis(ultima + timedelta(days=1), hoje - timedelta(days=1), feriados)
+                                  if ultima else None)
+    return sorted(linhas.values(), key=lambda l: l["nome"].lower())

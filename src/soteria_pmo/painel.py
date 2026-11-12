@@ -26,7 +26,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from . import bolsao, lancamentos
+from . import bolsao, cronograma, lancamentos
 from .clickup import ClickUpError, status_normalizado
 from .periodo import campo_objeto, de_ms, dias_uteis, janela
 from .reporte import _e_sustentacao
@@ -296,6 +296,7 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
                                    "pessoas": sorted(v["pessoas"]), "status": v["status"], "h": _h(v["h"])}
                                   for v in tarefas_sp.values()), key=lambda t: -t["h"]),
         "tarefas": _prazos(tarefas, hoje) if tarefas else _sem_tarefas(),
+        "responsaveis": cronograma.abertas_por_pessoa(tarefas, hoje),
         "dias_uteis_sem_hora": sem_hora,
         "ultima_hora": ultima.isoformat() if ultima else None,
     }
@@ -355,13 +356,45 @@ def _sem_tarefa(entradas: list[dict], hoje: date, inicio: date) -> dict:
     }
 
 
+def _quem_nao_lancou(entradas: list[dict], hoje: date, feriados: frozenset[date],
+                     esperados: list[str] | None) -> dict | None:
+    """Quem nao lancou no dia util anterior: a mesma conta do resumo diario, agora no painel.
+
+    Conferido em 09/11/2026: essa lista so saia no texto da rotina e no corpo do e-mail do
+    Logic App, e o painel e o formato que o Max aprovou. Sem ninguem esperado devolve None,
+    para o bloco sumir em vez de dizer que todos lancaram.
+    """
+    dia = lancamentos.dia_util_anterior(hoje, feriados)
+    limite = hoje - timedelta(days=lancamentos.JANELA_DE_ESPERADOS)
+    historico = [e for e in entradas if (d := _dia(e)) is not None and limite <= d <= hoje]
+    quadro = lancamentos.apurar(entradas, [dia], esperados, historico=historico)
+    if not quadro.linhas:
+        return None
+    return {"dia": dia.isoformat(), "total": len(quadro.linhas), "lancaram": len(quadro.lancaram(dia)),
+            "faltam": quadro.sem_lancamento(dia), "origem": quadro.origem_dos_esperados}
+
+
+def _ultima_hora_por_pessoa(entradas: list[dict], hoje: date) -> dict[str, date]:
+    ultima: dict[str, date] = {}
+    for e in entradas:
+        d = _dia(e)
+        if d is None or d > hoje or _horas(e) <= 0:
+            continue
+        pessoa = _pessoa(e)
+        if pessoa not in ultima or d > ultima[pessoa]:
+            ultima[pessoa] = d
+    return ultima
+
+
 def montar_dados(cliente: Any, projetos: list[dict], hoje: date,
                  feriados: frozenset[date] = frozenset(), agora: datetime | None = None,
-                 fat_padrao: bool = False) -> dict:
+                 fat_padrao: bool = False, esperados: list[str] | None = None) -> dict:
     """O objeto `D` do modelo, com o ClickUp lido agora. So leitura.
 
     `fat_padrao` abre o painel ja filtrado em horas faturaveis; o botao continua valendo e a
-    escolha que a pessoa fez no navegador vence o padrao."""
+    escolha que a pessoa fez no navegador vence o padrao. `esperados` e a `equipe_lancamento`
+    do config. Se a equipe nao puder ser lida, as entradas sao so de quem roda, e por isso
+    os dois quadros por pessoa ficam vazios: mostra-los acusaria o resto do time."""
     agora = agora or datetime.now()
     inicio = _segunda(hoje) - timedelta(weeks=SEMANAS - 1)
     try:
@@ -397,6 +430,10 @@ def montar_dados(cliente: Any, projetos: list[dict], hoje: date,
         "clientes": clientes,
         "prazos_carteira": _prazos_carteira(clientes, hoje),
         "sem_tarefa": _sem_tarefa(entradas, hoje, inicio),
+        "sem_lancamento": _quem_nao_lancou(entradas, hoje, feriados, esperados) if equipe else None,
+        "cronograma_pessoas": (cronograma.leitura_por_pessoa(
+            {c["nome"]: c["responsaveis"] for c in clientes},
+            _ultima_hora_por_pessoa(entradas, hoje), hoje, feriados) if equipe else []),
         "pessoas": pessoas,
     }
 
@@ -428,8 +465,10 @@ def renderizar(dados: dict, modelo: str | Path | None = None) -> str:
 
 
 def gerar(cliente: Any, projetos: list[dict], hoje: date, feriados: frozenset[date] = frozenset(),
-          modelo: str | Path | None = None, fat_padrao: bool = False) -> str:
-    return renderizar(montar_dados(cliente, projetos, hoje, feriados, fat_padrao=fat_padrao), modelo)
+          modelo: str | Path | None = None, fat_padrao: bool = False,
+          esperados: list[str] | None = None) -> str:
+    return renderizar(montar_dados(cliente, projetos, hoje, feriados, fat_padrao=fat_padrao,
+                                   esperados=esperados), modelo)
 
 
 def caminho_padrao(hoje: date) -> Path:
