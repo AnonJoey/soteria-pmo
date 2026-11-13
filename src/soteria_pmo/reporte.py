@@ -25,6 +25,8 @@ with opinion.
 
 from __future__ import annotations
 
+from typing import Any
+
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -502,6 +504,63 @@ def gerar_todos(cliente, projetos: list[dict], inicio: date, fim: date,
             "um cliente que o sistema falhou em ler."
         )
     return "\n\n---\n\n".join(partes)
+
+
+def gerar_por_cliente(cliente, projetos: list[dict], inicio: date, fim: date,
+                      bolsoes: dict | None = None) -> dict:
+    """Um HTML por cliente, para o relatorio semanal que sai em um e-mail por cliente.
+
+    Decisao da reuniao de 10/11/2026: um e-mail por cliente com o HTML, primeiro so
+    para o Max. O consolidado de `gerar_todos` junta todos os clientes numa pagina, e
+    mandar essa pagina a um cliente vazaria o dado dos outros (o motivo de a entrega
+    ao cliente ter ficado fora da Fase 2 em 28/09). Aqui cada HTML e renderizado so
+    com o relatorio daquele cliente, e o bolsao que entra e so o dele.
+
+    Devolve `relatorios` (cliente, html, horas), `sem_movimento` e `falhas`: um
+    cliente que nao pode ser lido sai nomeado, nunca calado.
+    """
+    from .template_html import renderizar_relatorio_html   # import local: evita ciclo
+
+    saida: dict[str, Any] = {"inicio": inicio.isoformat(), "fim": fim.isoformat(),
+                             "relatorios": [], "sem_movimento": [], "falhas": []}
+    if not projetos:
+        return saida
+    ini_ms, fim_ms = janela(inicio, fim)
+    try:
+        equipe = tuple(str(m["id"]) for m in cliente.membros() if m.get("id"))
+    except Exception as e:
+        logger.warning("nao foi possivel listar a equipe: %s", e)
+        equipe = None
+    try:
+        entradas = cliente.entradas(ini_ms, fim_ms, assignee=equipe)
+    except Exception as e:
+        logger.warning("nao foi possivel ler as horas do periodo: %s", e)
+        saida["falhas"].append(f"horas do periodo: {type(e).__name__}: {e}")
+        entradas = []
+
+    for p in projetos:
+        nome = str(p.get("nome") or "Cliente")
+        try:
+            obj = obter_consolidado(cliente, p, inicio, fim, entradas)
+        except Exception as e:
+            logger.warning("reporte de %s falhou: %s", nome, e)
+            saida["falhas"].append(f"{nome}: {type(e).__name__}: {e}")
+            continue
+        if obj is None or isinstance(obj, str):
+            # Lista unica sem consolidado (texto) ou nada no periodo: nao vira e-mail.
+            if isinstance(obj, str) and obj.strip():
+                saida["falhas"].append(f"{nome}: projeto de lista unica, sem relatorio por cliente")
+            else:
+                saida["sem_movimento"].append(nome)
+            continue
+        # mesma regra de proximidade do modelo (template_html._achar_bolsao), mas so a do cliente
+        n = nome.lower().strip()
+        so_dele = {k: v for k, v in (bolsoes or {}).items()
+                   if k.lower().strip() in n or n in k.lower().strip()}
+        html = renderizar_relatorio_html(reportes=[obj], sem_movimento=[], inicio=inicio, fim=fim,
+                                         bolsoes=so_dele)
+        saida["relatorios"].append({"cliente": nome, "html": html, "horas": round(obj.total_horas, 2)})
+    return saida
 
 
 def markdown_consolidado(rc: ReporteCliente) -> str:
