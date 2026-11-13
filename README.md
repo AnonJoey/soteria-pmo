@@ -356,6 +356,11 @@ problema. O caminho por pessoa foi apagado em 08/09, e nao deixado ao lado do
 novo: nos quatro dias em que os dois conviveram, era o antigo que rodava, e
 toda execucao real pedia uma calibragem que ja tinha sido recusada.
 
+O painel da carteira traz, desde 09/11, uma leitura por pessoa (tarefas em
+andamento, vencidas, ultima hora e dias uteis sem hora), pedida pelo Max em
+21/10. Ela nao recoloca o caminho apagado: nao ha regua individual, nivel de
+escalada nem ordem por quem esta mais quieto, e o alerta continua por projeto.
+
 O furo que o proprio Abner apontou continua declarado em cada alerta: nem todo
 mundo lanca hora todo dia, entao ausencia de lancamento nao separa "nao andou"
 de "andou e nao foi apontado". O alerta diz isso em vez de escolher.

@@ -249,6 +249,14 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
       <p class="note" id="n-sem-tarefa" style="margin:0 0 10px"></p>
       <div class="tbl-wrap tiny-tbl" id="sem-tarefa"></div>
     </div>
+
+    <div class="panel" style="margin-top:26px" id="sem-lancamento-painel" hidden>
+      <div class="sec-head" style="margin-bottom:12px;padding-bottom:10px">
+        <h3 id="t-sem-lancamento" style="margin:0">quem não lançou horas</h3>
+      </div>
+      <p class="note" id="n-sem-lancamento" style="margin:0 0 10px"></p>
+      <div class="tbl-wrap tiny-tbl" id="sem-lancamento"></div>
+    </div>
   </section>
 
   <section id="cliente" aria-labelledby="t-cliente">
@@ -296,12 +304,20 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
     </div>
     <div id="carga"></div>
     <p class="note">Horas lançadas no ClickUp no mês, somadas entre clientes. Não mede capacidade nem desempenho. Quem lança pouco pode ter trabalhado sem apontar, e quem passa da referência pode ter lançado em lote. O gráfico mostra onde a mesma pessoa está repartida entre clientes.</p>
+
+    <div class="panel" style="margin-top:26px" id="cronograma-pessoas-painel" hidden>
+      <div class="sec-head" style="margin-bottom:12px;padding-bottom:10px">
+        <h3 style="margin:0">cronograma por pessoa</h3>
+      </div>
+      <p class="note" style="margin:0 0 10px">Leitura, não alerta: o alerta continua por projeto, e aqui não há régua individual. Conta tarefas abertas e não bloqueadas de clientes ativos, atualizadas nos últimos 90 dias. Silêncio no ClickUp pode ser trabalho que não andou ou trabalho que andou e não foi apontado, e férias não aparecem. Não mede capacidade nem desempenho.</p>
+      <div class="tbl-wrap tiny-tbl" id="cronograma-pessoas"></div>
+    </div>
   </section>
 
   <section class="method" aria-label="como ler">
     <span class="sec-label">como ler</span>
     <p class="note" id="n-metodo"></p>
-    <p class="note">Silêncio no ClickUp é igual para trabalho que não andou e para trabalho que andou e não foi apontado. O painel não separa as duas hipóteses e não aponta responsáveis. O relatório ao cliente segue no nível 2: o Max valida e envia.</p>
+    <p class="note">Silêncio no ClickUp é igual para trabalho que não andou e para trabalho que andou e não foi apontado. O painel não separa as duas hipóteses. Os quadros que citam pessoas mostram o que está no ClickUp e não julgam ninguém. O relatório ao cliente segue no nível 2: o Max valida e envia.</p>
   </section>
 
   <footer class="foot"><span class="triad">orchestrating. the transition. to the future.</span><span class="r" id="f-dir"></span></footer>
@@ -681,7 +697,23 @@ function semTarefa(){
   $('#n-sem-tarefa').textContent=`Fora do consumo de cada cliente: a hora sem tarefa não tem espaço, então o painel e o bolsão não a atribuem a ninguém. ${f(st.esperadas)} h são daily, reunião, férias ou feriado (sem cliente por natureza); ${f(st.a_explicar)} h foram lançadas sem escolher a tarefa (${f(st.faturaveis)} h na janela marcadas como faturáveis, ${st.entradas} entradas). Quem mais tem, entre as que sobram:`;
   $('#sem-tarefa').innerHTML=`<table><thead><tr><th>pessoa</th><th class="n">horas</th></tr></thead><tbody>${(st.pessoas||[]).map(p=>`<tr><td>${esc(p.nome)}</td><td class="n">${f(p.h)}</td></tr>`).join('')}</tbody></table>`;
 }
-function tudo(){ hero(); kpis(); tabela(); prazosCarteira(); semTarefa(); detalhe(); carga(); metodo(); }
+function semLancamento(){
+  const q=D.sem_lancamento, box=$('#sem-lancamento-painel');
+  if(!q||!q.total){ box.hidden=true; return; }
+  box.hidden=false;
+  $('#t-sem-lancamento').textContent=`quem não lançou horas · ${dt(q.dia)} · ${q.lancaram} de ${q.total} lançaram`;
+  $('#n-sem-lancamento').textContent=`Dia útil anterior. Lançar quer dizer ter alguma entrada no dia, não ter lançado o suficiente. Férias, feriado local e meio período não aparecem aqui. Esperados: ${q.origem}.`;
+  $('#sem-lancamento').innerHTML=q.faltam.length
+    ?`<table><thead><tr><th>sem lançamento</th></tr></thead><tbody>${q.faltam.map(n=>`<tr><td>${esc(n)}</td></tr>`).join('')}</tbody></table>`
+    :'<div class="empty">todos os esperados lançaram</div>';
+}
+function cronogramaPessoas(){
+  const ps=D.cronograma_pessoas, box=$('#cronograma-pessoas-painel');
+  if(!ps||!ps.length){ box.hidden=true; return; }
+  box.hidden=false;
+  $('#cronograma-pessoas').innerHTML=`<table><thead><tr><th>pessoa</th><th>clientes</th><th class="n">em andamento</th><th class="n">vencidas</th><th class="n">última hora</th><th class="n">dias úteis sem hora</th></tr></thead><tbody>${ps.map(p=>`<tr><td>${esc(p.nome)}</td><td>${esc(p.clientes.join(', '))}</td><td class="n">${p.em_andamento}</td><td class="n">${p.vencidas}</td><td class="n">${p.ultima_hora?dt(p.ultima_hora):'-'}</td><td class="n">${p.dias_sem_hora==null?'sem hora em 12 semanas':p.dias_sem_hora}</td></tr>`).join('')}</tbody></table>`;
+}
+function tudo(){ hero(); kpis(); tabela(); prazosCarteira(); semTarefa(); semLancamento(); detalhe(); carga(); cronogramaPessoas(); metodo(); }
 if(!sel||!D.clientes.some(c=>c.nome===sel)){ sel=[...D.clientes].sort((a,b)=>(pct(b)??-1)-(pct(a)??-1))[0].nome; }
 $('#b-auto').setAttribute('aria-pressed',modo==='auto'); $('#b-total').setAttribute('aria-pressed',modo==='total');
 $('#b-todas').setAttribute('aria-pressed',(!filtroFat).toString()); $('#b-faturaveis').setAttribute('aria-pressed',filtroFat.toString());

@@ -35,6 +35,17 @@ soteria-pmo rodar --forcar cronograma
 - **Projeto novo demais fica quieto.** Se nenhuma tarefa aberta e mais velha que
   a propria regua, nao houve tempo de lancar nada.
 
+## Leitura por pessoa, no painel
+
+O Max pediu em 21/10 os pontos de atencao "inclusive por pessoa", e em 09/11 ficou
+decidido manter as duas visoes. A secao equipe do painel da carteira
+(`soteria-pmo painel`) traz, para cada pessoa com tarefa em andamento, os clientes,
+as tarefas em andamento, as vencidas, a ultima hora e os dias uteis sem hora.
+
+E leitura, nao alerta. Nao tem regua individual nem nivel, sai em ordem alfabetica
+e nao entra no log deste item. O alerta continua por projeto. Ao comentar esse
+quadro, declare a mesma ambiguidade dos alertas e nao cobre ninguem por ele.
+
 ## A ambiguidade que todo alerta declara
 
 Silencio no ClickUp e identico para trabalho que nao andou e para trabalho que
