@@ -226,6 +226,30 @@ def evidencia_do_periodo(cfg: dict, inicio: date, fim: date) -> list:
     return uteis
 
 
+def _pessoas_rh_do_painel(cliente, cfg: dict) -> list | None:
+    """Quem entra nas datas da equipe do painel: o roster local, se houver, senao a lista de cadastro.
+
+    Na nuvem nao ha roster em arquivo, so `rh_lista`. Da lista sai so nome e nascimento
+    (`rh.pessoas_do_clickup`); o resto do cadastro nao e lido. Sem as duas fontes, ou se a
+    leitura falhar, devolve None e a secao diz que nao ha fonte, em vez de dizer que ninguem
+    faz aniversario.
+    """
+    caminho = cfg.get("roster_rh")
+    if caminho and Path(caminho).expanduser().exists():
+        try:
+            return rh.carregar(Path(caminho).expanduser())
+        except Exception as e:
+            logger.warning("roster de RH ilegivel para o painel: %s", e)
+    lista = cfg.get("rh_lista")
+    if lista:
+        try:
+            pessoas, _ = rh.pessoas_do_clickup(cliente.tarefas_da_lista(str(lista)))
+            return pessoas
+        except Exception as e:
+            logger.warning("lista de cadastro nao lida para o painel: %s", e)
+    return None
+
+
 def _fat_padrao(cfg: dict, flag: bool = False) -> bool:
     """O painel abre filtrado em horas faturaveis: pela flag, ou por `painel_somente_faturaveis`
     ou `bolsao_somente_faturaveis` no config."""
@@ -347,7 +371,9 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
         def _painel() -> str:
             html = painel.gerar(cliente, projetos, hoje, _feriados(cfg), modelo=cfg.get("painel_modelo"),
                                 fat_padrao=_fat_padrao(cfg, somente_faturaveis),
-                                esperados=cfg.get("equipe_lancamento") or None)
+                                esperados=cfg.get("equipe_lancamento") or None,
+                                pessoas_rh=_pessoas_rh_do_painel(cliente, cfg),
+                                meta_dias_lancados=cfg.get("meta_dias_lancados"))
             try:
                 setattr(cliente, "_ultimo_html_painel", html)
             except AttributeError:
@@ -557,7 +583,9 @@ def cmd_painel(args) -> int:
         html = painel.gerar(cliente, projetos, hoje, _feriados(cfg),
                             modelo=args.modelo or cfg.get("painel_modelo"),
                             fat_padrao=_fat_padrao(cfg, getattr(args, "faturaveis", False)),
-                            esperados=cfg.get("equipe_lancamento") or None)
+                            esperados=cfg.get("equipe_lancamento") or None,
+                            pessoas_rh=_pessoas_rh_do_painel(cliente, cfg),
+                            meta_dias_lancados=cfg.get("meta_dias_lancados"))
     destino = painel.gravar_briefing(
         html, hoje, cfg, Path(args.saida).expanduser() if args.saida else None)[0]
 

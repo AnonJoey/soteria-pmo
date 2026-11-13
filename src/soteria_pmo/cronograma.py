@@ -343,6 +343,25 @@ def acompanhar_projetos(cliente, projetos: list[dict], hoje: date,
     ordem = {"escalar": 0, "cobranca": 1, "lembrete": 2}
     divergencias.sort(key=lambda d: (ordem[d.nivel], -d.dias_sem_horas))
 
+    # O painel desenha a mesma leitura como secao (pedido do Max em 10/11/2026), sem ler o
+    # ClickUp de novo: guarda o resultado no cliente, como o painel ja faz com o HTML.
+    try:
+        setattr(cliente, "_ultimo_cronograma", {
+            "dia": hoje.isoformat(),
+            "leitura": divergencias[0].ambiguidade if divergencias else "",
+            "falhas": list(falhas),
+            "divergencias": [{
+                "projeto": d.projeto, "tipo": d.tipo, "nivel": d.nivel,
+                "dias_sem_horas": d.dias_sem_horas, "regua_dias": d.regua_dias,
+                "em_andamento": d.tarefas_em_desenvolvimento, "bloqueadas": d.tarefas_bloqueadas,
+                "responsaveis": d.responsaveis[:MAX_RESPONSAVEIS_NA_LINHA],
+                "mais_responsaveis": max(0, len(d.responsaveis) - MAX_RESPONSAVEIS_NA_LINHA),
+                "notas": list(d.notas),
+            } for d in divergencias],
+        })
+    except AttributeError:
+        pass
+
     log = log_de_divergencias_projetos(divergencias, hoje)
     if falhas:
         aviso = ["", "  Projetos que nao puderam ser lidos, e por isso nao foram avaliados:"]
