@@ -452,7 +452,19 @@ const consumo=c=>{
 const projecao=c=>DU?consumo(c)/DU*DUM:0;
 const temTeto=c=>c.teto>0;
 const pct=c=>temTeto(c)?consumo(c)/c.teto:null;
+// Projeto acompanhado pelo total (sem teto mensal): o nivel vem do lancado contra o total,
+// na mesma faixa do vigia. Sem esse dado continua "sem teto".
+const temTotal=c=>!temTeto(c)&&c.total&&c.total.previsto>0&&c.total.pct!=null;
+function nivelTotal(c){
+  const p=c.total.pct;
+  if(p>=1) return {k:'estourou o total',cls:'s4',ord:4};
+  if(p>=.9) return {k:'crítico no total',cls:'s3',ord:3};
+  if(p>=.75) return {k:'atenção no total',cls:'s1',ord:1};
+  return {k:'dentro do total',cls:'s0',ord:0};
+}
+const parado=c=>(c.dias_uteis_sem_hora??0)>=4;
 function nivel(c){
+  if(temTotal(c)) return nivelTotal(c);
   if(!temTeto(c)) return {k:'sem teto',cls:'sx',ord:-1};
   const p=pct(c);
   if(p>=1) return {k:'estourado',cls:'s4',ord:4};
@@ -495,6 +507,8 @@ function hero(){
   const parados=C.filter(c=>(c.dias_uteis_sem_hora??0)>=4);
   let s=`<span class="mark">${est.length} de ${C.filter(temTeto).length}</span> clientes com teto já passaram dele no mês`;
   if(est.length) s+=`: ${est.map(c=>esc(c.nome)).join(', ')}`;
+  const estT=C.filter(c=>temTotal(c)&&c.total.pct>=1);
+  if(estT.length) s+=`. ${estT.map(c=>`${esc(c.nome)} passou do total do projeto (${H(c.total.lancado)} de ${nf0.format(c.total.previsto)}h)`).join('; ')}`;
   s+=proj.length?`. Mais <b>${proj.length}</b> projeta${proj.length>1?'m':''} estouro até ${dt(fimMes)}. `:'. ';
   s+=`<b>${venc}</b> tarefas estão com prazo vencido em ${vencC} clientes.`;
   if(parados.length) s+=` ${parados.map(c=>esc(c.nome)).join(' e ')} ${parados.length>1?'estão':'está'} há quatro ou mais dias úteis sem hora lançada.`;
@@ -528,7 +542,15 @@ function spark(c){
   return `<svg viewBox="0 0 ${W} ${Hh}" style="width:${W}px">${r}</svg>`;
 }
 function meter(c){
-  if(!temTeto(c)) return `<span class="csub">${esc(motivoSemTeto(c))}</span>`;
+  if(temTotal(c)){
+    const t=c.total, cap=Math.max(t.previsto,t.lancado)*1.02, w=v=>Math.min(100,v/cap*100), nv=nivelTotal(c);
+    return `<div class="meter" style="--mc:${COR[nv.ord]||'var(--ink)'}" data-tip="<span class='k'>${esc(c.nome)} · total do projeto</span>${H(t.lancado)} lançadas de ${H(t.previsto)} previstas<br>${esc(t.origem||'')}">
+      <i style="width:${w(Math.min(t.lancado,t.previsto))}%"></i>
+      ${t.lancado>t.previsto?`<i class="over" style="left:${w(t.previsto)}%;width:${w(t.lancado)-w(t.previsto)}%"></i>`:''}
+      <b style="left:${w(t.previsto)}%"></b></div>
+      <div class="csub" style="margin-top:7px">${H(t.lancado)} de ${nf0.format(t.previsto)}h · total do projeto</div>`;
+  }
+  if(!temTeto(c)) return `<span class="csub">${esc(c.total&&c.total.erro?'total do projeto não lido: '+c.total.erro:motivoSemTeto(c))}</span>`;
   const cons=consumo(c),pr=projecao(c),cap=Math.max(c.teto,cons,pr)*1.02,w=v=>Math.min(100,v/cap*100);
   const nv=nivel(c);
   return `<div class="meter" style="--mc:${COR[nv.ord]||'var(--ink)'}" data-tip="<span class='k'>${esc(c.nome)} · base ${baseNome(c)}</span>${H(cons)} de ${H(c.teto)}<br>projeção ${H(pr)} até ${dt(fimMes)}">
@@ -540,19 +562,19 @@ function meter(c){
 }
 function tabela(){
   $('#th-proj').firstChild.textContent=`projeção ${dt(fimMes)} `;
-  const rows=D.clientes.map(c=>({c,nome:c.nome,pct:pct(c)??-1,proj:temTeto(c)?projecao(c)/c.teto:-1,semhora:c.dias_uteis_sem_hora??99,venc:c.tarefas.vencidas,nivel:nivel(c).ord}));
+  const rows=D.clientes.map(c=>({c,nome:c.nome,pct:temTotal(c)?c.total.pct:(pct(c)??-1),proj:temTeto(c)?projecao(c)/c.teto:-1,semhora:c.dias_uteis_sem_hora??99,venc:c.tarefas.vencidas,nivel:nivel(c).ord}));
   rows.sort((a,b)=>{const x=a[sortK],y=b[sortK];return (typeof x==='string'?x.localeCompare(y):x-y)*sortDir;});
   $('#tbody').innerHTML=rows.map(({c})=>{
     const n=nivel(c),p=pct(c),sh=c.dias_uteis_sem_hora,pr=projecao(c);
     return `<tr class="row${c.nome===sel?' sel':''}" data-c="${esc(c.nome)}" tabindex="0">
       <td><div class="cname">${esc(c.nome)}</div><div class="csub">${nf0.format(c.mes.total)}h no mês · ${nf0.format(c.mes.sust)} sust · ${nf0.format(c.mes.impl)} impl${modo==='auto'&&c.base_fixa?' · regra fixa: '+(c.base_fixa==='total'?'espaço inteiro':'sustentação'):(modo==='auto'&&!temSust(c)&&teveSust(c)?' · sem sustentação no mês':'')}</div></td>
       <td>${meter(c)}</td>
-      <td class="n">${p==null?'<span class="dim">-</span>':`<span class="${p>=1?'u':''}">${P(p)}</span>`}</td>
+      <td class="n">${temTotal(c)?`<span class="${c.total.pct>=1?'u':''}">${P(c.total.pct)}</span><div class="csub">do total</div>`:(p==null?'<span class="dim">-</span>':`<span class="${p>=1?'u':''}">${P(p)}</span>`)}</td>
       <td class="n">${temTeto(c)?`<span class="${pr>c.teto?'u':''}">${H(pr)}</span>`:`<span class="dim">${H(pr)}</span>`}</td>
       <td>${spark(c)}</td>
       <td class="n">${sh==null?'<span class="dim">sem hora</span>':`<span class="${sh>=4?'u':''}">${sh}</span>`}</td>
       <td class="n"><span class="${c.tarefas.vencidas?'u':''}">${c.tarefas.vencidas}</span></td>
-      <td><span class="badge ${n.cls}">${n.k}</span></td></tr>`;
+      <td><span class="badge ${n.cls}">${n.k}</span>${parado(c)?`<div class="csub" style="margin-top:6px"><span class="u">parado</span> há ${c.dias_uteis_sem_hora} dias úteis</div>`:''}</td></tr>`;
   }).join('');
   document.querySelectorAll('#tbl th.sort').forEach(th=>{th.querySelector('.ar').textContent=th.dataset.k===sortK?(sortDir<0?'↓':'↑'):'';});
   const fixos=D.clientes.filter(c=>c.base_fixa);
