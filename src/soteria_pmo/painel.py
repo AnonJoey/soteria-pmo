@@ -53,6 +53,22 @@ _FINALIZADOS = frozenset({"closed", "done"})
 
 CAMINHO_MODELO = Path(__file__).with_name("painel_modelo.html")
 
+#: Dias de calendario na grade de horas por pessoa, terminando no dia anterior ao do painel.
+DIAS_DA_GRADE = 7
+
+#: Descricao com menos palavras que isto conta como curta na grade de horas. E uma regua
+#: nossa, nao do Max: o que a grade mostra e a contagem, e quem le decide se e problema.
+PALAVRAS_MINIMAS_NA_DESCRICAO = 3
+
+
+def url_da_tarefa(tarefa: dict) -> str:
+    """O link da tarefa no ClickUp: o que a API manda, ou o endereco curto pelo id."""
+    url = str(tarefa.get("url") or "").strip()
+    if url.startswith("https://"):
+        return url
+    tid = str(tarefa.get("id") or "").strip()
+    return f"https://app.clickup.com/t/{tid}" if tid else ""
+
 
 def _segunda(d: date) -> date:
     return d - timedelta(days=d.weekday())
@@ -129,6 +145,7 @@ def _prazos(tarefas: list[dict], hoje: date) -> dict:
             "status": status or "?",
             "espera": bool(espera),
             "vence": vence.isoformat(),
+            "url": url_da_tarefa(t),
         }
         if vence < hoje:
             vencidas.append(item)
@@ -256,7 +273,8 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
             status = status.get("status") if isinstance(status, dict) else status
             t = tarefas_sp.setdefault(tid, {
                 "tarefa": task.get("name") or "(sem tarefa)", "lista": lista, "nat": chave,
-                "pessoas": set(), "status": status or "", "h": 0.0})
+                "pessoas": set(), "status": status or "", "h": 0.0,
+                "url": url_da_tarefa(task) if task.get("id") else ""})
             t["pessoas"].add(_pessoa(e))
             t["h"] += h
 
@@ -293,7 +311,8 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
         "listas": sorted(({"lista": v["lista"], "pasta": v["pasta"], "h": _h(v["h"]), "fat": _h(v["fat"]), "nat": v["nat"]}
                           for v in listas.values()), key=lambda l: -l["h"]),
         "semana_passada": sorted(({"tarefa": v["tarefa"], "lista": v["lista"], "nat": v["nat"],
-                                   "pessoas": sorted(v["pessoas"]), "status": v["status"], "h": _h(v["h"])}
+                                   "pessoas": sorted(v["pessoas"]), "status": v["status"], "h": _h(v["h"]),
+                                   "url": v["url"]}
                                   for v in tarefas_sp.values()), key=lambda t: -t["h"]),
         "tarefas": _prazos(tarefas, hoje) if tarefas else _sem_tarefas(),
         "responsaveis": cronograma.abertas_por_pessoa(tarefas, hoje),
@@ -374,6 +393,106 @@ def _quem_nao_lancou(entradas: list[dict], hoje: date, feriados: frozenset[date]
             "faltam": quadro.sem_lancamento(dia), "origem": quadro.origem_dos_esperados}
 
 
+def _descricao_curta(entrada: dict) -> bool:
+    texto = str(entrada.get("description") or "").strip()
+    return len(texto.split()) < PALAVRAS_MINIMAS_NA_DESCRICAO
+
+
+def _grade_de_horas(entradas: list[dict], hoje: date, feriados: frozenset[date],
+                    esperados: list[str] | None, meta: float | None = None) -> dict | None:
+    """Pessoa por dia nos ultimos sete dias, como a planilha de horas do ClickUp, e o mes.
+
+    Pedido do Max em 10/11/2026 (conferencia de horas): o que cada um lancou nos ultimos sete
+    dias, a qualidade das descricoes e o percentual de dias uteis do mes com lancamento.
+    "Lancou" e ter alguma entrada no dia, nunca ter lancado o suficiente. A meta so aparece
+    quando o config a traz (`meta_dias_lancados`); o 90% citado na reuniao foi exemplo.
+    Os esperados sao os mesmos do quadro "quem nao lancou", para os dois nao divergirem.
+    """
+    fim = hoje - timedelta(days=1)
+    dias = [fim - timedelta(days=i) for i in range(DIAS_DA_GRADE - 1, -1, -1)]
+    inicio_mes = hoje.replace(day=1)
+    uteis_mes = [inicio_mes + timedelta(days=i) for i in range((fim - inicio_mes).days + 1)]
+    uteis_mes = [d for d in uteis_mes if d.weekday() < 5 and d not in feriados]
+    limite = hoje - timedelta(days=lancamentos.JANELA_DE_ESPERADOS)
+    historico = [e for e in entradas if (d := _dia(e)) is not None and limite <= d <= hoje]
+    quadro = lancamentos.apurar(entradas, sorted(set(dias) | set(uteis_mes)), esperados,
+                                historico=historico)
+    if not quadro.linhas:
+        return None
+    contagem: dict[tuple[str, date], list[int]] = defaultdict(lambda: [0, 0])
+    for e in entradas:
+        d = _dia(e)
+        if d is None or d not in dias:
+            continue
+        c = contagem[(lancamentos._quem(e), d)]
+        c[0] += 1
+        if _descricao_curta(e):
+            c[1] += 1
+    linhas = []
+    for l in quadro.linhas:
+        lancados = sum(1 for d in uteis_mes if l.por_dia.get(d, 0.0) > 0.0)
+        linhas.append({
+            "nome": l.pessoa,
+            "dias": [{"h": _h(l.por_dia.get(d, 0.0)), "entradas": contagem[(l.pessoa, d)][0],
+                      "curtas": contagem[(l.pessoa, d)][1]} for d in dias],
+            "semana_h": _h(sum(l.por_dia.get(d, 0.0) for d in dias)),
+            "mes_dias_lancados": lancados,
+            "mes_pct": round(lancados / len(uteis_mes), 3) if uteis_mes else None,
+        })
+    return {
+        "dias": [{"dia": d.isoformat(), "util": d.weekday() < 5 and d not in feriados,
+                  "feriado": d in feriados} for d in dias],
+        "uteis_no_mes": len(uteis_mes),
+        "meta": meta,
+        "palavras_minimas": PALAVRAS_MINIMAS_NA_DESCRICAO,
+        "origem": quadro.origem_dos_esperados,
+        "linhas": linhas,
+    }
+
+
+def _aniversarios(pessoas_rh: list | None, hoje: date) -> dict | None:
+    """Aniversariantes desta semana (segunda a domingo) e da proxima, so nome e dia.
+
+    Pedido do Max em 10/11/2026 (datas da equipe): aniversario em destaque e o aviso da
+    semana seguinte. Sai so dia e mes: o ano de nascimento nao aparece no painel. Tempo de
+    casa e feedback dependem do inicio do contrato, que a lista de cadastro ainda nao tem
+    (medido em 13/11/2026); quando o roster trouxer essa data, os eventos de `rh` entram.
+    """
+    if pessoas_rh is None:
+        return None
+    seg = _segunda(hoje)
+    semanas = {"semana": (seg, seg + timedelta(days=6)),
+               "proxima": (seg + timedelta(days=7), seg + timedelta(days=13))}
+    saida: dict[str, Any] = {k: [] for k in semanas}
+    for p in pessoas_rh:
+        if not getattr(p, "nascimento", None):
+            continue
+        for k, (ini, fim) in semanas.items():
+            for ano in {ini.year, fim.year}:
+                try:
+                    q = p.nascimento.replace(year=ano)
+                except ValueError:
+                    q = date(ano, 3, 1)
+                if ini <= q <= fim:
+                    saida[k].append({"nome": p.nome, "dia": q.isoformat(), "hoje": q == hoje,
+                                     "passou": q < hoje})
+    for k in semanas:
+        saida[k].sort(key=lambda a: (a["dia"], a["nome"]))
+    eventos = []
+    try:
+        from . import rh as _rh                       # import local: evita ciclo
+        eventos = [{"pessoa": e.pessoa, "tipo": e.tipo, "dia": e.quando.isoformat(), "dias": e.dias,
+                    "detalhe": e.detalhe}
+                   for e in _rh.eventos(list(pessoas_rh), hoje) if e.tipo != "aniversario"]
+    except Exception as e:                            # roster parcial nao derruba o painel
+        logger.warning("eventos de RH nao calculados: %s", e)
+    saida["outros"] = eventos
+    saida["sem_data"] = sum(1 for p in pessoas_rh if not getattr(p, "nascimento", None))
+    saida["com_inicio_contrato"] = sum(1 for p in pessoas_rh if getattr(p, "inicio_contrato", None))
+    saida["total"] = len(pessoas_rh)
+    return saida
+
+
 def _ultima_hora_por_pessoa(entradas: list[dict], hoje: date) -> dict[str, date]:
     ultima: dict[str, date] = {}
     for e in entradas:
@@ -388,7 +507,8 @@ def _ultima_hora_por_pessoa(entradas: list[dict], hoje: date) -> dict[str, date]
 
 def montar_dados(cliente: Any, projetos: list[dict], hoje: date,
                  feriados: frozenset[date] = frozenset(), agora: datetime | None = None,
-                 fat_padrao: bool = False, esperados: list[str] | None = None) -> dict:
+                 fat_padrao: bool = False, esperados: list[str] | None = None,
+                 pessoas_rh: list | None = None, meta_dias_lancados: float | None = None) -> dict:
     """O objeto `D` do modelo, com o ClickUp lido agora. So leitura.
 
     `fat_padrao` abre o painel ja filtrado em horas faturaveis; o botao continua valendo e a
@@ -435,6 +555,10 @@ def montar_dados(cliente: Any, projetos: list[dict], hoje: date,
             {c["nome"]: c["responsaveis"] for c in clientes},
             _ultima_hora_por_pessoa(entradas, hoje), hoje, feriados) if equipe else []),
         "pessoas": pessoas,
+        "grade_horas": (_grade_de_horas(entradas, hoje, feriados, esperados, meta_dias_lancados)
+                        if equipe else None),
+        "aniversarios": _aniversarios(pessoas_rh, hoje),
+        "cronograma": getattr(cliente, "_ultimo_cronograma", None),
     }
 
 
@@ -466,9 +590,11 @@ def renderizar(dados: dict, modelo: str | Path | None = None) -> str:
 
 def gerar(cliente: Any, projetos: list[dict], hoje: date, feriados: frozenset[date] = frozenset(),
           modelo: str | Path | None = None, fat_padrao: bool = False,
-          esperados: list[str] | None = None) -> str:
+          esperados: list[str] | None = None, pessoas_rh: list | None = None,
+          meta_dias_lancados: float | None = None) -> str:
     return renderizar(montar_dados(cliente, projetos, hoje, feriados, fat_padrao=fat_padrao,
-                                   esperados=esperados), modelo)
+                                   esperados=esperados, pessoas_rh=pessoas_rh,
+                                   meta_dias_lancados=meta_dias_lancados), modelo)
 
 
 def caminho_padrao(hoje: date) -> Path:

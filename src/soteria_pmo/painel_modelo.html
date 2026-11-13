@@ -45,6 +45,7 @@
   --st-ok:#8DB199;--st-at:#D4B155;--st-cr:#E08066;--st-es:#D0605A;--st-on:#000000;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 html{background:var(--canvas)}
 body{background:var(--canvas);color:var(--ink);font-family:var(--f);font-weight:400;font-size:15px;line-height:1.45;margin:0;-webkit-font-smoothing:antialiased;font-feature-settings:'ss01','ss02','cv11'}
 b,strong,em{font-weight:400;font-style:normal}
@@ -165,6 +166,7 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
 .lr .bar i{position:absolute;left:0;top:0;bottom:0}
 .tiny-tbl table{min-width:0}
 .tiny-tbl td.n,.tiny-tbl th.n{white-space:nowrap;padding-right:0}
+.tiny-tbl td.n:not(:last-child),.tiny-tbl th.n:not(:last-child){padding-right:18px}
 .tiny-tbl td:first-child{min-width:12ch}
 .tiny-tbl tbody td{font-size:13px;padding:9px 12px 9px 0}
 .empty{color:var(--ink-65);font-size:13px;padding:8px 0}
@@ -179,10 +181,31 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
 .foot{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;padding-top:22px}
 .triad{font-size:clamp(18px,2.2vw,24px);letter-spacing:-.012em;line-height:1.2}
 .foot .r{font-size:11px;letter-spacing:.16em;color:var(--ink-65);text-transform:uppercase}
+/* menu dos sete itens */
+nav.menu{position:sticky;top:0;z-index:5;background:var(--canvas);border-top:1px solid var(--ink);border-bottom:1px solid var(--ink-12);display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;margin-top:8px}
+.menu a,.menu .off{padding:11px 14px;font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-65);text-decoration:none;white-space:nowrap;border-right:1px solid var(--ink-12)}
+.menu a:hover{color:var(--ink);background:var(--ink-06)}
+.menu .off{color:var(--ink-40);cursor:default}
+.menu small{text-transform:none;letter-spacing:0;margin-left:6px;font-size:11px}
+section,.panel{scroll-margin-top:56px}
+/* link para a tarefa no ClickUp */
+a.tk{color:inherit;text-decoration:underline;text-decoration-color:var(--ink-40);text-underline-offset:3px}
+a.tk:hover{text-decoration-color:var(--ink)}
+/* colunas ordenaveis */
+table.ord th[data-ord]{cursor:pointer;user-select:none}
+table.ord th[data-ord]:hover{color:var(--ink)}
+table.ord th .ar{display:inline-block;width:10px;color:var(--ink)}
+/* datas da equipe */
+.aniv{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:9px 0;border-bottom:1px solid var(--ink-12)}
+.aniv .nm{font-size:16px}
+.aniv.dest .nm{color:var(--st-es)}
+.aniv.passou{opacity:.55}
+.noscript{border:1px solid var(--ink);padding:16px 18px;margin:24px 0;font-size:15px}
 @media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
 </style>
 
 <div class="wrap">
+  <noscript><div class="noscript">Este painel se desenha no navegador. Abra o arquivo no Chrome ou no Edge: a pré-visualização do Outlook, do Teams e do SharePoint não executa o painel e mostra só a moldura.</div></noscript>
   <header class="mast">
     <span class="logo-texto">soteria</span>
     <div class="meta"><span>painel pmo · carteira de clientes</span><span id="m-gerado"></span></div>
@@ -193,6 +216,16 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
     <h1 id="h-titulo"></h1>
     <p class="lede" id="h-lede"></p>
   </div>
+
+  <nav class="menu" aria-label="os sete itens">
+    <span class="off" title="Sai às sextas, um por cliente, num e-mail separado">1 · relatório da semana<small>sexta, por cliente</small></span>
+    <a href="#cronograma">2 · cronograma</a>
+    <a href="#horas">3 · conferência de horas</a>
+    <a href="#carteira">4 · bolsão</a>
+    <a href="#datas-equipe">5 · datas da equipe</a>
+    <a href="#prazos-carteira-painel">6 · prazos</a>
+    <span class="off" title="Em desenho com o André">7 · lançamento de horas<small>em desenho</small></span>
+  </nav>
 
   <section id="carteira" aria-labelledby="t-carteira">
     <div class="sec-head">
@@ -242,14 +275,33 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
       <div class="tbl-wrap tiny-tbl" id="prazos-carteira"></div>
     </div>
 
-    <div class="panel" style="margin-top:26px" id="sem-tarefa-painel" hidden>
-      <div class="sec-head" style="margin-bottom:12px;padding-bottom:10px">
-        <h3 id="t-sem-tarefa" style="margin:0">horas lançadas sem tarefa</h3>
-      </div>
-      <p class="note" id="n-sem-tarefa" style="margin:0 0 10px"></p>
-      <div class="tbl-wrap tiny-tbl" id="sem-tarefa"></div>
-    </div>
 
+  </section>
+
+  <section id="cronograma" aria-labelledby="t-cronograma">
+    <div class="sec-head">
+      <div class="sec-title"><span class="sec-label">cronograma</span><h2 id="t-cronograma">Projetos parados sem hora apontada</h2></div>
+    </div>
+    <p class="note" id="n-cronograma"></p>
+    <div class="tbl-wrap tiny-tbl" id="cronograma-projetos"></div>
+    <div class="panel" style="margin-top:26px" id="cronograma-pessoas-painel" hidden>
+      <div class="sec-head" style="margin-bottom:12px;padding-bottom:10px">
+        <h3 style="margin:0">cronograma por pessoa</h3>
+      </div>
+      <p class="note" style="margin:0 0 10px">Leitura, não alerta: o alerta continua por projeto, e aqui não há régua individual. Conta tarefas abertas e não bloqueadas de clientes ativos, atualizadas nos últimos 90 dias. Silêncio no ClickUp pode ser trabalho que não andou ou trabalho que andou e não foi apontado, e férias não aparecem. Não mede capacidade nem desempenho.</p>
+      <div class="tbl-wrap tiny-tbl" id="cronograma-pessoas"></div>
+    </div>
+  </section>
+
+  <section id="horas" aria-labelledby="t-horas">
+    <div class="sec-head">
+      <div class="sec-title"><span class="sec-label">conferência de horas</span><h2 id="t-horas">O que a equipe lançou</h2></div>
+    </div>
+    <div class="panel" id="grade-painel">
+      <h3 id="t-grade">últimos 7 dias por pessoa</h3>
+      <p class="note" id="n-grade" style="margin:0 0 10px"></p>
+      <div class="tbl-wrap tiny-tbl" id="grade"></div>
+    </div>
     <div class="panel" style="margin-top:26px" id="sem-lancamento-painel" hidden>
       <div class="sec-head" style="margin-bottom:12px;padding-bottom:10px">
         <h3 id="t-sem-lancamento" style="margin:0">quem não lançou horas</h3>
@@ -257,6 +309,25 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
       <p class="note" id="n-sem-lancamento" style="margin:0 0 10px"></p>
       <div class="tbl-wrap tiny-tbl" id="sem-lancamento"></div>
     </div>
+    <div class="panel" style="margin-top:26px" id="sem-tarefa-painel" hidden>
+      <div class="sec-head" style="margin-bottom:12px;padding-bottom:10px">
+        <h3 id="t-sem-tarefa" style="margin:0">horas lançadas sem tarefa</h3>
+      </div>
+      <p class="note" id="n-sem-tarefa" style="margin:0 0 10px"></p>
+      <div class="tbl-wrap tiny-tbl" id="sem-tarefa"></div>
+    </div>
+  </section>
+
+  <section id="datas-equipe" aria-labelledby="t-datas-equipe">
+    <div class="sec-head">
+      <div class="sec-title"><span class="sec-label">datas da equipe</span><h2 id="t-datas-equipe">Aniversários e datas de contrato</h2></div>
+    </div>
+    <div class="grid2">
+      <div class="panel"><h3 id="t-aniv-semana">aniversários desta semana</h3><div id="aniv-semana"></div></div>
+      <div class="panel"><h3 id="t-aniv-proxima">próxima semana</h3><div id="aniv-proxima"></div></div>
+    </div>
+    <div class="panel" id="rh-outros-painel" hidden><h3>contrato e feedback</h3><div class="tbl-wrap tiny-tbl" id="rh-outros"></div></div>
+    <p class="note" id="n-datas-equipe"></p>
   </section>
 
   <section id="cliente" aria-labelledby="t-cliente">
@@ -305,13 +376,6 @@ svg text{font-family:var(--f);fill:var(--ink-65);font-size:10px}
     <div id="carga"></div>
     <p class="note">Horas lançadas no ClickUp no mês, somadas entre clientes. Não mede capacidade nem desempenho. Quem lança pouco pode ter trabalhado sem apontar, e quem passa da referência pode ter lançado em lote. O gráfico mostra onde a mesma pessoa está repartida entre clientes.</p>
 
-    <div class="panel" style="margin-top:26px" id="cronograma-pessoas-painel" hidden>
-      <div class="sec-head" style="margin-bottom:12px;padding-bottom:10px">
-        <h3 style="margin:0">cronograma por pessoa</h3>
-      </div>
-      <p class="note" style="margin:0 0 10px">Leitura, não alerta: o alerta continua por projeto, e aqui não há régua individual. Conta tarefas abertas e não bloqueadas de clientes ativos, atualizadas nos últimos 90 dias. Silêncio no ClickUp pode ser trabalho que não andou ou trabalho que andou e não foi apontado, e férias não aparecem. Não mede capacidade nem desempenho.</p>
-      <div class="tbl-wrap tiny-tbl" id="cronograma-pessoas"></div>
-    </div>
   </section>
 
   <section class="method" aria-label="como ler">
@@ -337,6 +401,30 @@ const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>'
 const MESES=['janeiro','fevereiro','março','abril','maio','junho','julho','agosto','setembro','outubro','novembro','dezembro'];
 const HATCH = (id,cor='var(--st-es)') => `<defs><pattern id="${id}" width="5" height="5" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><rect width="5" height="5" fill="var(--canvas)"/><rect width="2" height="5" fill="${cor}"/></pattern></defs>`;
 const COR={0:'var(--st-ok)',1:'var(--st-at)',2:'var(--st-cr)',3:'var(--st-cr)',4:'var(--st-es)'};
+// Nome da tarefa com link para o ClickUp, quando o dado traz o endereco.
+const tk=t=>t.url?`<a class="tk" href="${esc(t.url)}" target="_blank" rel="noopener">${esc(t.tarefa)}</a>`:esc(t.tarefa);
+const thO=(rot,tipo='t',cls='')=>`<th data-ord="${tipo}"${cls?` class="${cls}"`:''}>${rot} <span class="ar"></span></th>`;
+// Ordenacao das tabelas pequenas: clique no cabecalho ordena, o segundo clique inverte.
+// O estado fica por container, para a ordem escolhida sobreviver ao redesenho do filtro.
+const ORD={};
+function ordenar(tbl){
+  const box=tbl.closest('[id]'); const st=box&&ORD[box.id]; if(!st||!tbl.tBodies[0]) return;
+  const ths=[...tbl.tHead.rows[0].cells], th=ths[st.i]; if(!th) return;
+  const num=th.dataset.ord==='n';
+  const val=r=>{const c=r.cells[st.i]; const x=c?(c.dataset.v??c.textContent.trim()):''; return num?(parseFloat(x)||0):x.toLowerCase();};
+  const rs=[...tbl.tBodies[0].rows];
+  rs.sort((a,b)=>{const x=val(a),y=val(b); return (num?x-y:String(x).localeCompare(String(y),'pt-BR'))*st.d;});
+  rs.forEach(r=>tbl.tBodies[0].appendChild(r));
+  ths.forEach((h,j)=>{const ar=h.querySelector('.ar'); if(ar) ar.textContent=j===st.i?(st.d<0?'↓':'↑'):'';});
+}
+const reordenar=sel=>{const tb=document.querySelector(sel+' table.ord'); if(tb) ordenar(tb);};
+document.addEventListener('click',e=>{
+  const th=e.target.closest('table.ord th[data-ord]'); if(!th) return;
+  const tbl=th.closest('table'), box=tbl.closest('[id]'); if(!box) return;
+  const i=th.cellIndex, st=ORD[box.id];
+  ORD[box.id]=st&&st.i===i?{i,d:-st.d}:{i,d:th.dataset.ord==='n'?-1:1};
+  ordenar(tbl);
+});
 
 let modo='auto', sel=null, sortK='pct', sortDir=-1, filtroFat=!!D.filtro_fat_padrao;
 try{
@@ -580,13 +668,15 @@ function prazoTbl(el,items,vencido){
   if(vencido) items=[...items].sort((a,b)=>(a.espera-b.espera)||a.vence.localeCompare(b.vence));
   if(!items.length){ $(el).innerHTML=`<div class="empty">${vencido?'nenhum prazo vencido':'nada vence nos próximos 7 dias'}</div>`; return; }
   const dias=s=>Math.round((hoje-new Date(s+'T12:00:00'))/864e5);
-  $(el).innerHTML=`<table><thead><tr><th>tarefa</th><th>responsável</th><th>status</th><th class="n">${vencido?'venceu':'vence'}</th></tr></thead><tbody>${items.slice(0,12).map(t=>`<tr><td>${esc(t.tarefa)}<div class="csub">${esc(t.lista)}</div></td><td>${esc(t.resp)}</td><td><span class="badge ${t.espera?'sx':'s1'}">${esc(t.status)}</span>${t.espera?'<div class="csub">em espera</div>':''}</td><td class="n">${dt(t.vence)}${vencido?`<div class="csub">há ${dias(t.vence)} dias</div>`:''}</td></tr>`).join('')}</tbody></table>${items.length>12?`<div class="csub" style="margin-top:8px">mais ${items.length-12} ${vencido?'vencidas':'a vencer'}</div>`:''}`;
+  $(el).innerHTML=`<table class="ord"><thead><tr>${thO('tarefa')}${thO('responsável')}${thO('status')}${thO(vencido?'venceu':'vence','t','n')}</tr></thead><tbody>${items.slice(0,12).map(t=>`<tr><td>${tk(t)}<div class="csub">${esc(t.lista)}</div></td><td>${esc(t.resp)}</td><td><span class="badge ${t.espera?'sx':'s1'}">${esc(t.status)}</span>${t.espera?'<div class="csub">em espera</div>':''}</td><td class="n" data-v="${esc(t.vence)}">${dt(t.vence)}${vencido?`<div class="csub">há ${dias(t.vence)} dias</div>`:''}</td></tr>`).join('')}</tbody></table>${items.length>12?`<div class="csub" style="margin-top:8px">mais ${items.length-12} ${vencido?'vencidas':'a vencer'}</div>`:''}`;
+  reordenar(el);
 }
 function semana(c){
   const it=c.semana_passada;
   $('#t-sp').textContent=`semana passada · ${dt(D.semana_passada.inicio)} a ${dt(D.semana_passada.fim)} · tarefas com hora`;
   if(!it.length){ $('#semana').innerHTML='<div class="empty">nenhuma hora lançada na semana passada</div>'; return; }
-  $('#semana').innerHTML=`<table><thead><tr><th>tarefa</th><th>lista</th><th>quem</th><th>status</th><th class="n">horas</th></tr></thead><tbody>${it.slice(0,15).map(t=>`<tr><td>${esc(t.tarefa)}</td><td class="csub">${esc(t.lista)} · ${t.nat}</td><td>${esc(t.pessoas.join(', '))}</td><td><span class="badge st">${esc(t.status)}</span></td><td class="n">${H(t.h)}</td></tr>`).join('')}</tbody></table>`;
+  $('#semana').innerHTML=`<table class="ord"><thead><tr>${thO('tarefa')}${thO('lista')}${thO('quem')}${thO('status')}${thO('horas','n','n')}</tr></thead><tbody>${it.slice(0,15).map(t=>`<tr><td>${tk(t)}</td><td class="csub">${esc(t.lista)} · ${t.nat}</td><td>${esc(t.pessoas.join(', '))}</td><td><span class="badge st">${esc(t.status)}</span></td><td class="n" data-v="${t.h}">${H(t.h)}</td></tr>`).join('')}</tbody></table>`;
+  reordenar('#semana');
 }
 function cKpis(c){
   const p=pct(c),pr=projecao(c),sh=c.dias_uteis_sem_hora;
@@ -671,13 +761,14 @@ function prazosCarteira(){
     return;
   }
   const lim=20;
-  $('#prazos-carteira').innerHTML=`<table><thead><tr><th>cliente</th><th>tarefa</th><th>responsável</th><th>status</th><th class="n">prazo</th></tr></thead><tbody>${items.slice(0,lim).map(t=>{
+  $('#prazos-carteira').innerHTML=`<table class="ord"><thead><tr>${thO('cliente')}${thO('tarefa')}${thO('responsável')}${thO('status')}${thO('prazo','t','n')}</tr></thead><tbody>${items.slice(0,lim).map(t=>{
     const d=dias(t.vence);
     const rotuloPrazo=t._vencida?`há ${d} ${d===1?'dia':'dias'}`:(d===0?'vence hoje':`em ${-d} ${-d===1?'dia':'dias'}`);
-    return `<tr class="row" data-cl="${esc(t.cliente)}" style="cursor:pointer"><td><div class="cname">${esc(t.cliente)}</div></td><td>${esc(t.tarefa)}<div class="csub">${esc(t.lista||'')}</div></td><td>${esc(t.resp)}</td><td><span class="badge ${t.espera?'sx':(t._vencida?'s3':'s1')}">${esc(t.status)}</span>${t.espera?'<div class="csub">em espera</div>':''}</td><td class="n"><span class="${t._vencida&&!t.espera?'u':''}">${dt(t.vence)}</span><div class="csub">${rotuloPrazo}</div></td></tr>`;
+    return `<tr class="row" data-cl="${esc(t.cliente)}" style="cursor:pointer"><td><div class="cname">${esc(t.cliente)}</div></td><td>${tk(t)}<div class="csub">${esc(t.lista||'')}</div></td><td>${esc(t.resp)}</td><td><span class="badge ${t.espera?'sx':(t._vencida?'s3':'s1')}">${esc(t.status)}</span>${t.espera?'<div class="csub">em espera</div>':''}</td><td class="n" data-v="${esc(t.vence)}"><span class="${t._vencida&&!t.espera?'u':''}">${dt(t.vence)}</span><div class="csub">${rotuloPrazo}</div></td></tr>`;
   }).join('')}</tbody></table>${items.length>lim?`<div class="csub" style="margin-top:8px">mais ${items.length-lim} tarefas na carteira</div>`:''}`;
+  reordenar('#prazos-carteira');
 }
-$('#prazos-carteira').addEventListener('click',e=>{const r=e.target.closest('[data-cl]'); if(r){ escolher(r.dataset.cl); const s=$('#cliente'); if(s&&s.scrollIntoView) s.scrollIntoView({behavior:'smooth',block:'start'}); }});
+$('#prazos-carteira').addEventListener('click',e=>{if(e.target.closest('a,th')) return; const r=e.target.closest('[data-cl]'); if(r){ escolher(r.dataset.cl); const s=$('#cliente'); if(s&&s.scrollIntoView) s.scrollIntoView({behavior:'smooth',block:'start'}); }});
 [['#b-pz-todas','todas'],['#b-pz-venc','venc'],['#b-pz-7d','7d']].forEach(([id,f])=>{
   $(id).addEventListener('click',()=>{
     filtroPz=f;
@@ -711,9 +802,65 @@ function cronogramaPessoas(){
   const ps=D.cronograma_pessoas, box=$('#cronograma-pessoas-painel');
   if(!ps||!ps.length){ box.hidden=true; return; }
   box.hidden=false;
-  $('#cronograma-pessoas').innerHTML=`<table><thead><tr><th>pessoa</th><th>clientes</th><th class="n">em andamento</th><th class="n">vencidas</th><th class="n">última hora</th><th class="n">dias úteis sem hora</th></tr></thead><tbody>${ps.map(p=>`<tr><td>${esc(p.nome)}</td><td>${esc(p.clientes.join(', '))}</td><td class="n">${p.em_andamento}</td><td class="n">${p.vencidas}</td><td class="n">${p.ultima_hora?dt(p.ultima_hora):'-'}</td><td class="n">${p.dias_sem_hora==null?'sem hora em 12 semanas':p.dias_sem_hora}</td></tr>`).join('')}</tbody></table>`;
+  $('#cronograma-pessoas').innerHTML=`<table class="ord"><thead><tr>${thO('pessoa')}${thO('clientes')}${thO('em andamento','n','n')}${thO('vencidas','n','n')}${thO('última hora','t','n')}${thO('dias úteis sem hora','n','n')}</tr></thead><tbody>${ps.map(p=>`<tr><td>${esc(p.nome)}</td><td>${esc(p.clientes.join(', '))}</td><td class="n">${p.em_andamento}</td><td class="n">${p.vencidas}</td><td class="n" data-v="${p.ultima_hora||''}">${p.ultima_hora?dt(p.ultima_hora):'-'}</td><td class="n" data-v="${p.dias_sem_hora==null?999:p.dias_sem_hora}">${p.dias_sem_hora==null?'sem hora em 12 semanas':p.dias_sem_hora}</td></tr>`).join('')}</tbody></table>`;
+  reordenar('#cronograma-pessoas');
 }
-function tudo(){ hero(); kpis(); tabela(); prazosCarteira(); semTarefa(); semLancamento(); detalhe(); carga(); cronogramaPessoas(); metodo(); }
+const SEMANA=['dom','seg','ter','qua','qui','sex','sáb'];
+const diaSem=s=>SEMANA[new Date(s+'T12:00:00').getDay()];
+function cronogramaSecao(){
+  const c=D.cronograma, box=$('#cronograma-projetos');
+  if(!c){
+    $('#n-cronograma').textContent='O acompanhamento de cronograma não rodou nesta geração do painel. Ele roda na rotina diária, e o resultado dele aparece aqui quando o painel sai junto.';
+    box.innerHTML=''; return;
+  }
+  const NV={escalar:['escalar','s4',3],cobranca:['cobrança','s3',2],lembrete:['lembrete','s1',1]};
+  const ds=c.divergencias||[];
+  const cont=k=>ds.filter(d=>d.nivel===k).length;
+  $('#t-cronograma').textContent=ds.length?`Projetos parados sem hora apontada · ${cont('escalar')} escalar, ${cont('cobranca')} cobrança, ${cont('lembrete')} lembrete`:'Projetos parados sem hora apontada';
+  $('#n-cronograma').textContent=`Um projeto entra aqui quando tem tarefa em andamento e passou da régua sem hora apontada: 4 dias úteis para projeto e 2 para chamado, combinada em 03/09. Lembrete na régua, cobrança no dobro, escalar no triplo. Silêncio no ClickUp pode ser trabalho que não andou ou trabalho que andou e não foi apontado: o painel não separa os dois.`;
+  let h=ds.length?`<table class="ord"><thead><tr>${thO('situação','n')}${thO('projeto')}${thO('tipo')}${thO('dias sem hora','n','n')}${thO('régua','n','n')}${thO('em andamento','n','n')}${thO('bloqueadas','n','n')}${thO('responsáveis')}</tr></thead><tbody>${ds.map(d=>{const n=NV[d.nivel]||[d.nivel,'st',0];
+    return `<tr><td data-v="${n[2]}"><span class="badge ${n[1]}">${n[0]}</span></td><td><div class="cname">${esc(d.projeto)}</div>${(d.notas||[]).map(x=>`<div class="csub">${esc(x)}</div>`).join('')}</td><td>${esc(d.tipo)}</td><td class="n"><span class="u">${d.dias_sem_horas}</span></td><td class="n">${d.regua_dias}</td><td class="n">${d.em_andamento}</td><td class="n">${d.bloqueadas}</td><td>${esc((d.responsaveis||[]).join(', '))}${d.mais_responsaveis?` <span class="csub">e mais ${d.mais_responsaveis}</span>`:''}</td></tr>`;}).join('')}</tbody></table>`
+    :'<div class="empty">nenhum projeto passou da régua hoje</div>';
+  if((c.falhas||[]).length) h+=`<p class="note" style="margin-top:10px">Não puderam ser lidos, e por isso não foram avaliados: ${c.falhas.map(esc).join('; ')}.</p>`;
+  box.innerHTML=h;
+  reordenar('#cronograma-projetos');
+}
+function gradeHoras(){
+  const g=D.grade_horas, box=$('#grade');
+  if(!g||!(g.linhas||[]).length){
+    $('#n-grade').textContent='A equipe não pôde ser lida nesta geração. A grade fica vazia para não mostrar só quem rodou o painel.';
+    box.innerHTML=''; return;
+  }
+  $('#t-grade').textContent=`últimos 7 dias por pessoa · ${dt(g.dias[0].dia)} a ${dt(g.dias[g.dias.length-1].dia)}`;
+  $('#n-grade').textContent=`Horas lançadas no ClickUp em cada dia, pela data de início da entrada. Dia útil sem lançamento aparece sublinhado; fim de semana e feriado ficam com um ponto. "Curtas" são entradas sem descrição ou com menos de ${g.palavras_minimas} palavras: é uma régua nossa, e quem lê decide se é problema. A coluna do mês conta os dias úteis até ontem com alguma entrada${g.meta?`; a meta configurada é ${P(g.meta)}`:'; a meta ainda não foi definida'}. Esperados: ${g.origem}.`;
+  const cab=g.dias.map(d=>thO(`${diaSem(d.dia)} ${dt(d.dia)}`,'n','n')).join('');
+  box.innerHTML=`<table class="ord"><thead><tr>${thO('pessoa')}${cab}${thO('7 dias','n','n')}${thO('mês','n','n')}</tr></thead><tbody>${g.linhas.map(l=>{
+    const cel=l.dias.map((x,i)=>{const d=g.dias[i];
+      if(!x.h) return `<td class="n" data-v="0">${d.util?'<span class="u">0</span>':'<span class="dim">·</span>'}</td>`;
+      return `<td class="n" data-v="${x.h}">${H(x.h)}${x.curtas?`<div class="csub">${x.curtas} de ${x.entradas} curta${x.curtas>1?'s':''}</div>`:''}</td>`;}).join('');
+    const abaixo=g.meta&&l.mes_pct!=null&&l.mes_pct<g.meta;
+    return `<tr><td>${esc(l.nome)}</td>${cel}<td class="n" data-v="${l.semana_h}">${H(l.semana_h)}</td><td class="n" data-v="${l.mes_pct??-1}"><span class="${abaixo?'u':''}">${l.mes_dias_lancados} de ${g.uteis_no_mes}</span>${l.mes_pct!=null?`<div class="csub">${P(l.mes_pct)}</div>`:''}</td></tr>`;
+  }).join('')}</tbody></table>`;
+  reordenar('#grade');
+}
+function datasEquipe(){
+  const a=D.aniversarios;
+  if(!a){
+    $('#aniv-semana').innerHTML='<div class="empty">sem fonte de datas</div>'; $('#aniv-proxima').innerHTML='';
+    $('#n-datas-equipe').textContent='Sem fonte de datas da equipe nesta geração: o config não aponta o roster (roster_rh) nem a lista de cadastro (rh_lista), ou a leitura falhou.';
+    $('#rh-outros-painel').hidden=true; return;
+  }
+  const li=(xs,dest)=>xs.length?xs.map(x=>`<div class="aniv${dest&&!x.passou?' dest':''}${x.passou?' passou':''}"><span class="nm">${esc(x.nome)}</span><span>${x.hoje?'<span class="badge s4">hoje</span> ':''}${diaSem(x.dia)} ${dt(x.dia)}</span></div>`).join(''):'<div class="empty">ninguém faz aniversário</div>';
+  $('#t-aniv-semana').textContent=`aniversários desta semana · ${a.semana.length}`;
+  $('#t-aniv-proxima').textContent=`próxima semana · ${a.proxima.length}`;
+  $('#aniv-semana').innerHTML=li(a.semana,true);
+  $('#aniv-proxima').innerHTML=li(a.proxima,false);
+  const outros=a.outros||[], box=$('#rh-outros-painel');
+  box.hidden=!outros.length;
+  if(outros.length) $('#rh-outros').innerHTML=`<table class="ord"><thead><tr>${thO('pessoa')}${thO('o quê')}${thO('data','t','n')}${thO('detalhe')}</tr></thead><tbody>${outros.map(e=>`<tr><td>${esc(e.pessoa)}</td><td>${esc(e.tipo)}</td><td class="n" data-v="${e.dia}"><span class="${e.dias<0?'u':''}">${dt(e.dia)}</span><div class="csub">${e.dias===0?'hoje':(e.dias>0?`em ${e.dias} dias`:`há ${-e.dias} dias`)}</div></td><td class="csub">${esc(e.detalhe||'')}</td></tr>`).join('')}</tbody></table>`;
+  $('#n-datas-equipe').textContent=`${a.total} pessoas no cadastro${a.sem_data?`, ${a.sem_data} sem data de nascimento`:''}. Aparecem só o dia e o mês, nunca o ano.${a.com_inicio_contrato?'':' O início de contrato ainda não está no cadastro, então tempo de casa, saldo de dias abonados e os feedbacks de 45 e 90 dias não podem ser calculados.'}`;
+}
+function tudo(){ hero(); kpis(); tabela(); prazosCarteira(); cronogramaSecao(); gradeHoras(); semTarefa(); semLancamento(); datasEquipe(); detalhe(); carga(); cronogramaPessoas(); metodo(); }
 if(!sel||!D.clientes.some(c=>c.nome===sel)){ sel=[...D.clientes].sort((a,b)=>(pct(b)??-1)-(pct(a)??-1))[0].nome; }
 $('#b-auto').setAttribute('aria-pressed',modo==='auto'); $('#b-total').setAttribute('aria-pressed',modo==='total');
 $('#b-todas').setAttribute('aria-pressed',(!filtroFat).toString()); $('#b-faturaveis').setAttribute('aria-pressed',filtroFat.toString());
