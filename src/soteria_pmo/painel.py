@@ -53,6 +53,11 @@ _FINALIZADOS = frozenset({"closed", "done"})
 
 CAMINHO_MODELO = Path(__file__).with_name("painel_modelo.html")
 
+#: Meta de dias uteis com lancamento, quando o config nao traz `meta_dias_lancados`. O Max
+#: citou 90% como exemplo na reuniao de 10/11/2026; em 13/11 o Jordan decidiu seguir sem
+#: esperar a confirmacao dele. O config vence este padrao.
+META_DIAS_LANCADOS_PADRAO = 0.9
+
 #: Dias de calendario na grade de horas por pessoa, terminando no dia anterior ao do painel.
 DIAS_DA_GRADE = 7
 

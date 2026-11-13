@@ -373,7 +373,7 @@ def montar_tarefas(cfg: dict, cliente: ClickUp, hoje: date, somente_faturaveis: 
                                 fat_padrao=_fat_padrao(cfg, somente_faturaveis),
                                 esperados=cfg.get("equipe_lancamento") or None,
                                 pessoas_rh=_pessoas_rh_do_painel(cliente, cfg),
-                                meta_dias_lancados=cfg.get("meta_dias_lancados"))
+                                meta_dias_lancados=cfg.get("meta_dias_lancados", painel.META_DIAS_LANCADOS_PADRAO))
             try:
                 setattr(cliente, "_ultimo_html_painel", html)
             except AttributeError:
@@ -585,7 +585,7 @@ def cmd_painel(args) -> int:
                             fat_padrao=_fat_padrao(cfg, getattr(args, "faturaveis", False)),
                             esperados=cfg.get("equipe_lancamento") or None,
                             pessoas_rh=_pessoas_rh_do_painel(cliente, cfg),
-                            meta_dias_lancados=cfg.get("meta_dias_lancados"))
+                            meta_dias_lancados=cfg.get("meta_dias_lancados", painel.META_DIAS_LANCADOS_PADRAO))
     destino = painel.gravar_briefing(
         html, hoje, cfg, Path(args.saida).expanduser() if args.saida else None)[0]
 
