@@ -117,6 +117,29 @@ def _nomes_das_listas(cliente: Any, space_id: str) -> dict[str, tuple[str, str]]
     return nomes
 
 
+def _total_do_projeto(cliente: Any, tp: "bolsao.TotalProjeto") -> dict | None:
+    """O lancado contra o total do projeto, com a mesma conta do vigia (`bolsao.apurar_total`).
+
+    Ate 13/11/2026 o painel mostrava a Unimed Londrina como "sem teto" enquanto o vigia,
+    no corpo do e-mail, a dava como estourada (398,3 h de 390 h). O painel e o formato que
+    o Max aprovou, entao a bandeira tem de estar nele. Uma falha de leitura devolve o erro
+    no dado, para o painel dizer que nao leu em vez de calar.
+    """
+    try:
+        tarefas: list[dict] = []
+        for lista in tp.listas:
+            tarefas.extend(cliente.tarefas_da_lista(lista, incluir_fechadas=True, subtarefas=True))
+        s = bolsao.apurar_total(tarefas, tp)
+    except Exception as e:
+        logger.warning("total do projeto %s nao lido: %s", tp.projeto, e)
+        return {"erro": f"{type(e).__name__}: {e}"}
+    if s is None:
+        return None
+    return {"previsto": _h(s.horas_contratadas), "lancado": _h(s.horas_gastas),
+            "pct": round(s.horas_gastas / s.horas_contratadas, 4) if s.horas_contratadas else None,
+            "nivel": s.nivel, "origem": s.origem_previsto}
+
+
 def _finalizada(tarefa: dict) -> bool:
     status = tarefa.get("status")
     return isinstance(status, dict) and str(status.get("type") or "").lower() in _FINALIZADOS
@@ -190,6 +213,7 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
     motivo = ""
     if not teto and not total_projeto:
         motivo = bolsao.teto_a_confirmar(nome) or "sem teto configurado"
+    total = _total_do_projeto(cliente, totais[0]) if totais and not teto else None
 
     listas_sust = frozenset(str(x) for x in (projeto.get("listas_sustentacao") or ()))
     listas_proj = frozenset(str(x) for x in (projeto.get("listas_projeto") or ()))
@@ -296,6 +320,7 @@ def _cliente(cliente: Any, projeto: dict, entradas: list[dict], hoje: date, inic
         "base_fixa": base_fixa,
         "base_origem": f"base '{base_fixa}' no config do projeto" if base_cfg else ("listas_sustentacao no config do projeto" if base_fixa else ""),
         "total_projeto": _h(total_projeto) if total_projeto else None,
+        "total": total,
         "motivo_sem_teto": motivo,
         "tipo_config": projeto.get("tipo") or "",
         "semanas": [{"semana": s.isoformat(), "sust": _h(v["sust"]), "impl": _h(v["impl"]),
